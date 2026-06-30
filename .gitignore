@@ -1,0 +1,40 @@
+# macOS local files
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Xcode build products and caches
+DerivedData/
+*DerivedData/
+build/
+Build/
+*.build/
+*.hmap
+*.ipa
+*.xcarchive/
+*.dSYM/
+*.app/
+*.appex/
+*.swiftmodule/
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+
+# Swift and compiler caches
+.build/
+.swiftpm/
+ModuleCache.noindex/
+Index.noindex/
+SDKStatCaches.noindex/
+CompilationCache.noindex/
+
+# Repo-local scratch build output
+/work/*DerivedData/
