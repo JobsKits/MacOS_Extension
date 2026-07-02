@@ -1,6 +1,6 @@
 #!/bin/zsh
 # 脚本自述：
-# - 脚本名称：【MacOS】🧾更新Git子模块配置.command
+# - 脚本名称：【MacOS】🧾更新gitmodules.command
 # - 核心用途：按工程根目录第一层真实子 Git 目录刷新或生成 .gitmodules。
 # - 影响范围：只改写或新建当前工程根目录下的 .gitmodules，不自动 stage、commit、push，也不改子仓库内容。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，写入前再次回车确认。
@@ -65,7 +65,7 @@ gray_echo() {
 show_script_intro_and_wait() {
   clear 2>/dev/null || true
   print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：【MacOS】🧾更新Git子模块配置.command'
+  print -r -- '脚本名称：【MacOS】🧾更新gitmodules.command'
   print -r -- '核心用途：扫描当前工程根目录第一层带 .git 的目录，并据此刷新或生成 .gitmodules。'
   print -r -- '影响范围：只改写或新建 .gitmodules；不会自动 git add、commit、push，也不会修改子仓库内容。'
   print -r -- '运行策略：先展示扫描结果和 diff，真正写入前直接回车执行，输入任意字符跳过。'

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 脚本自述：
-# - 脚本名称：【MacOS】🧭对齐父Git子模块.command
-# - 核心用途：执行“🧭对齐父Git子模块”对应的 Git / Sourcetree 自动化操作。
+# - 脚本名称：【MacOS】🧭更新引用Git父仓=>子仓.command
+# - 核心用途：执行“🧭更新引用Git父仓=>子仓”对应的 Git / Sourcetree 自动化操作。
 # - 影响范围：可能修改当前仓库、工作区、分支、菜单配置或 Git 索引。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
@@ -11,7 +11,7 @@ SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$SCRIPT_SOURCE")"
 SCRIPT_BASENAME=$(basename "$SCRIPT_SOURCE" | sed 's/\.[^.]*$//')
 LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
 
-PARENT_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PARENT_REPO_DIR="$SCRIPT_DIR"
 
 typeset -ga CURRENT_SUBGIT_DIRS
 typeset -gA SUBMODULE_URLS
@@ -48,8 +48,8 @@ underline_echo() { log "\033[4m$1\033[0m"; }
 show_script_intro_and_wait() {
   clear 2>/dev/null || true
   print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：【MacOS】🧭对齐父Git子模块.command'
-  print -r -- '核心用途：以脚本所在目录的上一层作为父 Git，按真实子 Git 目录对齐 .gitmodules 和 gitlink。'
+  print -r -- '脚本名称：【MacOS】🧭更新引用Git父仓=>子仓.command'
+  print -r -- '核心用途：以脚本所在目录作为父 Git，按同级真实子 Git 目录对齐 .gitmodules 和 gitlink。'
   print -r -- '影响范围：可能修改 .gitmodules、父仓库索引 gitlink、本地 .git/config 和子目录 .git 指针。'
   print -r -- '运行策略：先展示当前真实子 Git 和 git status，再由二次确认决定是否执行修复。'
   print -r -- "日志位置：${LOG_FILE}"
@@ -58,12 +58,12 @@ show_script_intro_and_wait() {
   echo ""
   read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
 }
-# 普通修复动作默认跳过，输入任意字符后才执行。
-ask_any_to_run() {
+# 修复动作默认执行，输入任意字符后跳过。
+ask_enter_to_run() {
   local message="$1"
   local answer=""
-  read -r "?${message}（直接回车跳过；输入任意字符后回车执行）：" answer
-  [[ -n "$answer" ]]
+  read -r "?${message}（直接回车执行；输入任意字符后回车跳过）：" answer
+  [[ -z "$answer" ]]
 }
 # 检查命令和父仓库环境是否满足修复条件。
 check_environment() {
@@ -73,7 +73,7 @@ check_environment() {
   fi
 
   if [[ ! -d "${PARENT_REPO_DIR}/.git" && ! -f "${PARENT_REPO_DIR}/.git" ]]; then
-    error_echo "脚本上一层不是 Git 仓库：${PARENT_REPO_DIR}"
+    error_echo "脚本所在目录不是 Git 仓库：${PARENT_REPO_DIR}"
     return 1
   fi
 
@@ -405,7 +405,7 @@ run_business() {
   gray_echo "不会删除当前磁盘上的子 Git 目录；旧 gitlink 只会执行 git rm --cached。"
   echo ""
 
-  if ! ask_any_to_run "确认按当前磁盘子 Git 目录对齐父 Git 子模块吗？"; then
+  if ! ask_enter_to_run "确认按当前磁盘子 Git 目录对齐父 Git 子模块吗？"; then
     warn_echo "用户选择跳过修复。"
     return 0
   fi
