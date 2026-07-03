@@ -12,6 +12,7 @@ SCRIPT_BASENAME=$(basename "$SCRIPT_SOURCE" | sed 's/\.[^.]*$//')
 LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
 
 PARENT_REPO_DIR="$SCRIPT_DIR"
+PARENT_GIT_DIR=""
 
 typeset -ga CURRENT_SUBGIT_DIRS
 typeset -gA SUBMODULE_URLS
@@ -81,6 +82,12 @@ check_environment() {
     error_echo "无法识别父 Git 仓库：${PARENT_REPO_DIR}"
     return 1
   fi
+
+  PARENT_GIT_DIR="$(resolve_parent_git_dir || true)"
+  if [[ -z "$PARENT_GIT_DIR" ]]; then
+    error_echo "无法解析父 Git 仓库真实 gitdir：${PARENT_REPO_DIR}"
+    return 1
+  fi
 }
 # 判断数组里是否包含指定路径。
 array_contains() {
@@ -111,6 +118,57 @@ normalize_existing_path() {
     print -r -- "$input_path"
   fi
 }
+# 解析父仓真实 gitdir，兼容 .git 为目录或指针文件。
+resolve_parent_git_dir() {
+  local git_dir=""
+
+  git_dir="$(git -C "$PARENT_REPO_DIR" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+  if [[ -z "$git_dir" ]]; then
+    git_dir="$(git -C "$PARENT_REPO_DIR" rev-parse --git-dir 2>/dev/null || true)"
+  fi
+
+  [[ -n "$git_dir" ]] || return 1
+  [[ "$git_dir" != /* ]] && git_dir="${PARENT_REPO_DIR}/${git_dir}"
+  normalize_existing_path "$git_dir"
+}
+# 计算从指定目录到目标路径的相对路径，避免嵌套子模块写坏 .git 指针。
+relative_path_from_dir() {
+  local target="$1"
+  local from_dir="$2"
+  local target_abs=""
+  local from_abs=""
+  local idx=1
+  local i=0
+  local -a target_parts
+  local -a from_parts
+  local -a rel_parts
+
+  target_abs="$(normalize_existing_path "$target")"
+  from_abs="$(normalize_existing_path "$from_dir")"
+  target_abs="${target_abs:A}"
+  from_abs="${from_abs:A}"
+  target_parts=("${(@s:/:)target_abs}")
+  from_parts=("${(@s:/:)from_abs}")
+
+  while [[ $idx -le ${#target_parts[@]} && $idx -le ${#from_parts[@]} && "${target_parts[$idx]}" == "${from_parts[$idx]}" ]]; do
+    idx=$((idx + 1))
+  done
+
+  rel_parts=()
+  for ((i=idx; i<=${#from_parts[@]}; i++)); do
+    [[ -n "${from_parts[$i]}" ]] && rel_parts+=("..")
+  done
+  for ((i=idx; i<=${#target_parts[@]}; i++)); do
+    [[ -n "${target_parts[$i]}" ]] && rel_parts+=("${target_parts[$i]}")
+  done
+
+  if [[ ${#rel_parts[@]} -eq 0 ]]; then
+    print -r -- "."
+  else
+    local IFS="/"
+    print -r -- "${rel_parts[*]}"
+  fi
+}
 # 读取 Git 配置文件里 origin 远端地址，避免坏 worktree 导致 git config 失败。
 read_origin_from_config_file() {
   local config_file="$1"
@@ -126,10 +184,17 @@ read_origin_from_config_file() {
     }
   ' "$config_file"
 }
-# 根据子目录名推导父仓库 .git/modules 下的标准 gitdir。
+# 根据子目录名推导父仓库真实 gitdir/modules 下的标准 gitdir。
 module_dir_for_path() {
   local sub_path="$1"
-  print -r -- "${PARENT_REPO_DIR}/.git/modules/${sub_path}"
+  local parent_git_dir="${PARENT_GIT_DIR:-}"
+
+  if [[ -z "$parent_git_dir" ]]; then
+    parent_git_dir="$(resolve_parent_git_dir || true)"
+  fi
+
+  [[ -n "$parent_git_dir" ]] || return 1
+  print -r -- "${parent_git_dir}/modules/${sub_path}"
 }
 # 读取子 Git 当前可用的 origin URL。
 read_origin_url_for_subgit() {
@@ -247,14 +312,14 @@ repair_subgit_gitdir_pointer() {
   local sub_path="$1"
   local sub_dir="${PARENT_REPO_DIR}/${sub_path}"
   local git_marker="${sub_dir}/.git"
-  local desired_relative="../.git/modules/${sub_path}"
+  local desired_gitdir_pointer=""
   local desired_module_dir=""
   local current_gitdir=""
   local current_module_dir=""
   local url="${SUBMODULE_URLS[$sub_path]}"
 
   desired_module_dir="$(module_dir_for_path "$sub_path")"
-  mkdir -p "${PARENT_REPO_DIR}/.git/modules"
+  mkdir -p "$(dirname "$desired_module_dir")"
 
   if [[ -f "$git_marker" ]]; then
     current_gitdir="$(sed -n 's/^gitdir:[[:space:]]*//p' "$git_marker" | head -n 1)"
@@ -266,11 +331,12 @@ repair_subgit_gitdir_pointer() {
         mv "$current_module_dir" "$desired_module_dir"
       fi
     fi
-    print -r -- "gitdir: ${desired_relative}" > "$git_marker"
+    desired_gitdir_pointer="$(relative_path_from_dir "$desired_module_dir" "$sub_dir")"
+    print -r -- "gitdir: ${desired_gitdir_pointer}" > "$git_marker"
   fi
 
   if [[ -d "$desired_module_dir" ]]; then
-    git --git-dir="$desired_module_dir" --work-tree="$sub_dir" config core.worktree "../../../${sub_path}" >/dev/null 2>&1 || true
+    git --git-dir="$desired_module_dir" --work-tree="$sub_dir" config core.worktree "$(relative_path_from_dir "$sub_dir" "$desired_module_dir")" >/dev/null 2>&1 || true
     git --git-dir="$desired_module_dir" --work-tree="$sub_dir" config remote.origin.url "$url" >/dev/null 2>&1 || true
   fi
 }
