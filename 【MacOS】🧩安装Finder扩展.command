@@ -12,13 +12,15 @@ SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
 BUILD_CONFIGURATION="Debug"
 ALL_OPTION="全选｜安装全部 Finder 扩展"
+SUBMODULE_SETUP_SCRIPT_NAME="【MacOS】⏬下载配置当前Git子模块.command"
+SUBMODULE_SETUP_SCRIPT_PATH="${WORKSPACE_DIR}/${SUBMODULE_SETUP_SCRIPT_NAME}"
 FINAL_EXIT_STATUS=0
 SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 REGISTERED_PATHS=()
 
-FEATURE_KEYS=(git_remote path_copier terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -34,6 +36,14 @@ FEATURE_APP_NAME[git_remote]="JobsGitRemoteOpener"
 FEATURE_EXTENSION_NAME[git_remote]="JobsGitRemoteFinderSync.appex"
 FEATURE_EXTENSION_ID[git_remote]="com.jobs.JobsGitRemoteOpener.FinderSyncExtension"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote]}]="git_remote"
+
+FEATURE_TITLE[git_remote_copier]="复制 Git 远程地址"
+FEATURE_PROJECT_DIR[git_remote_copier]="JobsGitRemoteCopier"
+FEATURE_SCHEME[git_remote_copier]="JobsGitRemoteCopier"
+FEATURE_APP_NAME[git_remote_copier]="JobsGitRemoteCopier"
+FEATURE_EXTENSION_NAME[git_remote_copier]="JobsGitRemoteCopyFinderSync.appex"
+FEATURE_EXTENSION_ID[git_remote_copier]="com.jobs.JobsGitRemoteCopier.FinderSyncExtension"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote_copier]}]="git_remote_copier"
 
 FEATURE_TITLE[path_copier]="复制绝对路径"
 FEATURE_PROJECT_DIR[path_copier]="JobsPathCopier"
@@ -132,7 +142,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 =============================="
   note_echo "当前脚本：${SCRIPT_PATH}"
   note_echo "核心用途：用 fzf 选择并安装 Finder 右键增强功能。"
-  note_echo "可选功能：打开 Git 远程地址、复制绝对路径、用终端打开。"
+  note_echo "可选功能：打开 Git 远程地址、复制 Git 远程地址、复制绝对路径、用终端打开。"
   warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。"
   warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。"
   warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。"
@@ -165,13 +175,79 @@ lsregister_path() {
 
   [[ -x "$tool_path" ]] && print -r -- "$tool_path"
 }
+# 返回指定 Finder 扩展功能对应的 Xcode 工程路径。
+project_file_for_key() {
+  local key="$1"
+
+  print -r -- "${WORKSPACE_DIR}/${FEATURE_PROJECT_DIR[$key]}/${FEATURE_PROJECT_DIR[$key]}.xcodeproj"
+}
+# 判断 Finder 扩展子工程是否已经全部存在。
+feature_projects_ready() {
+  local key=""
+  local project_file=""
+
+  for key in "${FEATURE_KEYS[@]}"; do
+    project_file="$(project_file_for_key "$key")"
+    [[ ! -d "$project_file" ]] && return 1
+  done
+
+  return 0
+}
+# 输出当前缺失的 Finder 扩展子工程，便于定位子模块同步状态。
+print_missing_feature_projects() {
+  local key=""
+  local project_file=""
+
+  error_echo "Finder 扩展子工程缺失，通常是当前 Git 刚拉下来但子模块还没同步。"
+  for key in "${FEATURE_KEYS[@]}"; do
+    project_file="$(project_file_for_key "$key")"
+    if [[ ! -d "$project_file" ]]; then
+      gray_echo "- ${FEATURE_TITLE[$key]}：${project_file}"
+    fi
+  done
+}
+# 运行同目录的 Git 子模块下载配置脚本。
+run_submodule_setup_script() {
+  local setup_status=0
+
+  if [[ ! -f "$SUBMODULE_SETUP_SCRIPT_PATH" ]]; then
+    error_echo "未找到子模块下载脚本：${SUBMODULE_SETUP_SCRIPT_PATH}"
+    exit 1
+  fi
+
+  note_echo "即将拉起子模块下载脚本：${SUBMODULE_SETUP_SCRIPT_PATH}"
+  /bin/zsh "$SUBMODULE_SETUP_SCRIPT_PATH"
+  setup_status=$?
+  if (( setup_status != 0 )); then
+    error_echo "子模块下载脚本执行失败，退出码：${setup_status}"
+    exit "$setup_status"
+  fi
+}
+# 子模块同步结束后复检工程；通过后重新进入当前安装脚本。
+restart_current_script_after_submodule_setup() {
+  if feature_projects_ready; then
+    success_echo "Finder 扩展子工程已补齐，重新进入安装脚本。"
+    exec /bin/zsh "$SCRIPT_PATH" "$@"
+    error_echo "重新执行安装脚本失败：${SCRIPT_PATH}"
+    exit 1
+  fi
+
+  error_echo "子模块下载脚本已结束，但 Finder 扩展子工程仍然缺失。"
+  print_missing_feature_projects
+  exit 1
+}
+# 缺少子工程时先同步 Git 子模块，再回到当前安装流程。
+ensure_feature_projects_or_bootstrap_submodules() {
+  feature_projects_ready && return 0
+
+  print_missing_feature_projects
+  run_submodule_setup_script
+  restart_current_script_after_submodule_setup "$@"
+}
 # 检查系统命令、MacOS 环境和工程结构是否满足安装要求。
 check_environment() {
   local missing_commands=()
   local command_name=""
-  local key=""
-  local project_dir=""
-  local project_file=""
 
   if [[ "$(uname -s)" != "Darwin" ]]; then
     error_echo "当前系统不是 MacOS，无法安装 Finder 扩展。"
@@ -203,14 +279,7 @@ check_environment() {
     exit 1
   fi
 
-  for key in "${FEATURE_KEYS[@]}"; do
-    project_dir="${WORKSPACE_DIR}/${FEATURE_PROJECT_DIR[$key]}"
-    project_file="${project_dir}/${FEATURE_PROJECT_DIR[$key]}.xcodeproj"
-    if [[ ! -d "$project_dir" || ! -d "$project_file" ]]; then
-      error_echo "工程结构缺失：${project_file}"
-      exit 1
-    fi
-  done
+  ensure_feature_projects_or_bootstrap_submodules "$@"
 }
 # 生成 fzf 多选列表。
 print_fzf_options() {
@@ -627,7 +696,7 @@ print_done_tips() {
 main() {
   show_script_intro_and_wait # 展示安装用途和影响范围，按回车后进入选择流程。
   init_runtime # 用户确认后初始化日志和 zsh 运行选项。
-  check_environment # 检查 fzf、xcodebuild、pluginkit 和工程结构。
+  check_environment "$@" # 检查 fzf、xcodebuild、pluginkit 和工程结构；缺子工程时先同步子模块。
   select_features_with_fzf # 使用 fzf 多选本次需要安装的 Finder 扩展功能。
   print_selected_features # 输出已选择功能，方便安装日志追踪。
   install_selected_features # 逐个构建、注册并启用选中的 Finder Sync Extension。
