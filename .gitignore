@@ -36,5 +36,5 @@ Index.noindex/
 SDKStatCaches.noindex/
 CompilationCache.noindex/
 
-# Repo-local scratch build output
-/work/*DerivedData/
+# Repo-local generated output
+work/
