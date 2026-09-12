@@ -1,9 +1,9 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：【MacOS】🧩安装Finder扩展.command
-# - 核心用途：用 fzf 选择并安装本目录内的 Finder Sync Extension 功能，支持全选。
-# - 影响范围：会调用 xcodebuild 构建选中的 macOS App，注册并启用 Finder Sync Extension，并重启 Finder 刷新右键菜单。
-# - 运行提示：运行后会先打印内置自述；按回车确认后进入 fzf 多选，按 Tab 选择，按 Enter 安装。
+# - 核心用途：用原生复选框 UI 选择并安装本目录内的 Finder Sync Extension 功能，支持全选。
+# - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal 功能选择，并重启 Finder 刷新右键菜单。
+# - 运行提示：运行后会先打印内置自述；按回车确认后，在原生 UI 中勾选需要安装的右键菜单功能。
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
@@ -11,14 +11,18 @@ WORKSPACE_DIR="${SCRIPT_DIR}"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
 BUILD_CONFIGURATION="Debug"
-ALL_OPTION="全选｜安装全部 Finder 扩展"
 SUBMODULE_SETUP_SCRIPT_NAME="【MacOS】⏬下载配置当前Git子模块.command"
 SUBMODULE_SETUP_SCRIPT_PATH="${WORKSPACE_DIR}/${SUBMODULE_SETUP_SCRIPT_NAME}"
+FEATURE_SELECTOR_SCRIPT_PATH="${WORKSPACE_DIR}/Scripts/SelectFinderExtensionFeatures.applescript"
+TERMINAL_FEATURE_CONFIG_DIR=""
+TERMINAL_FEATURE_CONFIG_PATH=""
 FINAL_EXIT_STATUS=0
 SELECTED_KEYS=()
+SELECTED_FUNCTION_IDS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 REGISTERED_PATHS=()
+TERMINAL_OPENER_ENABLED_FEATURES=""
 
 FEATURE_KEYS=(git_remote git_remote_copier path_copier terminal_opener)
 typeset -A FEATURE_TITLE
@@ -27,7 +31,9 @@ typeset -A FEATURE_SCHEME
 typeset -A FEATURE_APP_NAME
 typeset -A FEATURE_EXTENSION_NAME
 typeset -A FEATURE_EXTENSION_ID
-typeset -A FEATURE_KEY_BY_TITLE
+typeset -A SELECTABLE_FUNCTION_TITLE
+typeset -A SELECTABLE_FUNCTION_PROJECT_KEY
+typeset -A SELECTABLE_FUNCTION_TERMINAL_ACTION
 
 FEATURE_TITLE[git_remote]="打开 Git 远程地址"
 FEATURE_PROJECT_DIR[git_remote]="JobsGitRemoteOpener"
@@ -35,7 +41,6 @@ FEATURE_SCHEME[git_remote]="JobsGitRemoteOpener"
 FEATURE_APP_NAME[git_remote]="JobsGitRemoteOpener"
 FEATURE_EXTENSION_NAME[git_remote]="JobsGitRemoteFinderSync.appex"
 FEATURE_EXTENSION_ID[git_remote]="com.jobs.JobsGitRemoteOpener.FinderSyncExtension"
-FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote]}]="git_remote"
 
 FEATURE_TITLE[git_remote_copier]="复制 Git 远程地址"
 FEATURE_PROJECT_DIR[git_remote_copier]="JobsGitRemoteCopier"
@@ -43,7 +48,6 @@ FEATURE_SCHEME[git_remote_copier]="JobsGitRemoteCopier"
 FEATURE_APP_NAME[git_remote_copier]="JobsGitRemoteCopier"
 FEATURE_EXTENSION_NAME[git_remote_copier]="JobsGitRemoteCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[git_remote_copier]="com.jobs.JobsGitRemoteCopier.FinderSyncExtension"
-FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote_copier]}]="git_remote_copier"
 
 FEATURE_TITLE[path_copier]="复制绝对路径"
 FEATURE_PROJECT_DIR[path_copier]="JobsPathCopier"
@@ -51,15 +55,36 @@ FEATURE_SCHEME[path_copier]="JobsPathCopier"
 FEATURE_APP_NAME[path_copier]="JobsPathCopier"
 FEATURE_EXTENSION_NAME[path_copier]="JobsPathCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[path_copier]="com.jobs.JobsPathCopier.FinderSyncExtension"
-FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[path_copier]}]="path_copier"
 
-FEATURE_TITLE[terminal_opener]="用终端打开"
+FEATURE_TITLE[terminal_opener]="JobsTerminalOpener"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
 FEATURE_SCHEME[terminal_opener]="JobsTerminalOpener"
 FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
-FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[terminal_opener]}]="terminal_opener"
+
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
+SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
+SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
+SELECTABLE_FUNCTION_PROJECT_KEY[git_remote_copier]="git_remote_copier"
+SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
+SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
+SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
+SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
+SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
+SELECTABLE_FUNCTION_TITLE[pod_install]="在终端执行 pod install"
+SELECTABLE_FUNCTION_PROJECT_KEY[pod_install]="terminal_opener"
+SELECTABLE_FUNCTION_TERMINAL_ACTION[pod_install]="pod-install"
+SELECTABLE_FUNCTION_TITLE[flutter_pub_get]="在终端执行 flutter pub get"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter_pub_get]="terminal_opener"
+SELECTABLE_FUNCTION_TERMINAL_ACTION[flutter_pub_get]="flutter-pub-get"
+SELECTABLE_FUNCTION_TITLE[codegraph_bootstrap]="安装/升级 CodeGraph 代码地图"
+SELECTABLE_FUNCTION_PROJECT_KEY[codegraph_bootstrap]="terminal_opener"
+SELECTABLE_FUNCTION_TERMINAL_ACTION[codegraph_bootstrap]="codegraph-bootstrap"
+SELECTABLE_FUNCTION_TITLE[git_empty_commit_push]="在终端创建空白 Commit 并 Push"
+SELECTABLE_FUNCTION_PROJECT_KEY[git_empty_commit_push]="terminal_opener"
+SELECTABLE_FUNCTION_TERMINAL_ACTION[git_empty_commit_push]="git-empty-commit-push"
 
 # 判断当前终端是否适合输出 ANSI 彩色文本。
 supports_color() {
@@ -141,19 +166,20 @@ show_script_intro_and_wait() {
   can_clear_terminal && clear
   highlight_echo "============================== 脚本自述 =============================="
   note_echo "当前脚本：${SCRIPT_PATH}"
-  note_echo "核心用途：用 fzf 选择并安装 Finder 右键增强功能。"
-  note_echo "可选功能：打开 Git 远程地址、复制 Git 远程地址、复制绝对路径、用终端打开。"
+  note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。"
+  note_echo "可选功能：共 8 项；JobsTerminalOpener 内含 5 项，可分别勾选。"
   warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。"
   warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。"
+  warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。"
   warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。"
-  warn_echo "运行策略：按回车后进入 fzf；按 Ctrl+C 可以取消。"
-  gray_echo "fzf 操作：Tab 多选，Enter 确认；选择“${ALL_OPTION}”会安装全部功能。"
+  warn_echo "运行策略：按回车后打开原生勾选窗口；按 Ctrl+C 或窗口中的“取消”可以终止。"
+  gray_echo "UI 操作：逐项勾选后安装，或点击“全部安装”。"
   gray_echo "日志位置：${LOG_FILE}"
   highlight_echo "======================================================================="
   echo ""
 
   if [[ ! -t 0 ]]; then
-    error_echo "当前没有可交互输入，无法进入 fzf 选择。请在终端里运行本脚本。"
+    error_echo "当前没有可交互输入，无法进入安装选择。请在终端里运行本脚本。"
     exit 1
   fi
 
@@ -164,6 +190,12 @@ show_script_intro_and_wait() {
 init_runtime() {
   setopt NO_NOMATCH
   : > "$LOG_FILE"
+  if [[ -z "${HOME:-}" || ! -d "$HOME" ]]; then
+    error_echo "无法确定当前用户目录，不能安全保存 Terminal 功能选择。"
+    exit 1
+  fi
+  TERMINAL_FEATURE_CONFIG_DIR="${HOME}/Library/Application Support/JobsTerminalOpener"
+  TERMINAL_FEATURE_CONFIG_PATH="${TERMINAL_FEATURE_CONFIG_DIR}/EnabledFinderMenuFeatures.txt"
 }
 # 获取当前 Mac CPU 架构，用于收敛 xcodebuild 目标。
 get_cpu_arch() {
@@ -254,7 +286,7 @@ check_environment() {
     exit 1
   fi
 
-  for command_name in fzf xcodebuild pluginkit open killall pkill grep head awk find mkdir tee sed; do
+  for command_name in osascript xcodebuild pluginkit open killall pkill grep head awk find mkdir tee sed; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
       missing_commands+=("$command_name")
     fi
@@ -262,9 +294,6 @@ check_environment() {
 
   if (( ${#missing_commands[@]} > 0 )); then
     error_echo "缺少必要命令：${(j:, :)missing_commands}"
-    if (( ${missing_commands[(Ie)fzf]} > 0 )); then
-      gray_echo "安装 fzf 可执行：brew install fzf"
-    fi
     exit 1
   fi
 
@@ -279,16 +308,12 @@ check_environment() {
     exit 1
   fi
 
-  ensure_feature_projects_or_bootstrap_submodules "$@"
-}
-# 生成 fzf 多选列表。
-print_fzf_options() {
-  local key=""
+  if [[ ! -f "$FEATURE_SELECTOR_SCRIPT_PATH" ]]; then
+    error_echo "未找到 Finder 功能选择 UI：${FEATURE_SELECTOR_SCRIPT_PATH}"
+    exit 1
+  fi
 
-  print -r -- "$ALL_OPTION"
-  for key in "${FEATURE_KEYS[@]}"; do
-    print -r -- "${FEATURE_TITLE[$key]}"
-  done
+  ensure_feature_projects_or_bootstrap_submodules "$@"
 }
 # 去重追加一个待安装功能。
 append_selected_key_if_needed() {
@@ -300,54 +325,79 @@ append_selected_key_if_needed() {
   done
   SELECTED_KEYS+=("$key")
 }
-# 把 fzf 选择结果解析成工程 key 列表。
-parse_fzf_selection() {
+# 去重追加一个用户勾选的右键菜单功能。
+append_selected_function_id_if_needed() {
+  local function_id="$1"
+  local existed_function_id=""
+
+  for existed_function_id in "${SELECTED_FUNCTION_IDS[@]}"; do
+    [[ "$existed_function_id" == "$function_id" ]] && return 1
+  done
+  SELECTED_FUNCTION_IDS+=("$function_id")
+  return 0
+}
+# 把原生 UI 返回的功能标识解析成工程和 Terminal 子功能。
+parse_feature_selection() {
   local selection_output="$1"
-  local selected_line=""
-  local key=""
+  local selected_function_id=""
+  local project_key=""
+  local terminal_action=""
+  local terminal_actions=()
 
   SELECTED_KEYS=()
-  while IFS= read -r selected_line; do
-    if [[ "$selected_line" == "$ALL_OPTION" ]]; then
-      SELECTED_KEYS=("${FEATURE_KEYS[@]}")
-      return 0
+  SELECTED_FUNCTION_IDS=()
+  TERMINAL_OPENER_ENABLED_FEATURES=""
+  for selected_function_id in ${(s:,:)selection_output}; do
+    project_key="${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_function_id]}"
+    if [[ -z "$project_key" ]]; then
+      error_echo "功能选择 UI 返回了未知标识：${selected_function_id}"
+      return 1
     fi
 
-    key="${FEATURE_KEY_BY_TITLE[$selected_line]}"
-    [[ -n "$key" ]] && append_selected_key_if_needed "$key"
-  done <<< "$selection_output"
+    append_selected_function_id_if_needed "$selected_function_id" || continue
+    append_selected_key_if_needed "$project_key"
+    if [[ "$project_key" == "terminal_opener" ]]; then
+      terminal_action="${SELECTABLE_FUNCTION_TERMINAL_ACTION[$selected_function_id]}"
+      [[ -n "$terminal_action" ]] && terminal_actions+=("$terminal_action")
+    fi
+  done
+  TERMINAL_OPENER_ENABLED_FEATURES="${(j:,:)terminal_actions}"
 }
-# 使用 fzf 选择本次需要安装的功能。
-select_features_with_fzf() {
+# 使用原生 macOS 复选框 UI 选择本次需要安装的右键菜单功能。
+select_features_with_ui() {
   local selection_output=""
-  local fzf_status=0
+  local selector_status=0
 
-  selection_output="$(print_fzf_options | fzf --multi --cycle --height=60% --border --prompt="选择要安装的功能 > " --header="Tab 多选，Enter 确认；选“${ALL_OPTION}”会安装全部。")"
-  fzf_status=$?
+  selection_output="$(/usr/bin/osascript "$FEATURE_SELECTOR_SCRIPT_PATH")"
+  selector_status=$?
 
-  if (( fzf_status != 0 )); then
-    warn_echo "已取消选择，未执行安装。"
-    exit 0
+  if (( selector_status != 0 )); then
+    error_echo "Finder 功能选择 UI 运行失败，退出码：${selector_status}"
+    exit "$selector_status"
   fi
 
-  if [[ -z "$selection_output" ]]; then
+  if [[ "$selection_output" == "__CANCELLED__" ]]; then
+    warn_echo "已取消功能选择，未执行安装。"
+    exit 0
+  fi
+  if [[ "$selection_output" == "__NONE__" || -z "$selection_output" ]]; then
     warn_echo "没有选择任何功能，未执行安装。"
     exit 0
   fi
 
-  parse_fzf_selection "$selection_output"
-  if (( ${#SELECTED_KEYS[@]} == 0 )); then
+  parse_feature_selection "$selection_output" || exit 1
+  if (( ${#SELECTED_KEYS[@]} == 0 || ${#SELECTED_FUNCTION_IDS[@]} == 0 )); then
     warn_echo "没有解析到有效功能，未执行安装。"
     exit 0
   fi
 }
 # 输出用户已经选择的功能，便于日志排查。
 print_selected_features() {
-  local key=""
+  local selected_function_id=""
 
   note_echo "本次准备安装的功能："
-  for key in "${SELECTED_KEYS[@]}"; do
-    gray_echo "- ${FEATURE_TITLE[$key]}"
+  for selected_function_id in "${SELECTED_FUNCTION_IDS[@]}"; do
+    gray_echo "- ${SELECTABLE_FUNCTION_TITLE[$selected_function_id]}"
   done
 }
 # 返回指定功能的本地 DerivedData 目录。
@@ -387,6 +437,7 @@ build_feature() {
   local derived_data_dir=""
   local destination=""
   local build_status=0
+  local extra_build_settings=()
 
   derived_data_dir="$(derived_data_dir_for_key "$key")"
   destination="platform=macOS,arch=$(get_cpu_arch)"
@@ -396,6 +447,10 @@ build_feature() {
   gray_echo "工程路径：${project_file}"
   gray_echo "构建缓存：${derived_data_dir}"
   gray_echo "注册策略：构建阶段跳过自动注册，构建完成后由当前安装脚本统一处理。"
+  if [[ "$key" == "terminal_opener" ]]; then
+    extra_build_settings+=("JOBS_TERMINAL_ENABLED_FEATURES=${TERMINAL_OPENER_ENABLED_FEATURES}")
+    gray_echo "Terminal 右键功能：${TERMINAL_OPENER_ENABLED_FEATURES}"
+  fi
 
   JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 /usr/bin/xcodebuild \
     -project "$project_file" \
@@ -403,6 +458,7 @@ build_feature() {
     -configuration "$BUILD_CONFIGURATION" \
     -destination "$destination" \
     -derivedDataPath "$derived_data_dir" \
+    "${extra_build_settings[@]}" \
     build 2>&1 | tee -a "$LOG_FILE"
   build_status=${pipestatus[1]}
 
@@ -633,6 +689,23 @@ register_and_enable_feature() {
   error_echo "扩展启用超时：${FEATURE_TITLE[$key]}"
   return 1
 }
+# 保存 JobsTerminalOpener 的右键功能选择，供宿主 App 和 Finder 扩展共同读取。
+persist_terminal_feature_selection() {
+  local key="$1"
+
+  [[ "$key" != "terminal_opener" ]] && return 0
+  if ! /bin/mkdir -p "$TERMINAL_FEATURE_CONFIG_DIR"; then
+    error_echo "无法创建 Terminal 功能配置目录：${TERMINAL_FEATURE_CONFIG_DIR}"
+    return 1
+  fi
+  if ! print -nr -- "$TERMINAL_OPENER_ENABLED_FEATURES" > "$TERMINAL_FEATURE_CONFIG_PATH"; then
+    error_echo "无法保存 Terminal 功能选择：${TERMINAL_FEATURE_CONFIG_PATH}"
+    return 1
+  fi
+
+  success_echo "Terminal 功能选择已保存，之后可在 JobsTerminalOpener App 内修改。"
+  return 0
+}
 # 安装单个 Finder 扩展功能。
 install_feature() {
   local key="$1"
@@ -640,7 +713,23 @@ install_feature() {
   highlight_echo "============================== ${FEATURE_TITLE[$key]} =============================="
   build_feature "$key" || return 1
   register_and_enable_feature "$key" || return 1
+  persist_terminal_feature_selection "$key" || return 1
   return 0
+}
+# 把一个工程的安装结果展开为用户勾选的右键菜单功能。
+record_project_install_result() {
+  local key="$1"
+  local did_succeed="$2"
+  local selected_function_id=""
+
+  for selected_function_id in "${SELECTED_FUNCTION_IDS[@]}"; do
+    [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_function_id]}" != "$key" ]] && continue
+    if [[ "$did_succeed" == "1" ]]; then
+      SUCCEEDED_FEATURES+=("${SELECTABLE_FUNCTION_TITLE[$selected_function_id]}")
+    else
+      FAILED_FEATURES+=("${SELECTABLE_FUNCTION_TITLE[$selected_function_id]}")
+    fi
+  done
 }
 # 逐个安装用户选择的 Finder 扩展功能。
 install_selected_features() {
@@ -649,9 +738,9 @@ install_selected_features() {
   FINAL_EXIT_STATUS=0
   for key in "${SELECTED_KEYS[@]}"; do
     if install_feature "$key"; then
-      SUCCEEDED_FEATURES+=("${FEATURE_TITLE[$key]}")
+      record_project_install_result "$key" "1"
     else
-      FAILED_FEATURES+=("${FEATURE_TITLE[$key]}")
+      record_project_install_result "$key" "0"
       FINAL_EXIT_STATUS=1
     fi
   done
@@ -696,8 +785,8 @@ print_done_tips() {
 main() {
   show_script_intro_and_wait # 展示安装用途和影响范围，按回车后进入选择流程。
   init_runtime # 用户确认后初始化日志和 zsh 运行选项。
-  check_environment "$@" # 检查 fzf、xcodebuild、pluginkit 和工程结构；缺子工程时先同步子模块。
-  select_features_with_fzf # 使用 fzf 多选本次需要安装的 Finder 扩展功能。
+  check_environment "$@" # 检查原生 UI、xcodebuild、pluginkit 和工程结构；缺子工程时先同步子模块。
+  select_features_with_ui # 使用原生复选框 UI 选择每个 Finder 右键菜单功能。
   print_selected_features # 输出已选择功能，方便安装日志追踪。
   install_selected_features # 逐个构建、注册并启用选中的 Finder Sync Extension。
   restart_finder_after_install # 对成功安装的功能统一重启 Finder 刷新右键菜单。
