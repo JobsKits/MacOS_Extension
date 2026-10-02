@@ -1,16 +1,16 @@
 [submodule "JobsGitRemoteCopier"]
 	path = JobsGitRemoteCopier
-	url = git@github.com:JobsKits/JobsGitRemoteCopier.git
+	url = ../JobsGitRemoteCopier.git
 	branch = main
 [submodule "JobsGitRemoteOpener"]
 	path = JobsGitRemoteOpener
-	url = git@github.com:JobsKits/JobsGitRemoteOpener.git
+	url = ../JobsGitRemoteOpener.git
 	branch = main
 [submodule "JobsPathCopier"]
 	path = JobsPathCopier
-	url = git@github.com:JobsKits/JobsPathCopier.git
+	url = ../JobsPathCopier.git
 	branch = main
 [submodule "JobsTerminalOpener"]
 	path = JobsTerminalOpener
-	url = git@github.com:JobsKits/JobsTerminalOpener.git
+	url = ../JobsTerminalOpener.git
 	branch = main
