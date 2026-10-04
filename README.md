@@ -44,7 +44,7 @@ osascript -e 'return "AppKit UI 可用"'
 
 ## 三、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### 3.1、原生 UI 勾选安装
+### 3.1、原生 UI 勾选安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 1、双击根目录脚本 `./【MacOS】🧩安装Finder扩展.command`。
 
@@ -56,7 +56,7 @@ osascript -e 'return "AppKit UI 可用"'
 
 5、确认后，脚本会调用 `xcodebuild` 构建相关 App，清理同 Bundle ID 的旧 LaunchServices / PlugInKit 记录，注册并启用 Finder Sync Extension，最后重启 `pkd` 和 Finder 刷新右键菜单缓存。
 
-### 3.2、已安装 App 内调整 Terminal 功能
+### 3.2、已安装 App 内调整 Terminal 功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 1、打开已经安装的 `JobsTerminalOpener` App。
 
@@ -66,7 +66,7 @@ osascript -e 'return "AppKit UI 可用"'
 
 4、这里仅管理 `JobsTerminalOpener` 内的五项 Terminal 功能；另外三个独立 Finder 扩展仍由根安装脚本选择安装。
 
-### 3.3、单工程手动运行
+### 3.3、单工程手动运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 1、进入目标工程目录。
 
