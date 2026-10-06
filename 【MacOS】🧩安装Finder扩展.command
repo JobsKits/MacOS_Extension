@@ -5,6 +5,29 @@
 # - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal 功能选择，并重启 Finder 刷新右键菜单。
 # - 运行提示：运行后会先打印内置自述；按回车确认后，在原生 UI 中勾选需要安装的右键菜单功能。
 
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 WORKSPACE_DIR="${SCRIPT_DIR}"
@@ -164,19 +187,19 @@ can_clear_terminal() {
 # 打印脚本内置自述并等待用户确认阅读。
 show_script_intro_and_wait() {
   can_clear_terminal && clear
-  highlight_echo "============================== 脚本自述 =============================="
-  note_echo "当前脚本：${SCRIPT_PATH}"
-  note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。"
-  note_echo "可选功能：共 8 项；JobsTerminalOpener 内含 5 项，可分别勾选。"
-  warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。"
-  warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。"
-  warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。"
-  warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。"
-  warn_echo "运行策略：按回车后打开原生勾选窗口；按 Ctrl+C 或窗口中的“取消”可以终止。"
-  gray_echo "UI 操作：逐项勾选后安装，或点击“全部安装”。"
-  gray_echo "日志位置：${LOG_FILE}"
-  highlight_echo "======================================================================="
-  echo ""
+  highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
+  note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
+  note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。" | jobs_intro_style body
+  note_echo "可选功能：共 8 项；JobsTerminalOpener 内含 5 项，可分别勾选。" | jobs_intro_style body
+  warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。" | jobs_intro_style body
+  warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。" | jobs_intro_style body
+  warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。" | jobs_intro_style body
+  warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。" | jobs_intro_style body
+  warn_echo "运行策略：按回车后打开原生勾选窗口；按 Ctrl+C 或窗口中的“取消”可以终止。" | jobs_intro_style body
+  gray_echo "UI 操作：逐项勾选后安装，或点击“全部安装”。" | jobs_intro_style body
+  gray_echo "日志位置：${LOG_FILE}" | jobs_intro_style body
+  highlight_echo "=======================================================================" | jobs_intro_style title
+  echo "" | jobs_intro_style body
 
   if [[ ! -t 0 ]]; then
     error_echo "当前没有可交互输入，无法进入安装选择。请在终端里运行本脚本。"

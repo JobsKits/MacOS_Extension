@@ -5,6 +5,29 @@
 # - 影响范围：可能修改当前仓库、工作区、分支、菜单配置或 Git 索引。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_SOURCE="$0"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$SCRIPT_SOURCE")"
@@ -48,15 +71,15 @@ underline_echo() { log "\033[4m$1\033[0m"; }
 # 打印脚本内置自述，避免双击误触后直接修改 Git 元数据。
 show_script_intro_and_wait() {
   clear 2>/dev/null || true
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：【MacOS】🧭更新引用Git父仓=>子仓.command'
-  print -r -- '核心用途：以脚本所在目录作为父 Git，按同级真实子 Git 目录对齐 .gitmodules 和 gitlink。'
-  print -r -- '影响范围：可能修改 .gitmodules、父仓库索引 gitlink、本地 .git/config 和子目录 .git 指针。'
-  print -r -- '运行策略：先展示当前真实子 Git 和 git status，再由二次确认决定是否执行修复。'
-  print -r -- "日志位置：${LOG_FILE}"
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
-  echo ""
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：【MacOS】🧭更新引用Git父仓=>子仓.command' | jobs_intro_style title
+  print -r -- '核心用途：以脚本所在目录作为父 Git，按同级真实子 Git 目录对齐 .gitmodules 和 gitlink。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改 .gitmodules、父仓库索引 gitlink、本地 .git/config 和子目录 .git 指针。' | jobs_intro_style body
+  print -r -- '运行策略：先展示当前真实子 Git 和 git status，再由二次确认决定是否执行修复。' | jobs_intro_style body
+  print -r -- "日志位置：${LOG_FILE}" | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
+  echo "" | jobs_intro_style body
   read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
 }
 # 修复动作默认执行，输入任意字符后跳过。

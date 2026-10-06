@@ -5,6 +5,29 @@
 # - 影响范围：只改写或新建当前工程根目录下的 .gitmodules，不自动 stage、commit、push，也不改子仓库内容。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，写入前再次回车确认。
 
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_FILE="${(%):-%x}"
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_FILE")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$SCRIPT_FILE")"
@@ -64,19 +87,19 @@ gray_echo() {
 # 打印脚本内置自述，避免误触后直接修改 .gitmodules。
 show_script_intro_and_wait() {
   clear 2>/dev/null || true
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：【MacOS】🧾更新gitmodules.command'
-  print -r -- '核心用途：扫描当前工程根目录第一层带 .git 的目录，并据此刷新或生成 .gitmodules。'
-  print -r -- '影响范围：只改写或新建 .gitmodules；不会自动 git add、commit、push，也不会修改子仓库内容。'
-  print -r -- '运行策略：先展示扫描结果和 diff，真正写入前直接回车执行，输入任意字符跳过。'
-  print -r -- "日志位置：${LOG_FILE}"
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：【MacOS】🧾更新gitmodules.command' | jobs_intro_style title
+  print -r -- '核心用途：扫描当前工程根目录第一层带 .git 的目录，并据此刷新或生成 .gitmodules。' | jobs_intro_style body
+  print -r -- '影响范围：只改写或新建 .gitmodules；不会自动 git add、commit、push，也不会修改子仓库内容。' | jobs_intro_style body
+  print -r -- '运行策略：先展示扫描结果和 diff，真正写入前直接回车执行，输入任意字符跳过。' | jobs_intro_style body
+  print -r -- "日志位置：${LOG_FILE}" | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1
   fi
-  echo ""
+  echo "" | jobs_intro_style body
   read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
 }
 # 普通写入动作直接回车执行，输入任意字符后跳过。
