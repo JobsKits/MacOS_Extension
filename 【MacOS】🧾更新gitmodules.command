@@ -49,7 +49,8 @@ show_script_intro_and_wait() {
   LOG_FILE="${LOG_FILE%/}/【MacOS】🧾更新gitmodules.$$.log"
   intro_line title '【MacOS】🧾更新gitmodules.command · 父子 Git 一次关联'
   intro_line body '1、只扫描目标父仓第一层真实子 Git，补齐配置、gitlink、本地登记和 Git 元数据归集。'
-  intro_line body '2、保留已有 URL、分支、提交指针和其它暂存内容；保留源码，不联网、不提交、不推送。'
+  intro_line body '2、保留已有 URL 与分支；新增 URL 仅在各线路同站同命名空间且仓库同名时使用相对地址。'
+  intro_line body '   映射不明时保留明确原地址；保留源码和指针，不联网、不提交、不推送。'
   intro_line body '3、先预检并展示计划；回车跳过，输入任意字符后回车执行完整关联。'
   intro_line body '4、执行前在父仓实际 Git 目录内备份关联配置和索引；失败停止并显示阶段和恢复位置。'
   intro_line body "日志：${LOG_FILE}；--dry-run / DRY_RUN=1 只预览，Ctrl+C 取消。"
@@ -217,11 +218,72 @@ valid_url() {
   fi
   return 0
 }
+# 解析可证明仓库层级的托管地址；本地路径、未知协议和歧义路径不参与相对化。
+hosted_url_parts() {
+  local value="$1" rest="" authority="" repository_path="" namespace="" repository=""
+  [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* && "$value" != *$'\t'* && "$value" != *\?* && "$value" != *\#* && "$value" != *\\* ]] || return 1
+  case "$value" in
+    http://*|https://*|ssh://*)
+      rest="${value#*://}"
+      [[ "$rest" == */* ]] || return 1
+      authority="${rest%%/*}"; repository_path="${rest#*/}"
+      if [[ "$value" == ssh://* ]]; then
+        [[ "${authority%%@*}" != *:* || "$authority" != *@* ]] || return 1
+      else
+        [[ "$authority" != *@* ]] || return 1
+      fi
+      authority="${authority##*@}"
+      ;;
+    *://*) return 1 ;;
+    *:*)
+      authority="${value%%:*}"; repository_path="${value#*:}"
+      [[ "$authority" != */* && "$authority" != -* && "$repository_path" != /* ]] || return 1
+      authority="${authority##*@}"
+      ;;
+    *) return 1 ;;
+  esac
+  [[ -n "$authority" && "$authority" != *[[:space:]@/]* && "$repository_path" == */* && "$repository_path" != /* && "$repository_path" != */ && "$repository_path" != *//* ]] || return 1
+  [[ "/$repository_path/" != */../* && "/$repository_path/" != */./* && "$repository_path" != '~'* ]] || return 1
+  namespace="${repository_path%/*}"; repository="${repository_path##*/}"; repository="${repository%.git}"
+  [[ -n "$repository" && "$repository" != . && "$repository" != .. && "$repository" != -* ]] || return 1
+  if [[ "$authority" == *:* ]]; then
+    authority="${value%%://*}://${authority}"
+  fi
+  print -rl -- "${(L)authority}" "$namespace" "$repository"
+}
+# 只有父子所有已配置托管线路逐一同站同命名空间、子仓名称一致时生成共享相对 URL。
+relative_submodule_url() {
+  local parent_repo="$1" child_repo="$2" selected_url="$3" record="" remote_url="" endpoint="" repository="" key="" repo=""
+  local -a parts
+  local -A parent_endpoints child_endpoints
+  hosted_url_parts "$selected_url" >/dev/null || return 1
+  for repo in "$parent_repo" "$child_repo"; do
+    while IFS= read -r -d '' record; do
+      remote_url="${record#*$'\n'}"
+      parts=("${(@f)$(hosted_url_parts "$remote_url")}")
+      (( ${#parts} == 3 )) || return 1
+      endpoint="${parts[1]}/${parts[2]}"
+      if [[ "$repo" == "$parent_repo" ]]; then
+        parent_endpoints[$endpoint]=1
+      else
+        [[ -z "$repository" || "$repository" == "${parts[3]}" ]] || return 1
+        repository="${parts[3]}"
+        child_endpoints[$endpoint]=1
+      fi
+    done < <(git -C "$repo" config --local --null --get-regexp '^remote\..*\.url$' 2>/dev/null || true)
+  done
+  (( ${#parent_endpoints} && ${#parent_endpoints} == ${#child_endpoints} )) || return 1
+  for key in "${(@k)parent_endpoints}"; do
+    [[ -n "${child_endpoints[$key]:-}" ]] || return 1
+  done
+  [[ -n "$repository" ]] || return 1
+  print -r -- "../${repository}.git"
+}
 # 预检单个子仓；任何冲突都在实际写入前收集并报告。
 inspect_child() {
   local child="$1" sub_path="${1:t}" section="" top="" oid="" url="" stored_url="" branch=""
   local git_dir="" common="" target="" entry="" header="" mode="" entry_path=""
-  local need_link=1 need_absorb=0 needs_work=0 ignored_result=0
+  local relative_url="" need_link=1 need_absorb=0 needs_work=0 ignored_result=0
   [[ ! -L "$child" && ! -L "$child/.git" ]] || { ISSUES+=("${sub_path}：工作目录或 .git 是符号链接"); return 0; }
   valid_name "$sub_path" || { ISSUES+=("${sub_path}：名称含不支持的控制字符或路径片段"); return 0; }
   top="$(git -C "$child" rev-parse --show-toplevel 2>/dev/null)" || { ISSUES+=("${sub_path}：无法读取独立仓库"); return 0; }
@@ -236,6 +298,13 @@ inspect_child() {
   stored_url="$url"
   [[ -n "$url" ]] || url="$(git -C "$child" remote get-url origin 2>/dev/null || true)"
   valid_url "$url" || { ISSUES+=("${sub_path}：缺少可共享的 origin URL，或地址含凭据 / 不支持的协议"); return 0; }
+  if [[ -z "$stored_url" ]]; then
+    if relative_url="$(relative_submodule_url "$REPO_ROOT" "$child" "$url")"; then
+      url="$relative_url"
+    else
+      log "⚠ ${sub_path}：远端线路、命名空间或仓库名称无法统一验证，保留明确原地址。"
+    fi
+  fi
   git_dir="$(git -C "$child" rev-parse --absolute-git-dir)" || return 1
   git_dir="${git_dir:A}"
   common="$(git -C "$child" rev-parse --git-common-dir)" || return 1

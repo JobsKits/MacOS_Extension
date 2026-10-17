@@ -12,6 +12,27 @@
 
 `MacOS@Extension` 用来收纳 Jobs 本机自用的 [**Swift**](https://www.swift.org/) macOS App + Finder Sync Extension 工程。当前目录下有四个 Finder 扩展工程，共提供八个右键增强动作：打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、用终端打开文件或文件夹所在目录、在合法 iOS 工程执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程执行 `flutter pub get`、为普通文件夹安装或升级 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
+<strong id="submodule-quick-look">父子仓多平台地址速览</strong>
+
+当前 `./.gitmodules` 使用相对地址，例如：
+
+```ini
+[submodule "JobsGitRemoteCopier"]
+    path = JobsGitRemoteCopier
+    url = ../JobsGitRemoteCopier.git
+    branch = main
+```
+
+从下列父仓地址全新克隆、没有本地 URL 覆盖时，结果如下。前两行来自本地已配置的 [**GitHub**](https://github.com) / [**Gitee**](https://gitee.com) 远端；自建平台仅为结构示例，未部署。
+
+| 平台 | 父仓克隆地址 | 子仓解析地址 |
+| --- | --- | --- |
+| GitHub | `git@github.com:JobsKits/MacOS_Extension.git` | `git@github.com:JobsKits/JobsGitRemoteCopier.git` |
+| Gitee | `git@gitee.com:JobsGo/MacOS_Extension.git` | `git@gitee.com:JobsGo/JobsGitRemoteCopier.git` |
+| 自建平台，仅结构示例 | `ssh://git@git.example.com:2222/team/MacOS_Extension.git` | `ssh://git@git.example.com:2222/team/JobsGitRemoteCopier.git` |
+
+`path` 是本地目录，`url` 是远端仓库位置；相对 URL 跟随父仓默认远端的平台、组织、协议与端口，前提是该平台已有对应子仓及父仓锁定的提交。已有克隆须核对默认远端和本地子模块配置，仅新增 remote 不会切换线路。
+
 ## 一、环境先决条件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 检查项 | 最低要求 | 说明 |

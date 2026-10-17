@@ -38,7 +38,7 @@ PARENT_REPO_DIR="$SCRIPT_DIR"
 PARENT_GIT_DIR=""
 
 typeset -ga CURRENT_SUBGIT_DIRS
-typeset -gA SUBMODULE_URLS
+typeset -gA SUBMODULE_URLS REGISTRATION_URLS EXISTING_SECTION_NAMES EXISTING_SECTION_PATHS
 CURRENT_SUBGIT_DIRS=()
 # 输出日志并同步写入日志文件。
 log()            { echo -e "$1" | tee -a "$LOG_FILE"; }
@@ -75,19 +75,24 @@ show_script_intro_and_wait() {
   print -r -- '脚本名称：【MacOS】🧭更新引用Git父仓=>子仓.command' | jobs_intro_style title
   print -r -- '核心用途：以脚本所在目录作为父 Git，按同级真实子 Git 目录对齐 .gitmodules 和 gitlink。' | jobs_intro_style body
   print -r -- '影响范围：可能修改 .gitmodules、父仓库索引 gitlink、本地 .git/config 和子目录 .git 指针。' | jobs_intro_style body
+  print -r -- '登记策略：已有 URL、分支与扩展字段保留；新增 URL 只在各线路映射一致时相对化。' | jobs_intro_style body
   print -r -- '运行策略：先展示当前真实子 Git 和 git status，再由二次确认决定是否执行修复。' | jobs_intro_style body
   print -r -- "日志位置：${LOG_FILE}" | jobs_intro_style body
   print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
   print -r -- '============================================================================' | jobs_intro_style title
+  if [[ ! -t 0 ]]; then
+    print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
+    return 1
+  fi
   echo "" | jobs_intro_style body
   read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
 }
-# 修复动作默认执行，输入任意字符后跳过。
-ask_enter_to_run() {
+# 修复更新默认跳过，输入任意字符后执行。
+ask_any_to_run() {
   local message="$1"
   local answer=""
-  read -r "?${message}（直接回车执行；输入任意字符后回车跳过）：" answer
-  [[ -z "$answer" ]]
+  read -r "?${message}（直接回车跳过；输入任意字符后回车执行）：" answer
+  [[ -n "$answer" ]]
 }
 # 检查命令和父仓库环境是否满足修复条件。
 check_environment() {
@@ -217,7 +222,83 @@ module_dir_for_path() {
   fi
 
   [[ -n "$parent_git_dir" ]] || return 1
-  print -r -- "${parent_git_dir}/modules/${sub_path}"
+  print -r -- "${parent_git_dir}/modules/${EXISTING_SECTION_NAMES[$sub_path]:-$sub_path}"
+}
+# 解析可证明仓库层级的托管地址；本地路径、未知协议和歧义路径不参与相对化。
+hosted_url_parts() {
+  local value="$1" rest="" authority="" repository_path="" namespace="" repository=""
+  [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* && "$value" != *$'\t'* && "$value" != *\?* && "$value" != *\#* && "$value" != *\\* ]] || return 1
+  case "$value" in
+    http://*|https://*|ssh://*)
+      rest="${value#*://}"
+      [[ "$rest" == */* ]] || return 1
+      authority="${rest%%/*}"; repository_path="${rest#*/}"
+      if [[ "$value" == ssh://* ]]; then
+        [[ "${authority%%@*}" != *:* || "$authority" != *@* ]] || return 1
+      else
+        [[ "$authority" != *@* ]] || return 1
+      fi
+      authority="${authority##*@}"
+      ;;
+    *://*) return 1 ;;
+    *:*)
+      authority="${value%%:*}"; repository_path="${value#*:}"
+      [[ "$authority" != */* && "$authority" != -* && "$repository_path" != /* ]] || return 1
+      authority="${authority##*@}"
+      ;;
+    *) return 1 ;;
+  esac
+  [[ -n "$authority" && "$authority" != *[[:space:]@/]* && "$repository_path" == */* && "$repository_path" != /* && "$repository_path" != */ && "$repository_path" != *//* ]] || return 1
+  [[ "/$repository_path/" != */../* && "/$repository_path/" != */./* && "$repository_path" != '~'* ]] || return 1
+  namespace="${repository_path%/*}"; repository="${repository_path##*/}"; repository="${repository%.git}"
+  [[ -n "$repository" && "$repository" != . && "$repository" != .. && "$repository" != -* ]] || return 1
+  if [[ "$authority" == *:* ]]; then
+    authority="${value%%://*}://${authority}"
+  fi
+  print -rl -- "${(L)authority}" "$namespace" "$repository"
+}
+# 只有父子所有已配置托管线路逐一同站同命名空间、子仓名称一致时生成共享相对 URL。
+relative_submodule_url() {
+  local parent_repo="$1" child_repo="$2" selected_url="$3" record="" remote_url="" endpoint="" repository="" key="" repo=""
+  local -a parts
+  local -A parent_endpoints child_endpoints
+  hosted_url_parts "$selected_url" >/dev/null || return 1
+  for repo in "$parent_repo" "$child_repo"; do
+    while IFS= read -r -d '' record; do
+      remote_url="${record#*$'\n'}"
+      parts=("${(@f)$(hosted_url_parts "$remote_url")}")
+      (( ${#parts} == 3 )) || return 1
+      endpoint="${parts[1]}/${parts[2]}"
+      if [[ "$repo" == "$parent_repo" ]]; then
+        parent_endpoints[$endpoint]=1
+      else
+        [[ -z "$repository" || "$repository" == "${parts[3]}" ]] || return 1
+        repository="${parts[3]}"
+        child_endpoints[$endpoint]=1
+      fi
+    done < <(git -C "$repo" config --local --null --get-regexp '^remote\..*\.url$' 2>/dev/null || true)
+  done
+  (( ${#parent_endpoints} && ${#parent_endpoints} == ${#child_endpoints} )) || return 1
+  for key in "${(@k)parent_endpoints}"; do
+    [[ -n "${child_endpoints[$key]:-}" ]] || return 1
+  done
+  [[ -n "$repository" ]] || return 1
+  print -r -- "../${repository}.git"
+}
+# 按 path 读取原 section，保留 URL、branch 和扩展字段，重复映射在修复前阻断。
+load_existing_submodule_sections() {
+  local file="$PARENT_REPO_DIR/.gitmodules" record="" key="" sub_path="" section=""
+  EXISTING_SECTION_NAMES=(); EXISTING_SECTION_PATHS=()
+  [[ ! -L "$file" && ( ! -e "$file" || -f "$file" ) ]] || { error_echo '.gitmodules 必须是普通文件。'; return 1; }
+  [[ -f "$file" ]] || return 0
+  git config --file "$file" --list >/dev/null || { error_echo '.gitmodules 语法无效。'; return 1; }
+  while IFS= read -r -d '' record; do
+    key="${record%%$'\n'*}"; sub_path="${record#*$'\n'}"
+    section="${key#submodule.}"; section="${section%.path}"
+    [[ -n "$sub_path" && -n "$section" && "$section" != /* && "$section" != *$'\n'* && "$section" != *$'\r'* && "/$section/" != */../* && "/$section/" != */./* ]] || { error_echo '子模块名称或 path 无效。'; return 1; }
+    [[ -z "${EXISTING_SECTION_NAMES[$sub_path]:-}" && -z "${EXISTING_SECTION_PATHS[$section]:-}" ]] || { error_echo '子模块 section 或 path 重复，需先核对。'; return 1; }
+    EXISTING_SECTION_NAMES[$sub_path]="$section"; EXISTING_SECTION_PATHS[$section]="$sub_path"
+  done < <(git config --null --file "$file" --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
 }
 # 读取子 Git 当前可用的 origin URL。
 read_origin_url_for_subgit() {
@@ -227,7 +308,7 @@ read_origin_url_for_subgit() {
   local standard_module_dir=""
   local marker_gitdir=""
   local marker_module_dir=""
-  local url=""
+  local url="" section="${EXISTING_SECTION_NAMES[$1]:-$1}"
 
   url="$(git -C "$sub_dir" config --get remote.origin.url 2>/dev/null || true)"
   if [[ -n "$url" ]]; then
@@ -261,8 +342,8 @@ read_origin_url_for_subgit() {
     fi
   fi
 
-  url="$(git -C "$PARENT_REPO_DIR" config -f .gitmodules --get "submodule.${sub_path}.url" 2>/dev/null || true)"
-  if [[ -n "$url" ]]; then
+  url="$(git -C "$PARENT_REPO_DIR" config -f .gitmodules --get "submodule.${section}.url" 2>/dev/null || true)"
+  if [[ -n "$url" && "$url" != ./* && "$url" != ../* ]]; then
     print -r -- "$url"
     return 0
   fi
@@ -295,9 +376,9 @@ discover_current_subgit_dirs() {
 # 收集每个真实子 Git 的远端地址，无法识别时停止，避免写坏 .gitmodules。
 collect_submodule_urls() {
   local sub_path=""
-  local url=""
+  local url="" section="" stored_url="" relative_url=""
 
-  SUBMODULE_URLS=()
+  SUBMODULE_URLS=(); REGISTRATION_URLS=()
   for sub_path in "${CURRENT_SUBGIT_DIRS[@]}"; do
     url="$(read_origin_url_for_subgit "$sub_path" || true)"
     if [[ -z "$url" ]]; then
@@ -306,6 +387,16 @@ collect_submodule_urls() {
       return 1
     fi
     SUBMODULE_URLS[$sub_path]="$url"
+    section="${EXISTING_SECTION_NAMES[$sub_path]:-$sub_path}"
+    stored_url="$(git config --file "$PARENT_REPO_DIR/.gitmodules" --get "submodule.${section}.url" 2>/dev/null || true)"
+    if [[ -n "$stored_url" ]]; then
+      REGISTRATION_URLS[$sub_path]="$stored_url"
+    elif relative_url="$(relative_submodule_url "$PARENT_REPO_DIR" "$PARENT_REPO_DIR/$sub_path" "$url")"; then
+      REGISTRATION_URLS[$sub_path]="$relative_url"
+    else
+      REGISTRATION_URLS[$sub_path]="$url"
+      warn_echo "${sub_path}：远端映射无法统一验证，登记保留明确原地址。"
+    fi
   done
 }
 # 打印修复前状态，让用户看清楚 Git 输出和磁盘真实情况的差异。
@@ -363,23 +454,30 @@ repair_subgit_gitdir_pointer() {
     git --git-dir="$desired_module_dir" --work-tree="$sub_dir" config remote.origin.url "$url" >/dev/null 2>&1 || true
   fi
 }
-# 按当前真实子 Git 目录重写 .gitmodules。
+# 只对齐 path 清单；仍存在的 section 保留 URL、分支与扩展字段，新增才推导 URL。
 rewrite_gitmodules() {
-  local tmp_file=""
-  local sub_path=""
-
+  local tmp_file="" sub_path="" section="" stored_url="" branch="" file="$PARENT_REPO_DIR/.gitmodules"
   tmp_file="$(mktemp)"
-  for sub_path in "${CURRENT_SUBGIT_DIRS[@]}"; do
-    {
-      printf '[submodule "%s"]\n' "$sub_path"
-      printf '\tpath = %s\n' "$sub_path"
-      printf '\turl = %s\n' "${SUBMODULE_URLS[$sub_path]}"
-      printf '\tbranch = main\n'
-    } >> "$tmp_file"
+  if [[ -f "$file" ]]; then cp -p "$file" "$tmp_file"; fi
+  for section in "${(@k)EXISTING_SECTION_PATHS}"; do
+    sub_path="${EXISTING_SECTION_PATHS[$section]}"
+    if ! array_contains "$sub_path" "${CURRENT_SUBGIT_DIRS[@]}"; then
+      git config --file "$tmp_file" --remove-section "submodule.${section}"
+    fi
   done
-
-  mv "$tmp_file" "${PARENT_REPO_DIR}/.gitmodules"
-  success_echo "已按当前真实子 Git 目录重写 .gitmodules。"
+  for sub_path in "${CURRENT_SUBGIT_DIRS[@]}"; do
+    section="${EXISTING_SECTION_NAMES[$sub_path]:-$sub_path}"
+    if [[ -z "${EXISTING_SECTION_NAMES[$sub_path]:-}" ]]; then
+      git config --file "$tmp_file" "submodule.${section}.path" "$sub_path"
+      branch="$(git -C "$PARENT_REPO_DIR/$sub_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+      [[ -z "$branch" ]] || git config --file "$tmp_file" "submodule.${section}.branch" "$branch"
+    fi
+    stored_url="$(git config --file "$tmp_file" --get "submodule.${section}.url" 2>/dev/null || true)"
+    [[ -n "$stored_url" ]] || git config --file "$tmp_file" "submodule.${section}.url" "${REGISTRATION_URLS[$sub_path]}"
+    EXISTING_SECTION_NAMES[$sub_path]="$section"; EXISTING_SECTION_PATHS[$section]="$sub_path"
+  done
+  mv "$tmp_file" "$file"
+  success_echo '已对齐 .gitmodules 路径；原有 URL、分支与扩展字段保留。'
 }
 # 清理父仓库索引里已经不存在于磁盘当前子 Git 目录的旧 gitlink。
 remove_stale_gitlinks_from_index() {
@@ -421,7 +519,7 @@ clean_local_submodule_config() {
     [[ -z "$key" ]] && continue
     section="${key#submodule.}"
     section="${section%.url}"
-    if ! array_contains "$section" "${CURRENT_SUBGIT_DIRS[@]}"; then
+    if ! array_contains "${EXISTING_SECTION_PATHS[$section]:-$section}" "${CURRENT_SUBGIT_DIRS[@]}"; then
       warn_echo "清理本地旧 submodule 配置：${section}"
       git -C "$PARENT_REPO_DIR" config --remove-section "submodule.${section}" 2>/dev/null || true
     fi
@@ -494,13 +592,13 @@ run_business() {
   gray_echo "不会删除当前磁盘上的子 Git 目录；旧 gitlink 只会执行 git rm --cached。"
   echo ""
 
-  if ! ask_enter_to_run "确认按当前磁盘子 Git 目录对齐父 Git 子模块吗？"; then
+  if ! ask_any_to_run "确认按当前磁盘子 Git 目录对齐父 Git 子模块吗？"; then
     warn_echo "用户选择跳过修复。"
     return 0
   fi
 
-  repair_all_subgit_metadata
   rewrite_gitmodules
+  repair_all_subgit_metadata
   stage_current_gitlinks
   absorb_gitdirs_if_needed
   repair_all_subgit_metadata
@@ -525,7 +623,8 @@ main() {
   initialize_script_runtime # 初始化 Shell 选项、日志、依赖和入口运行状态。
   check_environment # 检查当前环境与执行条件是否满足脚本要求。
   discover_current_subgit_dirs # 扫描父仓库第一层真实存在的子 Git 目录。
-  collect_submodule_urls # 收集每个真实子 Git 的远端地址。
+  load_existing_submodule_sections # 按 path 保留已有 section、URL 和扩展字段。
+  collect_submodule_urls # 分开收集真实 origin 与共享登记 URL。
   run_business # 执行以磁盘目录为基准的子模块对齐流程。
 }
 
