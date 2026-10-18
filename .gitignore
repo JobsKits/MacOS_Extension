@@ -37,4 +37,5 @@ SDKStatCaches.noindex/
 CompilationCache.noindex/
 
 # Repo-local generated output
-work/
+/work/*
+!/work/README.md

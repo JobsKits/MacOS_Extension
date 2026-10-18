@@ -225,6 +225,9 @@ SUBMODULE_REPO_URLS=(
   "https://github.com/JobsKits/JobsTerminalOpener|JobsTerminalOpener"
   "https://github.com/JobsKits/JobsGitRemoteOpener|JobsGitRemoteOpener"
   "https://github.com/JobsKits/JobsGitRemoteCopier|JobsGitRemoteCopier"
+  "https://github.com/JobsKits/JobsXcodeOpener|JobsXcodeOpener"
+  "https://github.com/JobsKits/JobsVSCodeOpener|JobsVSCodeOpener"
+  "https://github.com/JobsKits/JobsAndroidStudioOpener|JobsAndroidStudioOpener"
   # 以后新增仓库，只写浏览器页面地址即可。
   # "https://github.com/JobsKits/xxx"
 )

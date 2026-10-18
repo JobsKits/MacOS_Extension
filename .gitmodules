@@ -14,3 +14,15 @@
 	path = JobsTerminalOpener
 	url = ../JobsTerminalOpener.git
 	branch = main
+[submodule "JobsAndroidStudioOpener"]
+	path = JobsAndroidStudioOpener
+	url = ../JobsAndroidStudioOpener.git
+	branch = main
+[submodule "JobsVSCodeOpener"]
+	path = JobsVSCodeOpener
+	url = ../JobsVSCodeOpener.git
+	branch = main
+[submodule "JobsXcodeOpener"]
+	path = JobsXcodeOpener
+	url = ../JobsXcodeOpener.git
+	branch = main

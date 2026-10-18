@@ -31,17 +31,20 @@ end makeGroupLabel
 -- 返回用户在原生复选框窗口中选择的功能标识。
 on run
     current application's NSApplication's sharedApplication()'s activateIgnoringOtherApps:true
-    set accessoryView to current application's NSView's alloc()'s initWithFrame:(current application's NSMakeRect(0, 0, 520, 274))
-    my makeGroupLabel("独立 Finder 扩展", 246, accessoryView)
-    set gitRemoteCheckbox to my makeFeatureCheckbox("打开 Git 远程地址", 218, accessoryView)
-    set gitRemoteCopierCheckbox to my makeFeatureCheckbox("复制 Git 远程地址", 190, accessoryView)
-    set pathCopierCheckbox to my makeFeatureCheckbox("复制绝对路径", 162, accessoryView)
+    set accessoryView to current application's NSView's alloc()'s initWithFrame:(current application's NSMakeRect(0, 0, 520, 358))
+    my makeGroupLabel("独立 Finder 扩展", 330, accessoryView)
+    set gitRemoteCheckbox to my makeFeatureCheckbox("打开 Git 远程地址", 302, accessoryView)
+    set gitRemoteCopierCheckbox to my makeFeatureCheckbox("复制 Git 远程地址", 274, accessoryView)
+    set pathCopierCheckbox to my makeFeatureCheckbox("复制绝对路径", 246, accessoryView)
+    set xcodeOpenerCheckbox to my makeFeatureCheckbox("用 Xcode 打开项目", 218, accessoryView)
+    set vscodeOpenerCheckbox to my makeFeatureCheckbox("用 VSCode 打开项目", 190, accessoryView)
+    set androidStudioOpenerCheckbox to my makeFeatureCheckbox("用 Android Studio 打开项目", 162, accessoryView)
 
     my makeGroupLabel("JobsTerminalOpener 内含功能", 130, accessoryView)
     set terminalOpenCheckbox to my makeFeatureCheckbox("用终端打开", 102, accessoryView)
-    set podInstallCheckbox to my makeFeatureCheckbox("在终端执行 pod install", 78, accessoryView)
+    set podInstallCheckbox to my makeFeatureCheckbox("安装/升级 Pod", 78, accessoryView)
     set flutterPubGetCheckbox to my makeFeatureCheckbox("在终端执行 flutter pub get", 54, accessoryView)
-    set codeGraphCheckbox to my makeFeatureCheckbox("安装/升级 CodeGraph 代码地图", 30, accessoryView)
+    set codeGraphCheckbox to my makeFeatureCheckbox("更新代码地图（.codegraph）", 30, accessoryView)
     set gitEmptyCommitPushCheckbox to my makeFeatureCheckbox("在终端创建空白 Commit 并 Push", 6, accessoryView)
 
     set featureAlert to current application's NSAlert's alloc()'s init()
@@ -55,10 +58,10 @@ on run
 
     set responseCode to featureAlert's runModal()
     if responseCode is current application's NSAlertThirdButtonReturn then return "__CANCELLED__"
-    if responseCode is current application's NSAlertSecondButtonReturn then return "git_remote,git_remote_copier,path_copier,terminal_open,pod_install,flutter_pub_get,codegraph_bootstrap,git_empty_commit_push"
+    if responseCode is current application's NSAlertSecondButtonReturn then return "git_remote,git_remote_copier,path_copier,xcode_opener,vscode_opener,android_studio_opener,terminal_open,pod_install,flutter_pub_get,codegraph_bootstrap,git_empty_commit_push"
 
-    set featureIdentifiers to {"git_remote", "git_remote_copier", "path_copier", "terminal_open", "pod_install", "flutter_pub_get", "codegraph_bootstrap", "git_empty_commit_push"}
-    set featureCheckboxes to {gitRemoteCheckbox, gitRemoteCopierCheckbox, pathCopierCheckbox, terminalOpenCheckbox, podInstallCheckbox, flutterPubGetCheckbox, codeGraphCheckbox, gitEmptyCommitPushCheckbox}
+    set featureIdentifiers to {"git_remote", "git_remote_copier", "path_copier", "xcode_opener", "vscode_opener", "android_studio_opener", "terminal_open", "pod_install", "flutter_pub_get", "codegraph_bootstrap", "git_empty_commit_push"}
+    set featureCheckboxes to {gitRemoteCheckbox, gitRemoteCopierCheckbox, pathCopierCheckbox, xcodeOpenerCheckbox, vscodeOpenerCheckbox, androidStudioOpenerCheckbox, terminalOpenCheckbox, podInstallCheckbox, flutterPubGetCheckbox, codeGraphCheckbox, gitEmptyCommitPushCheckbox}
     set selectedIdentifiers to {}
     repeat with featureIndex from 1 to count featureIdentifiers
         set featureCheckbox to item featureIndex of featureCheckboxes

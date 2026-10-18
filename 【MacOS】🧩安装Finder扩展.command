@@ -47,7 +47,7 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -79,6 +79,27 @@ FEATURE_APP_NAME[path_copier]="JobsPathCopier"
 FEATURE_EXTENSION_NAME[path_copier]="JobsPathCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[path_copier]="com.jobs.JobsPathCopier.FinderSyncExtension"
 
+FEATURE_TITLE[xcode_opener]="用 Xcode 打开项目"
+FEATURE_PROJECT_DIR[xcode_opener]="JobsXcodeOpener"
+FEATURE_SCHEME[xcode_opener]="JobsXcodeOpener"
+FEATURE_APP_NAME[xcode_opener]="JobsXcodeOpener"
+FEATURE_EXTENSION_NAME[xcode_opener]="JobsXcodeFinderSync.appex"
+FEATURE_EXTENSION_ID[xcode_opener]="com.jobs.JobsXcodeOpener.FinderSyncExtension"
+
+FEATURE_TITLE[vscode_opener]="用 VSCode 打开项目"
+FEATURE_PROJECT_DIR[vscode_opener]="JobsVSCodeOpener"
+FEATURE_SCHEME[vscode_opener]="JobsVSCodeOpener"
+FEATURE_APP_NAME[vscode_opener]="JobsVSCodeOpener"
+FEATURE_EXTENSION_NAME[vscode_opener]="JobsVSCodeFinderSync.appex"
+FEATURE_EXTENSION_ID[vscode_opener]="com.jobs.JobsVSCodeOpener.FinderSyncExtension"
+
+FEATURE_TITLE[android_studio_opener]="用 Android Studio 打开项目"
+FEATURE_PROJECT_DIR[android_studio_opener]="JobsAndroidStudioOpener"
+FEATURE_SCHEME[android_studio_opener]="JobsAndroidStudioOpener"
+FEATURE_APP_NAME[android_studio_opener]="JobsAndroidStudioOpener"
+FEATURE_EXTENSION_NAME[android_studio_opener]="JobsAndroidStudioFinderSync.appex"
+FEATURE_EXTENSION_ID[android_studio_opener]="com.jobs.JobsAndroidStudioOpener.FinderSyncExtension"
+
 FEATURE_TITLE[terminal_opener]="JobsTerminalOpener"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
 FEATURE_SCHEME[terminal_opener]="JobsTerminalOpener"
@@ -86,23 +107,29 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote_copier]="git_remote_copier"
 SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
+SELECTABLE_FUNCTION_TITLE[xcode_opener]="用 Xcode 打开项目"
+SELECTABLE_FUNCTION_PROJECT_KEY[xcode_opener]="xcode_opener"
+SELECTABLE_FUNCTION_TITLE[vscode_opener]="用 VSCode 打开项目"
+SELECTABLE_FUNCTION_PROJECT_KEY[vscode_opener]="vscode_opener"
+SELECTABLE_FUNCTION_TITLE[android_studio_opener]="用 Android Studio 打开项目"
+SELECTABLE_FUNCTION_PROJECT_KEY[android_studio_opener]="android_studio_opener"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
 SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
-SELECTABLE_FUNCTION_TITLE[pod_install]="在终端执行 pod install"
+SELECTABLE_FUNCTION_TITLE[pod_install]="安装/升级 Pod"
 SELECTABLE_FUNCTION_PROJECT_KEY[pod_install]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[pod_install]="pod-install"
 SELECTABLE_FUNCTION_TITLE[flutter_pub_get]="在终端执行 flutter pub get"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter_pub_get]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[flutter_pub_get]="flutter-pub-get"
-SELECTABLE_FUNCTION_TITLE[codegraph_bootstrap]="安装/升级 CodeGraph 代码地图"
+SELECTABLE_FUNCTION_TITLE[codegraph_bootstrap]="更新代码地图（.codegraph）"
 SELECTABLE_FUNCTION_PROJECT_KEY[codegraph_bootstrap]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[codegraph_bootstrap]="codegraph-bootstrap"
 SELECTABLE_FUNCTION_TITLE[git_empty_commit_push]="在终端创建空白 Commit 并 Push"
@@ -190,7 +217,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 8 项；JobsTerminalOpener 内含 5 项，可分别勾选。" | jobs_intro_style body
+  note_echo "可选功能：共 11 项；JobsTerminalOpener 内含 5 项，可分别勾选。" | jobs_intro_style body
   warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。" | jobs_intro_style body
   warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。" | jobs_intro_style body
@@ -253,7 +280,7 @@ print_missing_feature_projects() {
   local key=""
   local project_file=""
 
-  error_echo "Finder 扩展子工程缺失，通常是当前 Git 刚拉下来但子模块还没同步。"
+  error_echo "Finder 扩展子工程缺失；七个工程均由 Git 子模块提供，通常是子模块尚未同步。"
   for key in "${FEATURE_KEYS[@]}"; do
     project_file="$(project_file_for_key "$key")"
     if [[ ! -d "$project_file" ]]; then

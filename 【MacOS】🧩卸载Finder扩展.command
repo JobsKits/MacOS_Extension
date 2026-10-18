@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier terminal_opener)
+FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -72,6 +72,33 @@ FEATURE_RUNTIME_LOG[path_copier]="/tmp/JobsPathCopier.log"
 FEATURE_AUTOMATOR_SERVICE_DIR[path_copier]="${HOME}/Library/Services/复制绝对路径.workflow"
 FEATURE_AUTOMATOR_HELPER_SCRIPT[path_copier]="${HOME}/Library/Scripts/Jobs/CopyAbsolutePath.zsh"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[path_copier]}]="path_copier"
+
+FEATURE_TITLE[xcode_opener]="用 Xcode 打开项目"
+FEATURE_PROJECT_DIR[xcode_opener]="JobsXcodeOpener"
+FEATURE_APP_NAME[xcode_opener]="JobsXcodeOpener"
+FEATURE_EXTENSION_PROCESS_NAME[xcode_opener]="JobsXcodeFinderSync"
+FEATURE_EXTENSION_ID[xcode_opener]="com.jobs.JobsXcodeOpener.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[xcode_opener]="/tmp/JobsXcodeOpenerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[xcode_opener]="/tmp/JobsXcodeOpener.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[xcode_opener]}]="xcode_opener"
+
+FEATURE_TITLE[vscode_opener]="用 VSCode 打开项目"
+FEATURE_PROJECT_DIR[vscode_opener]="JobsVSCodeOpener"
+FEATURE_APP_NAME[vscode_opener]="JobsVSCodeOpener"
+FEATURE_EXTENSION_PROCESS_NAME[vscode_opener]="JobsVSCodeFinderSync"
+FEATURE_EXTENSION_ID[vscode_opener]="com.jobs.JobsVSCodeOpener.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[vscode_opener]="/tmp/JobsVSCodeOpenerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[vscode_opener]="/tmp/JobsVSCodeOpener.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[vscode_opener]}]="vscode_opener"
+
+FEATURE_TITLE[android_studio_opener]="用 Android Studio 打开项目"
+FEATURE_PROJECT_DIR[android_studio_opener]="JobsAndroidStudioOpener"
+FEATURE_APP_NAME[android_studio_opener]="JobsAndroidStudioOpener"
+FEATURE_EXTENSION_PROCESS_NAME[android_studio_opener]="JobsAndroidStudioFinderSync"
+FEATURE_EXTENSION_ID[android_studio_opener]="com.jobs.JobsAndroidStudioOpener.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[android_studio_opener]="/tmp/JobsAndroidStudioOpenerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[android_studio_opener]="/tmp/JobsAndroidStudioOpener.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android_studio_opener]}]="android_studio_opener"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
@@ -165,7 +192,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用 fzf 选择并卸载 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：打开 Git 远程地址、复制绝对路径、用终端打开。" | jobs_intro_style body
+  note_echo "可选功能：打开 Git 远程地址、复制绝对路径、三个 IDE 打开入口、JobsTerminalOpener。" | jobs_intro_style body
   warn_echo "影响范围：会禁用并注销选中的 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会停止对应宿主 App 和已运行的扩展进程。" | jobs_intro_style body
   warn_echo "影响范围：会删除 Xcode DerivedData 和本工作区 work 下的构建产物。" | jobs_intro_style body
