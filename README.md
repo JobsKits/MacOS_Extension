@@ -43,7 +43,7 @@
 | 用 Android Studio 打开项目 | 先检查 Android Studio；未安装时停止并打开 [官方下载页](https://developer.android.com/studio)。 |
 | 安装/升级 Pod | 目标同层必须齐全：`Podfile`、`*.xcodeproj`、`*.xcworkspace`。缺任一项不显示入口，宿主也会在打开 Terminal 前拒绝。符合条件后，没有 `Pods/Manifest.lock` 执行 `pod install`，已有则执行 `pod update`；新克隆即便带 `Podfile.lock` 也先安装。 |
 | 更新代码地图（.codegraph） | 更新所选文件夹的代码地图；缺失工具时在 Terminal 等待回车确认，通过 [**Homebrew**](https://brew.sh/) 补齐 [**Node.js**](https://nodejs.org/) / [**npm**](https://docs.npmjs.com/)，再安装官方 CodeGraph 包。已有健康工具直接复用。 |
-| 安装/切换 Flutter SDK（FVM） | 仅对根 `pubspec.yaml` 声明 Flutter SDK 依赖的文件夹显示；在 Terminal 体检 Homebrew、FVM、[**fzf**](https://formulae.brew.sh/formula/fzf) 及实际依赖链，查询官方历史和最新发行版，用 fzf 单选精确版本并确认安装或切换。详见[独立工程说明](./JobsFlutterVersionMgr/README.md)。 |
+| 安装/切换 Flutter SDK（FVM） | 仅对根 `pubspec.yaml` 声明 Flutter SDK 依赖的文件夹显示；右键后直接进入 Terminal，后台宿主不显示管理窗口。在终端体检 Homebrew、FVM、[**fzf**](https://formulae.brew.sh/formula/fzf) 及实际依赖链，查询官方历史和最新发行版，用 fzf 单选精确版本，最终回车执行安装或切换、非空输入取消。详见[独立工程说明](./JobsFlutterVersionMgr/README.md)。 |
 
 <strong id="submodule-quick-look">父子仓多平台地址速览</strong>
 
@@ -86,7 +86,7 @@ Flutter 版本管理子仓实际保留 `origin = https://github.com/JobsKits/Job
 
 **下载脚本的 Gitee 传输规则：** `【MacOS】⏬下载配置当前Git子模块（可向下同步递归）.command` 在本次运行中，将 `git@gitee.com:`、`ssh://git@gitee.com/`、`ssh://git@gitee.com:22/` 开头的标准地址统一通过 `https://gitee.com/` 访问，保留账号、真实仓名和分支；即使设置 `GIT_URL_STYLE=ssh`，这类 Gitee 地址仍使用 HTTPS。各层首次克隆和后续拉取都继承该规则，历史子模块中的 SSH 地址无需新电脑先配置 SSH 密钥。
 
-规则通过追加进程级 `GIT_CONFIG_COUNT` / `url.https://gitee.com/.insteadOf` 配置传给子进程，不写入全局 Git 配置，也不依赖其它工程路径。GitHub、其它主机及非 `22` 的自定义 SSH 端口保持原规则。克隆或递归更新失败会返回非零状态，停止本轮同步并保留错误；不会再输出该项同步成功。各仓清单与浅克隆参数保留；全量删除重建须输入 `YES` 确认，范围限定为清单目标及对应旧仓名目录。
+规则通过追加进程级 `GIT_CONFIG_COUNT` / `url.https://gitee.com/.insteadOf` 配置传给子进程，不写入全局 Git 配置，也不依赖其它工程路径。GitHub、其它主机及非 `22` 的自定义 SSH 端口保持原规则。克隆或递归更新失败会返回非零状态，停止本轮同步并保留错误；不会再输出该项同步成功。各仓清单与浅克隆参数保留；全量同步默认逐仓复用已有工作区，空或缺失目录才首次克隆，不批量删除旧仓名目录、多层子树或缓存。未提交内容须逐仓处理，精确 `YES` 仅放弃当前仓自己的内容。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、环境先决条件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -185,18 +185,21 @@ ruby ./Tests/FlutterInstallerIntegrationTests.rb
 * 确认自述后读取脚本清单、检查远端，尝试拉取父仓。
 * 父仓有未提交改动：跳过父仓拉取，继续处理子仓。
 * 在主菜单选择同步范围；“切换同步深度”可在默认“向下递归”和“仅直属子模块”之间切换，当前深度适用于各同步动作。
-  * 全量同步：选择清单内全部目标重建，须输入 `YES` 执行，其它输入取消。
+  * 全量同步：逐项同步清单内全部目标，按目录状态复用或首次克隆。
   * 只更新已有：更新清单内已存在的子仓；一个都没有时转全量同步。
   * 指定子模块：回车勾选或取消，空格确认开始。
   * 添加地址：输入新仓地址，自动用仓名作为目录，本轮登记并同步。
 * 补齐关联配置，检查并处理目标子仓目录。
-  * 全量模式：清洁检查通过后删除目标目录、对应仓名的旧目录及缓存，再重新克隆。
-  * 其它模式：缺失的目标目录首次克隆，已有子仓继续更新。
-  * 子仓有未提交改动：停止该项更新。
+  * 目录为空或缺失：首次克隆；已有有效 Git 工作区：保留目录、缓存及后代，直接更新。
+  * 已有 `modules/` 缓存时先核验并恢复空工作区；非 Git 非空目录保护并停止。
+  * 子仓有未提交、已暂存或未跟踪内容：红字加粗显示该仓绝对路径并循环等待；精确输入 `YES` 只放弃当前仓自己的未提交内容，或在外部处理后回车复检。其它输入继续复检；无交互或输入结束则停止。
 * 拉取并强制对齐远端目标分支最新提交：优先使用该层 `.gitmodules` 显式 `branch`，`.` 继承直接父仓分支；未设置时优先 `main`，不存在则使用远端默认分支。
   * 使用 `checkout -B` 和 `reset --hard`：目标本地分支未推送的独有提交可能被覆盖。
 * 按当前深度同步：默认逐层读取所选子仓下的 `.gitmodules`，将已登记后代同步到各自远端目标分支最新提交；仅直属模式不下载或更新下层代码。
   * 只处理本层所选子树，不向上扫描，也不接管未登记的嵌套仓库。
+  * 递归更新本层前先检查当前已有后代；各仓单独确认，子模块 HEAD 与父仓 gitlink 的普通差异不作为源码未提交反复提示。
+  * `YES` 清理仅作用于当前仓：`reset --hard HEAD` 与 `clean -fd`；保留忽略文件和独立嵌套 Git 仓，残留冲突须外部处理后复检。
+  * `PRUNE_STALE_GITMODULES` 默认 `0`，保留清单外旧登记；主动设为 `1` 时，每个旧登记另用红字加粗列明目录和后代删除范围，逐项精确输入 `YES` 才删除，其它输入、输入结束或非交互则停止；演练只展示，删除前仍逐仓检查已有后代。
   * 深层只下载更新，不自动暂存或提交其父仓的 gitlink；递归后这些父仓可能显示子模块指针改动，保留待审阅。
 * 整理入口父仓 Git 元数据与来源日志。
 * 默认自动提交入口父仓的关联变化，不自动推送。
