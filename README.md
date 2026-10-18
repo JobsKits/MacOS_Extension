@@ -32,9 +32,9 @@
 
 子仓下载与关联操作见 [Git 子模块脚本](#git-submodule-scripts)。
 
-> **11 个 Finder 右键功能，可逐项勾选：`打开 Git 远程地址`｜`复制 Git 远程地址`｜`复制绝对路径`｜`用 Xcode 打开项目`｜`用 VSCode 打开项目`｜`用 Android Studio 打开项目`｜`用终端打开`｜`安装/升级 Pod`｜`flutter pub get`｜`更新代码地图（.codegraph）`｜`空白 Commit 并 Push`。** 其中 `JobsTerminalOpener` 工程内含后 5 项。
+> **12 个 Finder 右键功能，可逐项勾选：`打开 Git 远程地址`｜`复制 Git 远程地址`｜`复制绝对路径`｜`用 Xcode 打开项目`｜`用 VSCode 打开项目`｜`用 Android Studio 打开项目`｜`安装/切换 Flutter SDK（FVM）`｜`用终端打开`｜`安装/升级 Pod`｜`flutter pub get`｜`更新代码地图（.codegraph）`｜`空白 Commit 并 Push`。** 其中 `JobsTerminalOpener` 工程内含后 5 项。
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。当前目录下有七个 Finder 扩展工程，共提供十一个右键增强动作：打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程安装或升级 Pod 依赖、在合法 [**Flutter**](https://flutter.dev/) 工程执行 `flutter pub get`、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。当前目录下有八个 Finder 扩展工程，共提供十二个右键增强动作：打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程安装或升级 Pod 依赖、在合法 [**Flutter**](https://flutter.dev/) 工程通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、执行 `flutter pub get`、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 | 右键入口 | 检查与执行结果 |
 | --- | --- |
@@ -43,15 +43,20 @@
 | 用 Android Studio 打开项目 | 先检查 Android Studio；未安装时停止并打开 [官方下载页](https://developer.android.com/studio)。 |
 | 安装/升级 Pod | 目标同层必须齐全：`Podfile`、`*.xcodeproj`、`*.xcworkspace`。缺任一项不显示入口，宿主也会在打开 Terminal 前拒绝。符合条件后，没有 `Pods/Manifest.lock` 执行 `pod install`，已有则执行 `pod update`；新克隆即便带 `Podfile.lock` 也先安装。 |
 | 更新代码地图（.codegraph） | 更新所选文件夹的代码地图；缺失工具时在 Terminal 等待回车确认，通过 [**Homebrew**](https://brew.sh/) 补齐 [**Node.js**](https://nodejs.org/) / [**npm**](https://docs.npmjs.com/)，再安装官方 CodeGraph 包。已有健康工具直接复用。 |
+| 安装/切换 Flutter SDK（FVM） | 仅对根 `pubspec.yaml` 声明 Flutter SDK 依赖的文件夹显示；在 Terminal 体检 Homebrew、FVM、[**fzf**](https://formulae.brew.sh/formula/fzf) 及实际依赖链，查询官方历史和最新发行版，用 fzf 单选精确版本并确认安装或切换。详见[独立工程说明](./JobsFlutterVersionMgr/README.md)。 |
 
 <strong id="submodule-quick-look">父子仓多平台地址速览</strong>
 
-当前七个扩展工程均通过 `./.gitmodules` 和 gitlink 作为独立子仓管理，地址使用相对写法，例如：
+当前八个扩展工程均通过 `./.gitmodules` 和 gitlink 作为独立子仓管理，地址使用相对写法。例如，已有复制 Git 地址工程与 Flutter 版本管理工程的真实登记为：
 
 ```ini
 [submodule "JobsGitRemoteCopier"]
     path = JobsGitRemoteCopier
     url = ../JobsGitRemoteCopier.git
+    branch = main
+[submodule "JobsFlutterVersionMgr"]
+    path = JobsFlutterVersionMgr
+    url = ../JobsFlutterVersionMgr.git
     branch = main
 ```
 
@@ -63,17 +68,19 @@
 | `JobsVSCodeOpener/` | `../JobsVSCodeOpener.git` | `main` |
 | `JobsXcodeOpener/` | `../JobsXcodeOpener.git` | `main` |
 
-父仓仅记录各子仓提交号，不重复跟踪其源码。三个子仓根目录的 `.git` 文件指向父仓实际 Git 目录下各自的 `modules/<子仓名>/`；各自提交历史、分支和已有 HTTPS 远端保持独立。
+`JobsFlutterVersionMgr/` 原先由父仓作为普通目录维护，现已登记为第八个独立子模块。父仓仅记录各子仓提交号，不重复跟踪其源码。各子仓根目录的 `.git` 文件指向父仓实际 Git 目录下各自的 `modules/<子仓名>/`；各自提交历史、分支和已有 HTTPS 远端保持独立。
 
 下表展示原生 Git 从父仓地址解析相对 URL 的结果，前提是全新克隆且没有本地 URL 覆盖。前两行来自本地已配置的 [**GitHub**](https://github.com) / [**Gitee**](https://gitee.com) 远端；自建平台仅为结构示例，未部署。
 
-| 平台 | 父仓克隆地址 | 子仓解析地址 |
-| --- | --- | --- |
-| GitHub | `git@github.com:JobsKits/MacOS_Extension.git` | `git@github.com:JobsKits/JobsGitRemoteCopier.git` |
-| Gitee | `git@gitee.com:JobsGo/MacOS_Extension.git` | `git@gitee.com:JobsGo/JobsGitRemoteCopier.git` |
-| 自建平台，仅结构示例 | `ssh://git@git.example.com:2222/team/MacOS_Extension.git` | `ssh://git@git.example.com:2222/team/JobsGitRemoteCopier.git` |
+| 平台 | 父仓克隆地址 | 复制 Git 地址子仓解析地址 | Flutter 版本管理子仓解析地址 |
+| --- | --- | --- | --- |
+| GitHub | `git@github.com:JobsKits/MacOS_Extension.git` | `git@github.com:JobsKits/JobsGitRemoteCopier.git` | `git@github.com:JobsKits/JobsFlutterVersionMgr.git` |
+| Gitee | `git@gitee.com:JobsGo/MacOS_Extension.git` | `git@gitee.com:JobsGo/JobsGitRemoteCopier.git` | `git@gitee.com:JobsGo/JobsFlutterVersionMgr.git` |
+| 自建平台，仅结构示例 | `ssh://git@git.example.com:2222/team/MacOS_Extension.git` | `ssh://git@git.example.com:2222/team/JobsGitRemoteCopier.git` | `ssh://git@git.example.com:2222/team/JobsFlutterVersionMgr.git` |
 
 三个 IDE 子仓沿用同一解析规则，例如 `../JobsXcodeOpener.git` 在 GitHub 对应 `git@github.com:JobsKits/JobsXcodeOpener.git`，在 Gitee 对应 `git@gitee.com:JobsGo/JobsXcodeOpener.git`。父仓现有远端使用 SSH；子仓已有的 HTTPS `origin` / `gitee` 不会因登记而被改写。
+
+Flutter 版本管理子仓实际保留 `origin = https://github.com/JobsKits/JobsFlutterVersionMgr.git`，并配置 `gitee = https://gitee.com/JobsGo/JobsFlutterVersionMgr.git`；本地工作分支为 `main`。这些是子仓自身的远端，和父仓 `.gitmodules` 中供新克隆解析的相对 URL 分别管理。
 
 `path` 是本地目录，`url` 是远端仓库位置；相对 URL 跟随父仓默认远端的平台、组织、协议与端口，前提是该平台已有对应子仓及父仓锁定的提交。已有克隆须核对默认远端和本地子模块配置，仅新增 remote 不会切换线路。
 
@@ -85,7 +92,7 @@
 
 | 检查项 | 最低要求 | 说明 |
 | --- | --- | --- |
-| 系统版本 | macOS `12.0` 及以上 | 七个工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
+| 系统版本 | macOS `12.0` 及以上 | 八个工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
 | 开发工具 | [**Xcode**](https://developer.apple.com/xcode) 可正常打开 `.xcodeproj` | 手动运行需要 Xcode；批量安装脚本还需要 `xcodebuild`。首次换机器构建时，按 Xcode 提示完成本机签名配置。 |
 | 命令行工具 | `xcodebuild`、`pluginkit`、`pkill`、`killall` 可用 | `xcodebuild` 负责构建 App，`pluginkit` 负责注册和启用 Finder Sync Extension，`pkill pkd` 和 `killall Finder` 用来刷新扩展发现索引与 Finder 菜单缓存。 |
 | 安装选择 | 系统 `osascript` 与 AppKit 可用 | 根目录安装脚本会打开 macOS 原生复选框窗口，不再依赖 fzf。 |
@@ -102,6 +109,12 @@ pluginkit -m -p com.apple.FinderSync -A -v
 osascript -e 'return "AppKit UI 可用"'
 ```
 
+在本仓根目录运行安装器集成回归，核对十二项功能、八个工程的选择映射，以及 Flutter 子模块缺失时的下载补齐分支；测试只使用隔离目录，不构建或注册扩展：
+
+```shell
+ruby ./Tests/FlutterInstallerIntegrationTests.rb
+```
+
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、工程索引 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 工程 | 入口文案 | 核心用途 | 打开方式 |
@@ -112,9 +125,10 @@ osascript -e 'return "AppKit UI 可用"'
 | `./JobsXcodeOpener` | `用 Xcode 打开项目` | 直接打开目标项目；优先 workspace，同优先级多个候选时明确选择。 | `./JobsXcodeOpener/JobsXcodeOpener.xcodeproj` |
 | `./JobsVSCodeOpener` | `用 VSCode 打开项目` | 检查 VSCode 后打开项目目录；缺失时打开官方下载页。 | `./JobsVSCodeOpener/JobsVSCodeOpener.xcodeproj` |
 | `./JobsAndroidStudioOpener` | `用 Android Studio 打开项目` | 检查 Android Studio 后打开项目目录；缺失时打开官方下载页。 | `./JobsAndroidStudioOpener/JobsAndroidStudioOpener.xcodeproj` |
+| [JobsFlutterVersionMgr](./JobsFlutterVersionMgr/README.md) | `安装/切换 Flutter SDK（FVM）` | 检查 Flutter 项目，终端体检依赖后用 fzf 选择历史或最新 SDK，通过 FVM 安装或切换。 | `./JobsFlutterVersionMgr/JobsFlutterVersionMgr.xcodeproj` |
 | `./JobsTerminalOpener` | 5 个可独立勾选的 Terminal 功能 | 包含 `用终端打开`、`安装/升级 Pod`、`flutter pub get`、`更新代码地图（.codegraph）`和空白 Commit Push；安装时或 App 内均可逐项决定是否显示。 | `./JobsTerminalOpener/JobsTerminalOpener.xcodeproj` |
 
-七个工程均为独立 Git 子模块；父仓维护组合安装入口与各子仓的固定提交引用。每个工程的使用、自检、项目选择与独立卸载说明见各自 README。
+八个工程均可独立构建与卸载，并由 Git 子模块管理。父仓提供组合安装入口及各子仓的固定提交引用。每个工程的使用、自检、项目选择与独立卸载说明见各自 README。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -124,9 +138,9 @@ osascript -e 'return "AppKit UI 可用"'
 
 2、脚本打印内置自述后，按回车继续；如果检测到任一子模块的 `.xcodeproj` 缺失，会先拉起 `./【MacOS】⏬下载配置当前Git子模块（可向下同步递归）.command`。
 
-3、子模块同步结束并复检通过后，脚本会重新进入安装流程并打开 macOS 原生复选框窗口；三个 IDE 工程与原有四个工程共用这一补齐流程。
+3、子模块同步结束并复检通过后，脚本会重新进入安装流程并打开 macOS 原生复选框窗口；八个工程共用这一补齐流程。
 
-4、逐项勾选需要安装的十一个右键菜单功能，或点击“全部安装”。`JobsTerminalOpener` 的五项选择会归并为一次工程构建。
+4、逐项勾选需要安装的十二个右键菜单功能，或点击“全部安装”。`JobsTerminalOpener` 的五项选择会归并为一次工程构建。
 
 5、确认后，脚本会调用 `xcodebuild` 构建相关 App，清理同 Bundle ID 的旧 LaunchServices / PlugInKit 记录，注册并启用 Finder Sync Extension，最后重启 `pkd` 和 Finder 刷新右键菜单缓存。
 
@@ -138,7 +152,7 @@ osascript -e 'return "AppKit UI 可用"'
 
 3、勾选后点击“保存功能选择”，关闭当前 Finder 右键菜单并重新右键即可生效，不需要重新编译或重新安装。
 
-4、这里仅管理 `JobsTerminalOpener` 内的五项 Terminal 功能；另外六个独立 Finder 扩展仍由根安装脚本选择安装。
+4、这里仅管理 `JobsTerminalOpener` 内的五项 Terminal 功能；另外七个独立 Finder 扩展仍由根安装脚本选择安装。
 
 ### <span id="jobs-toc-heading-7" data-jobs-toc="v2">3.3、单工程手动运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -234,11 +248,14 @@ osascript -e 'return "AppKit UI 可用"'
 ├── JobsXcodeOpener/  # 独立 Git 子仓
 ├── JobsVSCodeOpener/  # 独立 Git 子仓
 ├── JobsAndroidStudioOpener/  # 独立 Git 子仓
+├── JobsFlutterVersionMgr/  # 独立 Git 子仓
 ├── JobsTerminalOpener/  # 独立 Git 子仓
 ├── README.md
 ├── Scripts/
 │   ├── README.md
 │   └── SelectFinderExtensionFeatures.applescript
+├── Tests/
+│   └── FlutterInstallerIntegrationTests.rb
 └── work/
     └── README.md
 ```
@@ -246,16 +263,17 @@ osascript -e 'return "AppKit UI 可用"'
 * 原有四个扩展工程均为独立 Git 子仓；本仓维护总安装 / 卸载入口、三个 Git 入口及 `Scripts/SelectFinderExtensionFeatures.applescript` 原生选择界面。
   * [JobsGitRemoteCopier](./JobsGitRemoteCopier/README.md)、[JobsGitRemoteOpener](./JobsGitRemoteOpener/README.md)、[JobsPathCopier](./JobsPathCopier/README.md)、[JobsTerminalOpener](./JobsTerminalOpener/README.md)。
 * 三个 IDE 工程也通过 Git 子模块独立管理：[JobsXcodeOpener](./JobsXcodeOpener/README.md)、[JobsVSCodeOpener](./JobsVSCodeOpener/README.md)、[JobsAndroidStudioOpener](./JobsAndroidStudioOpener/README.md)。
+* [JobsFlutterVersionMgr](./JobsFlutterVersionMgr/README.md)：独立 Git 子模块，提供 Flutter SDK 安装 / 切换功能，包含宿主、Finder 扩展、终端脚本、独立安装和卸载入口；Windows 对应实现见[平行仓库](../Windows@Extension/README.md)。
 * [Scripts 目录说明](./Scripts/README.md)：安装器使用的原生功能选择界面及调用约定。
 * [work 目录说明](./work/README.md)：本地 DerivedData、生成 App 与扩展的保存位置及 Git 忽略边界。安装器直接从其中注册 App / appex，清理前应先通过对应卸载入口停用、注销，不能把它当作可随手删除的纯缓存；复制 Git 地址扩展使用子仓专用卸载入口。
-* 总卸载菜单管理六个宿主，包括三个 IDE 扩展；`JobsGitRemoteCopier/` 的复制 Git 地址扩展使用其子仓卸载脚本。
+* 总卸载菜单管理七个宿主，包括三个 IDE 扩展与 Flutter 版本管理；`JobsGitRemoteCopier/` 的复制 Git 地址扩展使用其子仓卸载脚本。
 
 ### <span id="jobs-toc-heading-14" data-jobs-toc="v2">[【MacOS】🧩安装Finder扩展.command](./【MacOS】🧩安装Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 选择并安装本目录的 Finder 右键功能，刷新菜单使其生效。
 
-* 阅读自述并回车，检查系统工具与七个扩展工程。
-  * 任一子模块工程缺失：先运行同层子模块下载脚本，复检通过后重新进入安装器；七个工程共用同一流程。
+* 阅读自述并回车，检查系统工具与八个扩展工程。
+  * 任一子模块工程缺失：先运行同层子模块下载脚本，复检通过后重新进入安装器；八个子模块共用同一流程。
 * 在原生复选框窗口勾选功能或全选；Terminal 的五项功能归并为一次工程安装。
   * 取消窗口或未选择项目：退出安装。
 * 构建选中的宿主 APP，清理同 Bundle ID 的过期注册，注册并启用对应 Finder 扩展，保存 Terminal 功能选择。
@@ -266,7 +284,7 @@ osascript -e 'return "AppKit UI 可用"'
 > **目的：** 批量卸载菜单中选定的 Finder 扩展，并清理相关构建残留。
 
 * 阅读自述并回车，检查 fzf、扩展管理与进程工具。
-* 在菜单勾选“打开 Git 远程地址”“复制绝对路径”、三个 IDE 打开入口、“用终端打开”或全选，再回车确认卸载。
+* 在菜单勾选“打开 Git 远程地址”“复制绝对路径”、三个 IDE 打开入口、“安装/切换 Flutter SDK（FVM）”、“用终端打开”或全选，再回车确认卸载。
   * 取消选择：退出；复制 Git 地址扩展使用其子仓专用卸载入口。
 * 停用并注销选中扩展，停止对应宿主与扩展进程，清理构建 APP、运行标记和旧 Automator 服务。
 * 保留工程源码，刷新 Services 缓存并重启 Finder，汇总成功项、失败项与日志位置。

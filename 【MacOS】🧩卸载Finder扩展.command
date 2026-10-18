@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener terminal_opener)
+FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -99,6 +99,15 @@ FEATURE_EXTENSION_ID[android_studio_opener]="com.jobs.JobsAndroidStudioOpener.Fi
 FEATURE_REFRESH_MARKER[android_studio_opener]="/tmp/JobsAndroidStudioOpenerNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[android_studio_opener]="/tmp/JobsAndroidStudioOpener.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android_studio_opener]}]="android_studio_opener"
+
+FEATURE_TITLE[flutter_version_manager]="安装/切换 Flutter SDK（FVM）"
+FEATURE_PROJECT_DIR[flutter_version_manager]="JobsFlutterVersionMgr"
+FEATURE_APP_NAME[flutter_version_manager]="JobsFlutterVersionMgr"
+FEATURE_EXTENSION_PROCESS_NAME[flutter_version_manager]="JobsFlutterVersionFinderSync"
+FEATURE_EXTENSION_ID[flutter_version_manager]="com.jobs.JobsFlutterVersionMgr.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter_version_manager]="/tmp/JobsFlutterVersionMgrNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter_version_manager]="/tmp/JobsFlutterVersionMgr.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter_version_manager]}]="flutter_version_manager"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"

@@ -26,7 +26,7 @@
 
 本目录维护总安装器使用的 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 功能选择窗口。选择器用 [**AppleScript**](https://developer.apple.com/library/archive/documentation/AppleScript/Conceptual/AppleScriptLangGuide/) 调用 [**AppKit**](https://developer.apple.com/documentation/appkit) 创建复选框，只向调用方返回选择结果；构建、注册、启用扩展和保存 Terminal 功能配置由[根目录安装器](../【MacOS】🧩安装Finder扩展.command)负责。
 
-**当前为 11 项功能、7 个工程。每次打开窗口时，全部复选框默认选中。** 本目录是父仓维护的支持目录，仓库关系与安装环境见[父仓 README](../README.md)。
+**当前为 12 项功能、8 个工程。每次打开窗口时，全部复选框默认选中。** 本目录是父仓维护的支持目录，仓库关系与安装环境见[父仓 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
@@ -48,7 +48,7 @@
 
 ## 二、<span id="feature-identifiers">功能标识与工程映射</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-窗口第一组显示六个独立扩展，第二组显示 `JobsTerminalOpener` 内的五项功能。Terminal 的五项可以分别勾选，安装器会归并为一次工程构建。
+窗口第一组显示七个独立扩展，第二组显示 `JobsTerminalOpener` 内的五项功能。Terminal 的五项可以分别勾选，安装器会归并为一次工程构建。
 
 | 分组 | 窗口文案 | 返回标识 | 安装工程 |
 | --- | --- | --- | --- |
@@ -58,6 +58,7 @@
 | 独立扩展 | 用 [**Xcode**](https://developer.apple.com/xcode) 打开项目 | `xcode_opener` | `JobsXcodeOpener` |
 | 独立扩展 | 用 [**Visual Studio Code**](https://code.visualstudio.com/) 打开项目，窗口写作 `VSCode` | `vscode_opener` | `JobsVSCodeOpener` |
 | 独立扩展 | 用 [**Android Studio**](https://developer.android.com/studio?hl=zh-c) 打开项目 | `android_studio_opener` | `JobsAndroidStudioOpener` |
+| 独立扩展 | 安装/切换 Flutter SDK（[**FVM**](https://fvm.app/)） | `flutter_version_manager` | `JobsFlutterVersionMgr` |
 | Terminal 内含 | 用终端打开 | `terminal_open` | `JobsTerminalOpener` |
 | Terminal 内含 | 安装/升级 Pod，操作项目 [**CocoaPods**](https://cocoapods.org/) 依赖 | `pod_install` | `JobsTerminalOpener` |
 | Terminal 内含 | 在终端执行 [**Flutter**](https://flutter.dev/) 的 `flutter pub get` | `flutter_pub_get` | `JobsTerminalOpener` |
@@ -74,7 +75,7 @@
 
 2、双击 `../【MacOS】🧩安装Finder扩展.command`，阅读终端内置自述，按回车继续。
 
-3、环境检查通过后打开选择窗口。勾选所需功能，点击“安装勾选项”；“全部安装”忽略当前勾选状态，直接返回全部 11 项；“取消”结束后续安装。
+3、环境检查通过后打开选择窗口。勾选所需功能，点击“安装勾选项”；“全部安装”忽略当前勾选状态，直接返回全部 12 项；“取消”结束后续安装。
 
 4、安装器解析结果并按工程去重，执行构建和注册，最后输出成功项、失败项和日志位置。
 
@@ -113,7 +114,7 @@
 | --- | --- | --- |
 | 安装勾选项，至少选中一项 | 按上表固定顺序输出逗号分隔的标识 | 解析、校验并安装所选工程。 |
 | 安装勾选项，全部取消勾选 | `__NONE__` | 提示未选择功能，正常退出，不执行安装。 |
-| 全部安装 | 全部 11 项标识，逗号分隔 | 安装全部七个工程。 |
+| 全部安装 | 全部 12 项标识，逗号分隔 | 安装全部八个工程。 |
 | 取消 | `__CANCELLED__` | 提示取消，正常退出，不执行安装。 |
 | `osascript` 执行失败 | 非零进程退出码 | 提示 UI 失败，按该退出码停止。 |
 | 返回空文本 | 空字符串 | 按未选择功能处理。 |

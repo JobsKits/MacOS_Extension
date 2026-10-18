@@ -3,4 +3,5 @@
 "/.jobs-markdown-toc/README.md" filter=jobs-markdown-toc
 "/README.md" filter=jobs-markdown-toc
 "/Scripts/README.md" filter=jobs-markdown-toc
+"/work/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

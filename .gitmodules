@@ -26,3 +26,7 @@
 	path = JobsXcodeOpener
 	url = ../JobsXcodeOpener.git
 	branch = main
+[submodule "JobsFlutterVersionMgr"]
+	path = JobsFlutterVersionMgr
+	url = ../JobsFlutterVersionMgr.git
+	branch = main

@@ -2,13 +2,25 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#%E5%89%8D%E8%A8%80)
+- [一、由谁生成、由谁使用](#sources)
+- [二、目录内容](#layout)
+- [三、版本控制规则](#git-ignore)
+- [四、清理与恢复](#cleanup)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
 ## 🔥 <span id="前言">前言</span>
 
-`work/` 是父仓统一安装脚本的本机构建输出目录，用于集中保存各个 [**Xcode**](https://developer.apple.com/xcode) 工程的 DerivedData：宿主 App、Finder 扩展、编译缓存、索引和构建日志。源码保存在旁边的子仓目录中。
+`work/` 是父仓统一安装脚本的本机构建输出目录，用于集中保存各个 [**Xcode**](https://developer.apple.com/xcode) 工程的 DerivedData：宿主 App、Finder 扩展、编译缓存、索引和构建日志。源码保存在旁边各工程目录中。
 
 **统一安装脚本直接注册这里的 App 和内嵌扩展。正在使用这些扩展时，删除、移动或改名对应构建目录，可能导致右键菜单或宿主调用失效。** 如需清理，先阅读[清理与恢复](#cleanup)。
 
@@ -17,7 +29,7 @@
 | 入口 | 与当前目录的关系 |
 | --- | --- |
 | [统一安装脚本](../【MacOS】🧩安装Finder扩展.command) | 按选中的功能创建 `./<项目名>DerivedData/`，将其传给 `xcodebuild -derivedDataPath`；默认构建 `Debug` 配置，再注册其中的 App 和内嵌扩展。 |
-| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 当前覆盖六个宿主，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
+| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 当前覆盖七个宿主，包含 Flutter 版本管理，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
 | [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于子仓内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
 | [源码与使用说明](../README.md) | 父仓说明安装、卸载和各子仓的用途；子仓中的源码与工程文件可重新生成构建产物。 |
 
@@ -38,6 +50,7 @@
 ./
 ├── README.md
 ├── JobsAndroidStudioOpenerDerivedData/
+├── JobsFlutterVersionMgrDerivedData/
 ├── JobsGitRemoteCopierDerivedData/
 ├── JobsGitRemoteOpenerDerivedData/
 ├── JobsPathCopierDerivedData/
