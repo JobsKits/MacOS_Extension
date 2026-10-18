@@ -34,7 +34,8 @@ typeset -gA CHILD_GIT_DIRS CHILD_MODES NEED_GITLINK NEED_ABSORB
 intro_line() {
   local role="$1" message="$2" color="0;34"
   [[ "$role" == title ]] && color="1;31"
-  if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != dumb && -z "${NO_COLOR+x}" ]]; then
+  if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != dumb && -z "${NO_COLOR+x}" &&
+        "${PLAIN_OUTPUT:-0}" != 1 && "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]]; then
     printf '\033[%sm%s\033[0m\n' "$color" "$message"
   else
     print -r -- "$message"
