@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：【MacOS】🧩安装Finder扩展.command
-# - 核心用途：用原生复选框 UI 选择并安装本目录内的 Finder Sync Extension 功能，支持全选。
+# - 核心用途：用原生复选框 UI 选择并安装本目录内的 Finder Sync Extension 功能，支持全选与全不选。
 # - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal 功能选择，并重启 Finder 刷新右键菜单。
 # - 运行提示：运行后会先打印内置自述；按回车确认后，在原生 UI 中勾选需要安装的右键菜单功能。
 
@@ -36,7 +36,8 @@ LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
 BUILD_CONFIGURATION="Debug"
 SUBMODULE_SETUP_SCRIPT_NAME="【MacOS】⏬下载配置当前Git子模块（可向下同步递归）.command"
 SUBMODULE_SETUP_SCRIPT_PATH="${WORKSPACE_DIR}/${SUBMODULE_SETUP_SCRIPT_NAME}"
-FEATURE_SELECTOR_SCRIPT_PATH="${WORKSPACE_DIR}/Scripts/SelectFinderExtensionFeatures.applescript"
+FEATURE_SELECTOR_SOURCE_PATH="${WORKSPACE_DIR}/Scripts/SelectFinderExtensionFeatures.swift"
+FEATURE_SELECTOR_BINARY_PATH="${WORKSPACE_DIR}/work/SelectFinderExtensionFeatures"
 TERMINAL_FEATURE_CONFIG_DIR=""
 TERMINAL_FEATURE_CONFIG_PATH=""
 FINAL_EXIT_STATUS=0
@@ -47,7 +48,7 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -107,6 +108,20 @@ FEATURE_APP_NAME[flutter_version_manager]="JobsFlutterVersionMgr"
 FEATURE_EXTENSION_NAME[flutter_version_manager]="JobsFlutterVersionFinderSync.appex"
 FEATURE_EXTENSION_ID[flutter_version_manager]="com.jobs.JobsFlutterVersionMgr.FinderSyncExtension"
 
+FEATURE_TITLE[git-pull]="拉取 Git 到最新"
+FEATURE_PROJECT_DIR[git-pull]="JobsGitPuller"
+FEATURE_SCHEME[git-pull]="JobsGitPuller"
+FEATURE_APP_NAME[git-pull]="JobsGitPuller"
+FEATURE_EXTENSION_NAME[git-pull]="JobsGitPullFinderSync.appex"
+FEATURE_EXTENSION_ID[git-pull]="com.jobs.JobsGitPuller.FinderSyncExtension"
+
+FEATURE_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
+FEATURE_PROJECT_DIR[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
+FEATURE_SCHEME[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
+FEATURE_APP_NAME[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
+FEATURE_EXTENSION_NAME[flutter-dependency-extract]="JobsFlutterDependencyFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter-dependency-extract]="com.jobs.JobsFlutterDependencyExtractor.FinderSync"
+
 FEATURE_TITLE[terminal_opener]="JobsTerminalOpener"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
 FEATURE_SCHEME[terminal_opener]="JobsTerminalOpener"
@@ -114,7 +129,7 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -129,6 +144,10 @@ SELECTABLE_FUNCTION_TITLE[android_studio_opener]="用 Android Studio 打开项�
 SELECTABLE_FUNCTION_PROJECT_KEY[android_studio_opener]="android_studio_opener"
 SELECTABLE_FUNCTION_TITLE[flutter_version_manager]="安装/切换 Flutter SDK（FVM）"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter_version_manager]="flutter_version_manager"
+SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
+SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="git-pull"
+SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-dependency-extract"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
 SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
@@ -232,7 +251,7 @@ show_script_intro_and_wait() {
   warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。" | jobs_intro_style body
   warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。" | jobs_intro_style body
   warn_echo "运行策略：按回车后打开原生勾选窗口；按 Ctrl+C 或窗口中的“取消”可以终止。" | jobs_intro_style body
-  gray_echo "UI 操作：逐项勾选后安装，或点击“全部安装”。" | jobs_intro_style body
+  gray_echo "UI 操作：可“全选”或“全不选”，选好后点击“安装”；未勾选时安装按钮置灰。" | jobs_intro_style body
   gray_echo "日志位置：${LOG_FILE}" | jobs_intro_style body
   highlight_echo "=======================================================================" | jobs_intro_style title
   echo "" | jobs_intro_style body
@@ -289,7 +308,7 @@ print_missing_feature_projects() {
   local key=""
   local project_file=""
 
-  error_echo "Finder 扩展子工程缺失；八个工程均由 Git 子模块提供，通常是子模块尚未同步。"
+  error_echo "Finder 扩展子工程缺失；十个工程均由 Git 子模块提供，通常是子模块尚未同步。"
   for key in "${FEATURE_KEYS[@]}"; do
     project_file="$(project_file_for_key "$key")"
     if [[ ! -d "$project_file" ]]; then
@@ -367,8 +386,8 @@ check_environment() {
     exit 1
   fi
 
-  if [[ ! -f "$FEATURE_SELECTOR_SCRIPT_PATH" ]]; then
-    error_echo "未找到 Finder 功能选择 UI：${FEATURE_SELECTOR_SCRIPT_PATH}"
+  if [[ ! -f "$FEATURE_SELECTOR_SOURCE_PATH" ]]; then
+    error_echo "未找到 Finder 功能选择 UI 源码：${FEATURE_SELECTOR_SOURCE_PATH}"
     exit 1
   fi
 
@@ -422,12 +441,30 @@ parse_feature_selection() {
   done
   TERMINAL_OPENER_ENABLED_FEATURES="${(j:,:)terminal_actions}"
 }
+# 编译功能选择窗口（源码更新后自动重编），产物缓存在 work 目录。
+build_feature_selector_if_needed() {
+  if [[ -x "$FEATURE_SELECTOR_BINARY_PATH" && ! "$FEATURE_SELECTOR_SOURCE_PATH" -nt "$FEATURE_SELECTOR_BINARY_PATH" ]]; then
+    return 0
+  fi
+
+  note_echo "正在编译功能选择窗口（首次或源码更新后会多几秒）..."
+  /bin/mkdir -p "${WORKSPACE_DIR}/work"
+  /usr/bin/xcrun swiftc -O "$FEATURE_SELECTOR_SOURCE_PATH" -o "$FEATURE_SELECTOR_BINARY_PATH" 2>&1 | tee -a "$LOG_FILE"
+  if (( ${pipestatus[1]} != 0 )); then
+    error_echo "功能选择窗口编译失败，无法继续安装。"
+    return 1
+  fi
+
+  return 0
+}
+
 # 使用原生 macOS 复选框 UI 选择本次需要安装的右键菜单功能。
 select_features_with_ui() {
   local selection_output=""
   local selector_status=0
 
-  selection_output="$(/usr/bin/osascript "$FEATURE_SELECTOR_SCRIPT_PATH")"
+  build_feature_selector_if_needed || exit 1
+  selection_output="$("$FEATURE_SELECTOR_BINARY_PATH")"
   selector_status=$?
 
   if (( selector_status != 0 )); then

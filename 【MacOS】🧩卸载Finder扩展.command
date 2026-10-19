@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager terminal_opener)
+FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -108,6 +108,24 @@ FEATURE_EXTENSION_ID[flutter_version_manager]="com.jobs.JobsFlutterVersionMgr.Fi
 FEATURE_REFRESH_MARKER[flutter_version_manager]="/tmp/JobsFlutterVersionMgrNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[flutter_version_manager]="/tmp/JobsFlutterVersionMgr.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter_version_manager]}]="flutter_version_manager"
+
+FEATURE_TITLE[git-pull]="拉取 Git 到最新"
+FEATURE_PROJECT_DIR[git-pull]="JobsGitPuller"
+FEATURE_APP_NAME[git-pull]="JobsGitPuller"
+FEATURE_EXTENSION_PROCESS_NAME[git-pull]="JobsGitPullFinderSync"
+FEATURE_EXTENSION_ID[git-pull]="com.jobs.JobsGitPuller.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[git-pull]="/tmp/JobsGitPullerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[git-pull]="/tmp/JobsGitPuller.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-pull]}]="git-pull"
+
+FEATURE_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
+FEATURE_PROJECT_DIR[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
+FEATURE_APP_NAME[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-dependency-extract]="JobsFlutterDependencyFinderSync"
+FEATURE_EXTENSION_ID[flutter-dependency-extract]="com.jobs.JobsFlutterDependencyExtractor.FinderSync"
+FEATURE_REFRESH_MARKER[flutter-dependency-extract]="/tmp/JobsFlutterDependencyExtractorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-dependency-extract]="/tmp/JobsFlutterDependencyExtractor.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-dependency-extract]}]="flutter-dependency-extract"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"

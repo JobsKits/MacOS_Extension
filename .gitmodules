@@ -30,3 +30,11 @@
 	path = JobsFlutterVersionMgr
 	url = ../JobsFlutterVersionMgr.git
 	branch = main
+[submodule "JobsGitPuller"]
+	path = JobsGitPuller
+	url = ../JobsGitPuller.git
+	branch = main
+[submodule "JobsFlutterDependencyExtractor"]
+	path = JobsFlutterDependencyExtractor
+	url = ../JobsFlutterDependencyExtractor.git
+	branch = main

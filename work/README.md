@@ -29,7 +29,7 @@
 | 入口 | 与当前目录的关系 |
 | --- | --- |
 | [统一安装脚本](../【MacOS】🧩安装Finder扩展.command) | 按选中的功能创建 `./<项目名>DerivedData/`，将其传给 `xcodebuild -derivedDataPath`；默认构建 `Debug` 配置，再注册其中的 App 和内嵌扩展。 |
-| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 当前覆盖七个宿主，包含 Flutter 版本管理，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
+| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 当前覆盖九个宿主，包含 Flutter 版本管理、依赖提取与 Git 拉取，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
 | [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于子仓内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
 | [源码与使用说明](../README.md) | 父仓说明安装、卸载和各子仓的用途；子仓中的源码与工程文件可重新生成构建产物。 |
 
@@ -50,7 +50,9 @@
 ./
 ├── README.md
 ├── JobsAndroidStudioOpenerDerivedData/
+├── JobsFlutterDependencyExtractorDerivedData/
 ├── JobsFlutterVersionMgrDerivedData/
+├── JobsGitPullerDerivedData/
 ├── JobsGitRemoteCopierDerivedData/
 ├── JobsGitRemoteOpenerDerivedData/
 ├── JobsPathCopierDerivedData/
