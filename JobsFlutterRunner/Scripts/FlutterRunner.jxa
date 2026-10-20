@@ -1,0 +1,528 @@
+//
+//  FlutterRunner.jxa
+//  JobsFlutterRunner
+//
+//  Created by Jobs on 2026年10月20日，星期二.
+//
+// 内部数据助手：解析 Flutter / simctl JSON、校验 pubspec，并生成本次 launchd 配置。
+// 仅由运行器以独立参数调用；不启动应用、不安装工具、不执行 Shell 拼接命令。
+
+ObjC.import('Foundation');
+
+// 将菜单展示字段变成单行，防止控制字符破坏 TSV 与终端显示。
+function field(value) {
+    return String(value === undefined || value === null ? '' : value)
+        .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+        .trim();
+}
+// 查询路径自身属性，保留符号链接身份供调用方拒绝。
+function attributes(path) {
+    var value = $.NSFileManager.defaultManager.attributesOfItemAtPathError($(path), null);
+    return value ? ObjC.deepUnwrap(value) : null;
+}
+// 读取 UTF-8 普通文件，限制外部清单大小且不跟随末级符号链接。
+function readText(path, limit) {
+    var info = attributes(path);
+    if (!info || info.NSFileType !== 'NSFileTypeRegular' || info.NSFileSize > limit) {
+        throw new Error('文件不可读、不是普通文件或超过大小限制：' + field(path));
+    }
+    var value = $.NSString.stringWithContentsOfFileEncodingError($(path), $.NSUTF8StringEncoding, null);
+    if (!value) {
+        throw new Error('文件不是有效 UTF-8：' + field(path));
+    }
+    return ObjC.unwrap(value);
+}
+// 将 JSON 输入错误明确传回终端，避免把解析失败伪装成无设备。
+function readJSON(path) {
+    return JSON.parse(readText(path, 16 * 1024 * 1024));
+}
+// 保留设备标识原值；非正常单行标识不能成为可执行目标。
+function identifier(value) {
+    return typeof value === 'string' && value.length > 0 && !/[\u0000-\u0020\u007f-\u009f]/.test(value)
+        ? value : null;
+}
+// 已知平台必须有项目对应平台目录，自定义设备平台保持兼容。
+function projectSupportsPlatform(project, targetPlatform) {
+    if (!project) {
+        return true;
+    }
+    var platform = String(targetPlatform || '').toLowerCase();
+    var directory = null;
+    if (/^android/.test(platform)) {
+        directory = 'android';
+    } else if (/^ios/.test(platform)) {
+        directory = 'ios';
+    } else if (/^(darwin|macos)/.test(platform)) {
+        directory = 'macos';
+    } else if (/^web/.test(platform)) {
+        directory = 'web';
+    } else if (/^linux/.test(platform)) {
+        directory = 'linux';
+    } else if (/^windows/.test(platform)) {
+        directory = 'windows';
+    }
+    if (!directory) {
+        return true;
+    }
+    var value = attributes(project.replace(/\/+$/, '') + '/' + directory);
+    return !!value && value.NSFileType === 'NSFileTypeDirectory';
+}
+// 只列出 Flutter 当前支持且项目已配置平台的真实设备，输出两列 TSV。
+function devices(path, project) {
+    var values = readJSON(path);
+    if (!Array.isArray(values)) {
+        throw new Error('Flutter 设备响应必须是数组。');
+    }
+    var seen = Object.create(null);
+    return values.filter(function (value) {
+        if (!value || value.supported === false || value.isSupported === false || !identifier(value.id) || seen[value.id]
+            || !projectSupportsPlatform(project, value.targetPlatform || value.platform)) {
+            return false;
+        }
+        seen[value.id] = true;
+        return true;
+    }).map(function (value) {
+        var platform = field(value.targetPlatform || value.platform || value.category || '平台未知');
+        return value.id + '\t' + field(value.name || value.id) + ' — ' + platform;
+    }).join('\n');
+}
+// 兼容外部提供的官方 daemon emulator 结果数组，只列出已有 Android AVD。
+function emulators(path) {
+    var values = readJSON(path);
+    if (!Array.isArray(values)) {
+        throw new Error('模拟器响应必须是数组。');
+    }
+    var seen = Object.create(null);
+    return values.filter(function (value) {
+        if (!value || String(value.platformType || '').toLowerCase() !== 'android'
+            || !identifier(value.id) || seen[value.id]) {
+            return false;
+        }
+        seen[value.id] = true;
+        return true;
+    }).map(function (value) {
+        return value.id + '\t' + field(value.name || value.id) + ' — Android';
+    }).join('\n');
+}
+// 兼容 simctl 现行布尔标志与旧版 availability 描述。
+function available(value) {
+    if (typeof value.isAvailable === 'boolean') {
+        return value.isAvailable;
+    }
+    return typeof value.availability === 'string' && /\bavailable\b/i.test(value.availability)
+        && !/unavailable/i.test(value.availability);
+}
+// 验证 simctl 总清单结构，拒绝损坏的运行时 / 设备容器。
+function simulatorData(path) {
+    var value = readJSON(path);
+    if (!value || !Array.isArray(value.runtimes) || !Array.isArray(value.devicetypes)
+        || !value.devices || Array.isArray(value.devices) || typeof value.devices !== 'object') {
+        throw new Error('simctl 响应缺少 runtimes、devicetypes 或 devices。');
+    }
+    return value;
+}
+// 只接受安装且可用的 iOS runtime，按版本从新到旧列出。
+function iosRuntimes(data) {
+    return data.runtimes.filter(function (value) {
+        return value && identifier(value.identifier) && available(value)
+            && /^com\.apple\.CoreSimulator\.SimRuntime\.iOS[-.]/.test(value.identifier);
+    }).sort(function (left, right) {
+        var a = String(left.version || '').split('.').map(Number);
+        var b = String(right.version || '').split('.').map(Number);
+        for (var index = 0; index < Math.max(a.length, b.length); index += 1) {
+            var difference = (b[index] || 0) - (a[index] || 0);
+            if (difference) {
+                return difference;
+            }
+        }
+        return field(left.identifier).localeCompare(field(right.identifier));
+    });
+}
+// 列出 iOS runtime 中可用模拟器，运行中的设备优先显示。
+function simulators(path) {
+    var data = simulatorData(path);
+    var rows = [];
+    var seen = Object.create(null);
+    iosRuntimes(data).forEach(function (runtime) {
+        var values = data.devices[runtime.identifier];
+        if (!Array.isArray(values)) {
+            return;
+        }
+        values.forEach(function (value) {
+            if (!value || !available(value) || !identifier(value.udid) || seen[value.udid]) {
+                return;
+            }
+            seen[value.udid] = true;
+            rows.push({ id: value.udid, state: value.state, display: field(value.name || value.udid)
+                + ' — ' + field(value.state || '状态未知') + ' — ' + field(runtime.name || runtime.identifier) });
+        });
+    });
+    rows.sort(function (left, right) {
+        return Number(right.state === 'Booted') - Number(left.state === 'Booted');
+    });
+    return rows.map(function (value) { return value.id + '\t' + value.display; }).join('\n');
+}
+// 将创建模拟器可用的 iOS runtime 输出为两列 TSV。
+function runtimes(path) {
+    var seen = Object.create(null);
+    return iosRuntimes(simulatorData(path)).filter(function (value) {
+        var key = field(value.version) + '\t' + field(value.name || value.identifier);
+        if (seen[key]) {
+            return false;
+        }
+        seen[key] = true;
+        return true;
+    }).map(function (value) {
+        return value.identifier + '\t' + field(value.name || value.identifier);
+    }).join('\n');
+}
+// 仅列出 iPhone 机型，避免误建成 watchOS / tvOS 设备。
+function deviceTypes(path) {
+    var seen = Object.create(null);
+    return simulatorData(path).devicetypes.filter(function (value) {
+        if (!value || !identifier(value.identifier) || seen[value.identifier]
+            || !(value.productFamily === 'iPhone' || /^iPhone(?:\s|$)/.test(String(value.name || '')))) {
+            return false;
+        }
+        seen[value.identifier] = true;
+        return true;
+    }).map(function (value) {
+        return value.identifier + '\t' + field(value.name || value.identifier);
+    }).join('\n');
+}
+// 在引号与 flow 容器之外寻找分隔符，注释符还须位于空白之后。
+function delimiter(source, character, comments) {
+    var quote = null;
+    var depth = 0;
+    var escaped = false;
+    for (var index = 0; index < source.length; index += 1) {
+        var current = source[index];
+        if (quote) {
+            if (quote === '"' && current === '\\' && !escaped) {
+                escaped = true;
+                continue;
+            }
+            if (current === quote && !escaped) {
+                if (quote === "'" && source[index + 1] === "'") {
+                    index += 1;
+                    continue;
+                }
+                quote = null;
+            }
+            escaped = false;
+        } else if (current === '"' || current === "'") {
+            quote = current;
+        } else if (current === character && depth === 0) {
+            if (!comments || index === 0 || /\s/.test(source[index - 1])) {
+                return index;
+            }
+        } else if (current === '{' || current === '[') {
+            depth += 1;
+        } else if (current === '}' || current === ']') {
+            depth -= 1;
+        }
+    }
+    return -1;
+}
+// 仅解析保守的单行标量，拒绝锚点、标签与块字符串。
+function scalar(source) {
+    source = source.trim();
+    if (!source) {
+        return null;
+    }
+    if (source[0] === '"') {
+        try {
+            var value = JSON.parse(source);
+            return typeof value === 'string' ? value : null;
+        } catch (_) {
+            return null;
+        }
+    }
+    if (source[0] === "'") {
+        if (source.length < 2 || source[source.length - 1] !== "'") {
+            return null;
+        }
+        var body = source.slice(1, -1);
+        return body.replace(/''/g, '').indexOf("'") < 0 ? body.replace(/''/g, "'") : null;
+    }
+    return /[{}\[\],:#&*!|>"']/.test(source) ? null : source;
+}
+// 从映射行分离键值，忽略引号或 flow 数据内部的冒号与注释。
+function mappingPair(source) {
+    var hash = delimiter(source, '#', true);
+    var clean = hash >= 0 ? source.slice(0, hash).trim() : source;
+    var colon = delimiter(clean, ':', false);
+    if (colon < 0) {
+        return null;
+    }
+    var key = scalar(clean.slice(0, colon));
+    return key ? { key: key, value: clean.slice(colon + 1).trim() } : null;
+}
+// 解析单行 flow 映射，遇到重复键或空值立即拒绝。
+function flowMapping(source) {
+    source = source.trim();
+    if (source[0] !== '{' || source[source.length - 1] !== '}') {
+        return null;
+    }
+    var remaining = source.slice(1, -1).trim();
+    var result = Object.create(null);
+    while (remaining) {
+        var comma = delimiter(remaining, ',', false);
+        var part = comma >= 0 ? remaining.slice(0, comma) : remaining;
+        var pair = mappingPair(part);
+        if (!pair || Object.prototype.hasOwnProperty.call(result, pair.key) || !pair.value) {
+            return null;
+        }
+        result[pair.key] = pair.value;
+        if (comma < 0) {
+            break;
+        }
+        remaining = remaining.slice(comma + 1).trim();
+    }
+    return result;
+}
+// 保持与 Finder 的 Swift validator 相同的块映射 / 单行 flow 识别边界。
+function declaresFlutterSDK(text) {
+    if (text.indexOf('\u0000') >= 0) {
+        return false;
+    }
+    var entries = [];
+    var lines = text.replace(/\r\n/g, '\n').split('\n');
+    for (var index = 0; index < lines.length; index += 1) {
+        var line = lines[index].replace(/^\uFEFF/, '');
+        var trimmed = line.trim();
+        if (!trimmed || trimmed[0] === '#') {
+            continue;
+        }
+        if (trimmed === '---' || trimmed === '...' || /^\s*/.exec(line)[0].indexOf('\t') >= 0) {
+            return false;
+        }
+        var indent = /^ */.exec(line)[0].length;
+        var pair = mappingPair(line.slice(indent));
+        entries.push({ indent: indent, key: pair ? pair.key : '', value: pair ? pair.value : '' });
+    }
+    var roots = entries.filter(function (entry) { return entry.indent === 0 && entry.key === 'dependencies'; });
+    if (roots.length !== 1) {
+        return false;
+    }
+    var root = roots[0];
+    var map;
+    if (root.value) {
+        var dependencies = flowMapping(root.value);
+        map = dependencies && dependencies.flutter ? flowMapping(dependencies.flutter) : null;
+        return !!map && scalar(map.sdk || '') === 'flutter';
+    }
+    var rootIndex = entries.indexOf(root);
+    var end = rootIndex + 1;
+    while (end < entries.length && entries[end].indent > 0) {
+        end += 1;
+    }
+    var children = entries.slice(rootIndex + 1, end);
+    if (!children.length) {
+        return false;
+    }
+    var dependencyIndent = Math.min.apply(null, children.map(function (entry) { return entry.indent; }));
+    var flutterEntries = children.filter(function (entry) {
+        return entry.indent === dependencyIndent && entry.key === 'flutter';
+    });
+    if (dependencyIndent <= 0 || flutterEntries.length !== 1) {
+        return false;
+    }
+    var flutter = flutterEntries[0];
+    if (flutter.value) {
+        map = flowMapping(flutter.value);
+        return !!map && scalar(map.sdk || '') === 'flutter';
+    }
+    var flutterIndex = children.indexOf(flutter);
+    var flutterEnd = flutterIndex + 1;
+    while (flutterEnd < children.length && children[flutterEnd].indent > dependencyIndent) {
+        flutterEnd += 1;
+    }
+    var fields = children.slice(flutterIndex + 1, flutterEnd);
+    if (!fields.length) {
+        return false;
+    }
+    var sdkIndent = Math.min.apply(null, fields.map(function (entry) { return entry.indent; }));
+    var sdkFields = fields.filter(function (entry) { return entry.indent === sdkIndent && entry.key === 'sdk'; });
+    return sdkIndent > dependencyIndent && sdkFields.length === 1 && scalar(sdkFields[0].value) === 'flutter';
+}
+// 只校验用户选中的真实目录及直属 pubspec，不递归、不读取链接目标。
+function validate(project) {
+    try {
+        project = project.replace(/\/+$/, '') || '/';
+        var info = attributes(project);
+        if (!info || info.NSFileType !== 'NSFileTypeDirectory') {
+            return false;
+        }
+        var values = ObjC.deepUnwrap($.NSURL.fileURLWithPath($(project)).resourceValuesForKeysError(
+            $([$.NSURLIsPackageKey, $.NSURLIsAliasFileKey]), null));
+        if (!values || values.NSURLIsPackageKey || values.NSURLIsAliasFileKey) {
+            return false;
+        }
+        return declaresFlutterSDK(readText(project + '/pubspec.yaml', 1024 * 1024));
+    } catch (_) {
+        return false;
+    }
+}
+// 仅继承 Flutter 与平台工具需要的已授权进程环境，不转储其它变量。
+function launchEnvironment() {
+    var sourceEnvironment = ObjC.deepUnwrap($.NSProcessInfo.processInfo.environment);
+    var environment = {};
+    var keys = ['PATH', 'HOME', 'TMPDIR', 'DEVELOPER_DIR', 'ANDROID_HOME', 'ANDROID_SDK_ROOT',
+        'ANDROID_AVD_HOME', 'ANDROID_USER_HOME', 'ANDROID_EMULATOR_HOME', 'JAVA_HOME',
+        'PUB_CACHE', 'PUB_HOSTED_URL', 'FLUTTER_STORAGE_BASE_URL', 'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NO_PROXY',
+        'https_proxy', 'http_proxy', 'all_proxy', 'no_proxy'];
+    keys.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(sourceEnvironment, key)) {
+            environment[key] = sourceEnvironment[key];
+        }
+    });
+    return environment;
+}
+// 验证当前会话与 label 后原子写入 plist，保护环境字段与路径边界。
+function writeLaunchPlist(session, label, plist) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(label)) {
+        throw new Error('launchd label 无效。');
+    }
+    var sessionInfo = attributes(session);
+    if (!sessionInfo || sessionInfo.NSFileType !== 'NSFileTypeDirectory') {
+        throw new Error('launchd 会话目录无效。');
+    }
+    var destination = session + '/job.plist';
+    var existing = attributes(destination);
+    if (existing && existing.NSFileType !== 'NSFileTypeRegular') {
+        throw new Error('拒绝覆盖非普通 job.plist。');
+    }
+    var data = $.NSPropertyListSerialization.dataWithPropertyListFormatOptionsError(
+        $(plist), $.NSPropertyListXMLFormat_v1_0, 0, null);
+    if (!data || !data.writeToFileAtomically($(destination), true)) {
+        throw new Error('无法写入 launchd plist。');
+    }
+    if (!$.NSFileManager.defaultManager.setAttributesOfItemAtPathError(
+        $({ NSFilePosixPermissions: 384 }), $(destination), null)) {
+        throw new Error('无法限制 launchd plist 权限。');
+    }
+    return destination;
+}
+// 所有 launchd 路径都作为独立参数，禁止相对路径和 NUL 字节。
+function validateLaunchPaths(paths) {
+    paths.forEach(function (path) {
+        if (typeof path !== 'string' || path[0] !== '/' || path.indexOf('\u0000') >= 0) {
+            throw new Error('launchd 路径必须是绝对路径。');
+        }
+    });
+}
+// 生成独立 Flutter worker 配置，终端退出不会向其传递 EOF 或 HUP。
+function writePlist(args) {
+    var session = args[0];
+    var label = args[1];
+    var worker = args[2];
+    var project = args[3];
+    var flutter = args[4];
+    var device = args[5];
+    validateLaunchPaths([session, worker, project, flutter]);
+    var workerInfo = attributes(worker);
+    if (!workerInfo || workerInfo.NSFileType !== 'NSFileTypeRegular' || !validate(project) || !identifier(device)) {
+        throw new Error('launchd 运行器、Flutter 项目或设备无效。');
+    }
+    return writeLaunchPlist(session, label, {
+        Label: label,
+        ProgramArguments: ['/bin/zsh', worker, '--worker', session, project, flutter, device],
+        WorkingDirectory: project,
+        RunAtLoad: true,
+        KeepAlive: false,
+        StandardOutPath: session + '/run.log',
+        StandardErrorPath: session + '/run.log',
+        EnvironmentVariables: launchEnvironment(),
+        ExitTimeOut: 20,
+        ProcessType: 'Interactive'
+    });
+}
+// 直接托管 SDK emulator 主进程，AVD 生命周期独立于 Flutter 调试会话。
+function writeEmulatorPlist(args) {
+    var session = args[0];
+    var label = args[1];
+    var emulator = args[2];
+    var avdID = args[3];
+    validateLaunchPaths([session, emulator]);
+    var emulatorInfo = attributes(emulator);
+    if (!emulatorInfo || emulatorInfo.NSFileType !== 'NSFileTypeRegular' || !identifier(avdID)
+        || !$.NSFileManager.defaultManager.isExecutableFileAtPath($(emulator))) {
+        throw new Error('Android emulator 可执行文件或 AVD 标识无效。');
+    }
+    var directory = ObjC.unwrap($(emulator).stringByDeletingLastPathComponent);
+    return writeLaunchPlist(session, label, {
+        Label: label,
+        ProgramArguments: [emulator, '-avd', avdID],
+        WorkingDirectory: directory,
+        RunAtLoad: true,
+        KeepAlive: false,
+        StandardOutPath: session + '/emulator.log',
+        StandardErrorPath: session + '/emulator.log',
+        EnvironmentVariables: launchEnvironment(),
+        ExitTimeOut: 20,
+        ProcessType: 'Interactive'
+    });
+}
+// 从 Flutter machine 日志取得最近一次 app.start，生成 daemon 控制消息。
+function daemonCommand(path, operation) {
+    if (['reload', 'restart', 'stop'].indexOf(operation) < 0) {
+        throw new Error('未知 Flutter 控制操作。');
+    }
+    var appID = null;
+    readText(path, 512 * 1024 * 1024).split(/\r?\n/).forEach(function (line) {
+        try {
+            var values = JSON.parse(line);
+            (Array.isArray(values) ? values : [values]).forEach(function (value) {
+                if (value && value.event === 'app.start' && value.params && typeof value.params.appId === 'string'
+                    && value.params.appId.length && !/[\u0000-\u001f\u007f-\u009f]/.test(value.params.appId)) {
+                    appID = value.params.appId;
+                }
+            });
+        } catch (_) {
+            // Flutter 与构建工具的非 JSON 行保留在原始日志，由终端直接展示。
+        }
+    });
+    if (!appID) {
+        throw new Error('Flutter 尚未返回 app.start，暂时无法控制应用。');
+    }
+    var params = { appId: appID };
+    if (operation !== 'stop') {
+        params.fullRestart = operation === 'restart';
+        params.pause = false;
+    }
+    return JSON.stringify([{ id: Date.now(), method: operation === 'stop' ? 'app.stop' : 'app.restart', params: params }]);
+}
+// 严格分发内部协议，参数数量错误时直接失败。
+function run(argv) {
+    var mode = argv[0];
+    var args = argv.slice(1);
+    if (mode === 'validate' && args.length === 1) {
+        return validate(args[0]) ? 'true' : 'false';
+    }
+    if (mode === 'devices' && (args.length === 1 || args.length === 2)) {
+        return devices(args[0], args[1]);
+    }
+    if (mode === 'emulators' && args.length === 1) {
+        return emulators(args[0]);
+    }
+    if (mode === 'simulators' && args.length === 1) {
+        return simulators(args[0]);
+    }
+    if (mode === 'runtimes' && args.length === 1) {
+        return runtimes(args[0]);
+    }
+    if (mode === 'types' && args.length === 1) {
+        return deviceTypes(args[0]);
+    }
+    if (mode === 'plist' && args.length === 6) {
+        return writePlist(args);
+    }
+    if (mode === 'emulator-plist' && args.length === 4) {
+        return writeEmulatorPlist(args);
+    }
+    if (mode === 'command' && args.length === 2) {
+        return daemonCommand(args[0], args[1]);
+    }
+    throw new Error('FlutterRunner 数据助手参数无效。');
+}

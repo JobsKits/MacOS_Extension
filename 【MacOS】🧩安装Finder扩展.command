@@ -34,8 +34,6 @@ WORKSPACE_DIR="${SCRIPT_DIR}"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
 BUILD_CONFIGURATION="Debug"
-SUBMODULE_SETUP_SCRIPT_NAME="【MacOS】⏬下载配置当前Git子模块（可向下同步递归）.command"
-SUBMODULE_SETUP_SCRIPT_PATH="${WORKSPACE_DIR}/${SUBMODULE_SETUP_SCRIPT_NAME}"
 FEATURE_SELECTOR_SOURCE_PATH="${WORKSPACE_DIR}/Scripts/SelectFinderExtensionFeatures.swift"
 FEATURE_SELECTOR_BINARY_PATH="${WORKSPACE_DIR}/work/SelectFinderExtensionFeatures"
 TERMINAL_FEATURE_CONFIG_DIR=""
@@ -48,11 +46,12 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
 typeset -A FEATURE_APP_NAME
+typeset -A FEATURE_APP_ID
 typeset -A FEATURE_EXTENSION_NAME
 typeset -A FEATURE_EXTENSION_ID
 typeset -A SELECTABLE_FUNCTION_TITLE
@@ -122,6 +121,21 @@ FEATURE_APP_NAME[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
 FEATURE_EXTENSION_NAME[flutter-dependency-extract]="JobsFlutterDependencyFinderSync.appex"
 FEATURE_EXTENSION_ID[flutter-dependency-extract]="com.jobs.JobsFlutterDependencyExtractor.FinderSync"
 
+FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
+FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
+FEATURE_SCHEME[flutter-run]="JobsFlutterRunner"
+FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
+FEATURE_EXTENSION_NAME[flutter-run]="JobsFlutterRunFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter-run]="com.jobs.JobsFlutterRunner.FinderSyncExtension"
+
+FEATURE_TITLE[ios-simulator-create]="新建 iOS 模拟器"
+FEATURE_PROJECT_DIR[ios-simulator-create]="JobsIOSSimulatorCreator"
+FEATURE_SCHEME[ios-simulator-create]="JobsIOSSimulatorCreator"
+FEATURE_APP_NAME[ios-simulator-create]="JobsIOSSimulatorCreator"
+FEATURE_APP_ID[ios-simulator-create]="com.jobs.iossimulatorcreator"
+FEATURE_EXTENSION_NAME[ios-simulator-create]="JobsIOSSimulatorFinderSync.appex"
+FEATURE_EXTENSION_ID[ios-simulator-create]="com.jobs.iossimulatorcreator.findersync"
+
 FEATURE_TITLE[terminal_opener]="JobsTerminalOpener"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
 FEATURE_SCHEME[terminal_opener]="JobsTerminalOpener"
@@ -129,7 +143,7 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -148,10 +162,14 @@ SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="git-pull"
 SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-dependency-extract"
+SELECTABLE_FUNCTION_TITLE[flutter-run]="运行 Flutter 项目"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-run]="flutter-run"
+SELECTABLE_FUNCTION_TITLE[ios-simulator-create]="新建 iOS 模拟器"
+SELECTABLE_FUNCTION_PROJECT_KEY[ios-simulator-create]="ios-simulator-create"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
 SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
-SELECTABLE_FUNCTION_TITLE[pod_install]="安装/升级 Pod"
+SELECTABLE_FUNCTION_TITLE[pod_install]="pod install"
 SELECTABLE_FUNCTION_PROJECT_KEY[pod_install]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[pod_install]="pod-install"
 SELECTABLE_FUNCTION_TITLE[flutter_pub_get]="在终端执行 flutter pub get"
@@ -245,7 +263,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 12 项；JobsTerminalOpener 内含 5 项，可分别勾选。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#SELECTABLE_FUNCTION_IDS[@]} 项；JobsTerminalOpener 内含 5 项，可分别勾选。" | jobs_intro_style body
   warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。" | jobs_intro_style body
   warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会保存 JobsTerminalOpener 的功能选择，之后也可在 App 内修改。" | jobs_intro_style body
@@ -291,68 +309,38 @@ project_file_for_key() {
 
   print -r -- "${WORKSPACE_DIR}/${FEATURE_PROJECT_DIR[$key]}/${FEATURE_PROJECT_DIR[$key]}.xcodeproj"
 }
-# 判断 Finder 扩展子工程是否已经全部存在。
+# 判断本仓全部 Finder 扩展工程的配置文件是否齐全。
 feature_projects_ready() {
   local key=""
   local project_file=""
 
   for key in "${FEATURE_KEYS[@]}"; do
     project_file="$(project_file_for_key "$key")"
-    [[ ! -d "$project_file" ]] && return 1
+    [[ ! -f "${project_file}/project.pbxproj" ]] && return 1
   done
 
   return 0
 }
-# 输出当前缺失的 Finder 扩展子工程，便于定位子模块同步状态。
+# 输出缺失的本仓工程配置和完整源码取得方式。
 print_missing_feature_projects() {
   local key=""
   local project_file=""
 
-  error_echo "Finder 扩展子工程缺失；十个工程均由 Git 子模块提供，通常是子模块尚未同步。"
+  error_echo "Finder 扩展工程源码不完整；${#FEATURE_KEYS[@]} 个工程均随当前仓库统一管理。"
   for key in "${FEATURE_KEYS[@]}"; do
     project_file="$(project_file_for_key "$key")"
-    if [[ ! -d "$project_file" ]]; then
-      gray_echo "- ${FEATURE_TITLE[$key]}：${project_file}"
+    if [[ ! -f "${project_file}/project.pbxproj" ]]; then
+      gray_echo "- ${FEATURE_TITLE[$key]}：${project_file}/project.pbxproj"
     fi
   done
+  error_echo "请重新取得包含全部工程源码的完整 MacOS@Extension 仓库后重试。"
 }
-# 运行同目录的 Git 子模块下载配置脚本。
-run_submodule_setup_script() {
-  local setup_status=0
-
-  if [[ ! -f "$SUBMODULE_SETUP_SCRIPT_PATH" ]]; then
-    error_echo "未找到子模块下载脚本：${SUBMODULE_SETUP_SCRIPT_PATH}"
-    exit 1
-  fi
-
-  note_echo "即将拉起子模块下载脚本：${SUBMODULE_SETUP_SCRIPT_PATH}"
-  /bin/zsh "$SUBMODULE_SETUP_SCRIPT_PATH"
-  setup_status=$?
-  if (( setup_status != 0 )); then
-    error_echo "子模块下载脚本执行失败，退出码：${setup_status}"
-    exit "$setup_status"
-  fi
-}
-# 子模块同步结束后复检工程；通过后重新进入当前安装脚本。
-restart_current_script_after_submodule_setup() {
-  if feature_projects_ready; then
-    success_echo "Finder 扩展子工程已补齐，重新进入安装脚本。"
-    exec /bin/zsh "$SCRIPT_PATH" "$@"
-    error_echo "重新执行安装脚本失败：${SCRIPT_PATH}"
-    exit 1
-  fi
-
-  error_echo "子模块下载脚本已结束，但 Finder 扩展子工程仍然缺失。"
-  print_missing_feature_projects
-  exit 1
-}
-# 缺少子工程时先同步 Git 子模块，再回到当前安装流程。
-ensure_feature_projects_or_bootstrap_submodules() {
+# 缺少工程配置时停止安装，避免使用不完整的仓库源码。
+ensure_feature_projects_exist() {
   feature_projects_ready && return 0
 
   print_missing_feature_projects
-  run_submodule_setup_script
-  restart_current_script_after_submodule_setup "$@"
+  return 1
 }
 # 检查系统命令、MacOS 环境和工程结构是否满足安装要求。
 check_environment() {
@@ -391,7 +379,7 @@ check_environment() {
     exit 1
   fi
 
-  ensure_feature_projects_or_bootstrap_submodules "$@"
+  ensure_feature_projects_exist || exit 1
 }
 # 去重追加一个待安装功能。
 append_selected_key_if_needed() {
@@ -566,7 +554,7 @@ build_feature() {
   success_echo "构建完成：${FEATURE_TITLE[$key]}"
   return 0
 }
-# 查询 Finder Sync 扩展当前注册状态。
+# 只查询当前产物的注册状态，旧路径已启用不能代替本次安装成功。
 status_line_for_extension() {
   local extension_id="$1"
   local extension_path="$2"
@@ -574,13 +562,14 @@ status_line_for_extension() {
   local current_line=""
 
   lines="$(/usr/bin/pluginkit -m -p com.apple.FinderSync -A -v 2>/dev/null | /usr/bin/grep -F "$extension_id" || true)"
-  current_line="$(print -r -- "$lines" | /usr/bin/grep -F "$extension_path" | /usr/bin/head -n 1 || true)"
-  if [[ -n "$current_line" ]]; then
-    print -r -- "$current_line"
-    return 0
-  fi
+  while IFS= read -r current_line; do
+    if [[ "$current_line" == *[[:space:]]"$extension_path" ]]; then
+      print -r -- "$current_line"
+      return 0
+    fi
+  done <<< "$lines"
 
-  print -r -- "$lines" | /usr/bin/head -n 1
+  return 1
 }
 # 等待 pluginkit 完成异步登记并进入启用状态。
 wait_until_extension_enabled() {
@@ -614,10 +603,16 @@ append_unique_path_if_needed() {
   done
   REGISTERED_PATHS+=("$candidate_path")
 }
+# 返回宿主 Bundle ID，保留旧功能按产品名推导的兼容规则。
+app_bundle_id_for_key() {
+  local key="$1"
+
+  print -r -- "${FEATURE_APP_ID[$key]:-com.jobs.${FEATURE_APP_NAME[$key]}}"
+}
 # 从 LaunchServices / PlugInKit 里收集当前功能可能残留的注册路径。
 collect_registered_paths_for_feature() {
   local key="$1"
-  local app_id="com.jobs.${FEATURE_APP_NAME[$key]}"
+  local app_id="$(app_bundle_id_for_key "$key")"
   local extension_id="${FEATURE_EXTENSION_ID[$key]}"
   local extension_name="${FEATURE_EXTENSION_NAME[$key]}"
   local lsregister=""
@@ -726,6 +721,17 @@ register_app_with_launchservices() {
 
   return 0
 }
+# 后台启动宿主完成初始化，新模拟器宿主只接受显式初始化参数。
+open_host_for_extension_registration() {
+  local key="$1"
+  local app_path="$2"
+  local open_arguments=(-gj "$app_path")
+
+  if [[ "$key" == "ios-simulator-create" ]]; then
+    open_arguments+=(--args --initialize-finder-extension)
+  fi
+  /usr/bin/open "${open_arguments[@]}"
+}
 # 注册并启用构建产物中的 Finder Sync Extension。
 register_and_enable_feature() {
   local key="$1"
@@ -773,7 +779,7 @@ register_and_enable_feature() {
   fi
 
   warn_echo "扩展尚未进入启用状态，尝试后台启动宿主 App 完成自注册。"
-  /usr/bin/open -gj "$app_path" 2>&1 | tee -a "$LOG_FILE" || true
+  open_host_for_extension_registration "$key" "$app_path" 2>&1 | tee -a "$LOG_FILE" || true
   /bin/sleep 2
   /usr/bin/pluginkit -e use -i "$extension_id" 2>&1 | tee -a "$LOG_FILE" || true
 
@@ -881,7 +887,7 @@ print_done_tips() {
 main() {
   show_script_intro_and_wait # 展示安装用途和影响范围，按回车后进入选择流程。
   init_runtime # 用户确认后初始化日志和 zsh 运行选项。
-  check_environment "$@" # 检查原生 UI、xcodebuild、pluginkit 和工程结构；缺子工程时先同步子模块。
+  check_environment # 检查原生 UI、xcodebuild、pluginkit 和本仓工程配置，缺失时停止安装。
   select_features_with_ui # 使用原生复选框 UI 选择每个 Finder 右键菜单功能。
   print_selected_features # 输出已选择功能，方便安装日志追踪。
   install_selected_features # 逐个构建、注册并启用选中的 Finder Sync Extension。

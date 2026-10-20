@@ -1,4 +1,4 @@
-# Markdown 动态目录过滤器
+# [**Markdown**](https://markdown.cn) 动态目录过滤器
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
@@ -24,13 +24,25 @@
 
 本目录保存当前仓库的目录过滤器和受控文档清单。本地使用 [**Typora**](https://typora.io/) 编辑时保留 `[toc]`；正常整文件暂存文档时，由 [**Git**](https://git-scm.com/docs/gitattributes#_filter) 自动生成默认收起的目录，检出后恢复标签。正文标题变化无需手工刷新目录。
 
+`MacOS@Extension` 的扩展工程是同一仓库中的普通源码目录；本工具按 `manifest.json` 精确管理根目录与各工程含目录标签的文档。工程目录内不再单独安装过滤器；从本目录运行以下命令即可覆盖完整清单。
+
 ## 一、<span id="files">文件职责</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 文件 | 职责 |
 | --- | --- |
 | [MarkdownToc.mjs](./MarkdownToc.mjs) | 自包含转换、安装、验证与卸载入口。 |
-| `manifest.json` | 仓库根相对路径清单；仅这些含有效目录标签的文档接入。 |
+| [manifest.json](./manifest.json) | 仓库根相对路径清单；仅这些含有效目录标签的文档接入。 |
 | `README.md` | 本目录用途、命令与维护边界。 |
+
+复用时，将上述三件套部署到目标仓库根目录的 `.jobs-markdown-toc/`。模板清单只登记随包提供、含有效 `[toc]` 的 `.jobs-markdown-toc/README.md`；目标仓库的其它文档在核实标签、所有权和 Git 归属后增量加入 `files`，已有清单内容须保留。下文命令均在目标仓库部署后的工具目录执行。
+
+手动接入时，先把清单中的精确路径增量登记到目标仓库根 `.gitattributes`；仅使用默认模板清单时，对应受控块如下。已有受控块在原位补齐，保留其它属性；新增文档须同步追加对应的精确路径，含空格或特殊字符的路径按 Git 属性语法转义。
+
+```gitattributes
+# jobs-markdown-toc:start
+"/.jobs-markdown-toc/README.md" filter=jobs-markdown-toc
+# jobs-markdown-toc:end
+```
 
 需要 [**Node.js**](https://nodejs.org/) 20 或更新版本以及 Git，不需要 npm 安装依赖。每个仓库自带完整工具，不依赖其它项目或本机 Skills 目录。清单内路径以仓库根定位；命令从本目录执行也能定位到正确仓库。
 
@@ -97,4 +109,4 @@ node ./MarkdownToc.mjs uninstall
 
 折叠语法依据 [**GitHub 官方文档**](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-collapsed-sections)及 [**GitLab 官方文档**](https://docs.gitlab.com/user/markdown/#collapsible-section)；[**Gitee**](https://gitee.com)和自建服务需按实际渲染效果验收，不能将本地预览当作所有平台已验证。
 
-<a id="🔚" href="#前言">我是有底线的➤点我回到首页</a>
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

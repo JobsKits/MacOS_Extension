@@ -39,3 +39,4 @@ CompilationCache.noindex/
 # Repo-local generated output
 /work/*
 !/work/README.md
+/Jobs*/work/

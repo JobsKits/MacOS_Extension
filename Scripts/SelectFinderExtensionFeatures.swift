@@ -26,12 +26,14 @@ struct FeatureOption {
         FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
         FeatureOption(identifier: "flutter_version_manager", title: "安装/切换 Flutter SDK（FVM）"),
         FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
-        FeatureOption(identifier: "flutter-dependency-extract", title: "提取 Flutter 第三方依赖")
+        FeatureOption(identifier: "flutter-dependency-extract", title: "提取 Flutter 第三方依赖"),
+        FeatureOption(identifier: "flutter-run", title: "运行 Flutter 项目"),
+        FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器")
     ]
 
     static let terminal: [FeatureOption] = [
         FeatureOption(identifier: "terminal_open", title: "用终端打开"),
-        FeatureOption(identifier: "pod_install", title: "安装/升级 Pod"),
+        FeatureOption(identifier: "pod_install", title: "pod install"),
         FeatureOption(identifier: "flutter_pub_get", title: "在终端执行 flutter pub get"),
         FeatureOption(identifier: "codegraph_bootstrap", title: "更新代码地图（.codegraph）"),
         FeatureOption(identifier: "git_empty_commit_push", title: "在终端创建空白 Commit 并 Push")

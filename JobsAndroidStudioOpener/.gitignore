@@ -1,0 +1,11 @@
+# Local Xcode state and generated output
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*DerivedData/
+build/
+Build/
+work/
+*.app/
+*.appex/

@@ -26,7 +26,7 @@
 
 本目录维护总安装器使用的 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 功能选择窗口。选择器用 [**Swift**](https://www.swift.org/) 调用 [**AppKit**](https://developer.apple.com/documentation/appkit) 创建复选框窗口，只向调用方返回选择结果；构建、注册、启用扩展和保存 Terminal 功能配置由[根目录安装器](../【MacOS】🧩安装Finder扩展.command)负责。
 
-**当前为 14 项功能、10 个工程。每次打开窗口时，全部复选框默认选中；可点击“全不选”一键取消全部，也可以“全选”恢复。没有任何勾选时，“安装”按钮自动置灰，重新勾选后实时恢复。全部选项和底部按钮固定显示，中间区域不滚动；窗口按内容确定尺寸，较矮屏幕使用两列布局。** 本目录是父仓维护的支持目录，仓库关系与安装环境见[父仓 README](../README.md)。
+**当前为 16 项功能、12 个工程。每次打开窗口时，全部复选框默认选中；可点击“全不选”一键取消全部，也可以“全选”恢复。没有任何勾选时，“安装”按钮自动置灰，重新勾选后实时恢复。全部选项和底部按钮固定显示，中间区域不滚动；窗口按内容确定尺寸，较矮屏幕使用两列布局。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
@@ -42,13 +42,13 @@
 | --- | --- |
 | [选择器源码](./SelectFinderExtensionFeatures.swift) | Jobs 手写支持工具，创建两组复选框，提供“全选”“全不选”快捷操作，按固定顺序返回功能标识；不接受业务参数，不生成或保存配置。 |
 | [根目录安装器](../【MacOS】🧩安装Finder扩展.command) | 编译（带缓存）并运行选择器，解析功能标识、校验未知值、按工程去重，再执行安装。 |
-| [根目录卸载器](../【MacOS】🧩卸载Finder扩展.command) | 独立的卸载入口，不调用本选择器；卸载范围见父仓说明。 |
+| [根目录卸载器](../【MacOS】🧩卸载Finder扩展.command) | 独立的卸载入口，不调用本选择器；卸载范围见仓库说明。 |
 
 选择器源码必须保留在 `./SelectFinderExtensionFeatures.swift`。根安装器按自身所在目录定位它，编译产物缓存在 `../work/SelectFinderExtensionFeatures`，源码更新后自动重新编译，无须依赖终端当前目录。
 
 ## 二、<span id="feature-identifiers">功能标识与工程映射</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-窗口第一组显示九个独立扩展，第二组显示 `JobsTerminalOpener` 内的五项功能。Terminal 的五项可以分别勾选，安装器会归并为一次工程构建。
+窗口第一组显示十一个独立扩展，第二组显示 `JobsTerminalOpener` 内的五项功能。Terminal 的五项可以分别勾选，安装器会归并为一次工程构建。
 
 | 分组 | 窗口文案 | 返回标识 | 安装工程 |
 | --- | --- | --- | --- |
@@ -61,19 +61,21 @@
 | 独立扩展 | 安装/切换 Flutter SDK（[**FVM**](https://fvm.app/)） | `flutter_version_manager` | `JobsFlutterVersionMgr` |
 | 独立扩展 | 拉取 Git 到最新 | `git-pull` | `JobsGitPuller` |
 | 独立扩展 | 提取 Flutter 第三方依赖 | `flutter-dependency-extract` | `JobsFlutterDependencyExtractor` |
+| 独立扩展 | 运行 Flutter 项目 | `flutter-run` | `JobsFlutterRunner` |
+| 独立扩展 | 新建 [**iOS**](https://developer.apple.com/ios/) 模拟器 | `ios-simulator-create` | `JobsIOSSimulatorCreator` |
 | Terminal 内含 | 用终端打开 | `terminal_open` | `JobsTerminalOpener` |
-| Terminal 内含 | 安装/升级 Pod，操作项目 [**CocoaPods**](https://cocoapods.org/) 依赖 | `pod_install` | `JobsTerminalOpener` |
+| Terminal 内含 | `pod install`，在 Terminal 直接安装项目 [**CocoaPods**](https://cocoapods.org/) 依赖 | `pod_install` | `JobsTerminalOpener` |
 | Terminal 内含 | 在终端执行 [**Flutter**](https://flutter.dev/) 的 `flutter pub get` | `flutter_pub_get` | `JobsTerminalOpener` |
 | Terminal 内含 | 更新代码地图（`.codegraph`），使用 [**CodeGraph**](https://github.com/colbymchenry/codegraph) | `codegraph_bootstrap` | `JobsTerminalOpener` |
 | Terminal 内含 | 在终端创建空白 Commit 并 Push | `git_empty_commit_push` | `JobsTerminalOpener` |
 
-选择器不判断目标项目是否满足各项右键功能的条件，也不会执行 Pod、Flutter、代码地图或 Git 推送。各工程负责运行时检查与实际动作，详见[父仓功能说明](../README.md)。
+选择器不判断目标项目是否满足各项右键功能的条件，也不会执行 Pod、Flutter、代码地图、Git 推送或模拟器创建。各工程负责运行时检查与实际动作；“新建 iOS 模拟器”是独立扩展，在桌面或普通目录空白处使用，无须 Flutter 项目。详见[仓库功能说明](../README.md)。
 
 ## 三、<span id="run-and-check">运行方式与执行边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ### <span id="jobs-toc-heading-5" data-jobs-toc="v2">3.1、通过总安装器选择并安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-1、先阅读[父仓运行说明](../README.md)，确认 Xcode、工程目录和签名环境可用。总安装器会构建、清理旧注册记录、注册并启用扩展，并在成功后重启 `pkd` 和 Finder。
+1、先阅读[仓库运行说明](../README.md)，确认 Xcode、全部工程目录和签名环境可用。全部工程源码随完整仓库取得；总安装器先检查每个 `.xcodeproj/project.pbxproj`，缺失时列出路径并停止，提示重新取得完整仓库。总安装器会构建、清理旧注册记录、注册并启用扩展，并在成功后重启 `pkd` 和 Finder。
 
 2、双击 `../【MacOS】🧩安装Finder扩展.command`，阅读终端内置自述，按回车继续。
 
@@ -81,7 +83,7 @@
 
 4、安装器解析结果并按工程去重，执行构建和注册，最后输出成功项、失败项和日志位置。
 
-**边界：** 总安装器会在显示选择窗口前检查环境，并可能同步缺失的子模块；点击“取消”不能撤销已经完成的环境检查、日志初始化或子模块同步，只会阻止后续扩展安装。
+**边界：** 总安装器在显示选择窗口前检查环境和本仓工程配置；工程缺失时不会下载独立工程。点击“取消”只会阻止后续扩展安装，已经完成的环境检查和日志初始化仍会保留。
 
 ### <span id="jobs-toc-heading-6" data-jobs-toc="v2">3.2、只预览选择窗口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -111,13 +113,19 @@
 
 编译检查不能替代真实窗口布局、按钮点击或 Finder 扩展安装验收。
 
+在本目录执行以下命令，可在隔离 Shell 与临时目录核对选择标识、工程完整性检查和安装 / 卸载映射；不会构建或注册扩展：
+
+```shell
+ruby ../Tests/FlutterInstallerIntegrationTests.rb
+```
+
 ## 四、<span id="return-contract">返回结果与调用流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 用户操作或异常 | 选择器结果 | 安装器行为 |
 | --- | --- | --- |
 | 安装，至少选中一项 | 按上表固定顺序输出逗号分隔的标识 | 解析、校验并安装所选工程。 |
 | 全不选或逐项取消全部勾选 | 不返回结果，窗口继续显示；安装按钮置灰，回车也不能确认 | 等待重新勾选或取消，不执行安装。 |
-| 全选后点击安装 | 全部 14 项标识，逗号分隔 | 安装全部十个工程。 |
+| 全选后点击安装 | 全部 16 项标识，逗号分隔 | 安装全部十二个工程。 |
 | 取消或关闭窗口 | `__CANCELLED__` | 提示取消，正常退出，不执行安装。 |
 | 选择器进程执行失败 | 非零进程退出码 | 提示 UI 失败，按该退出码停止。 |
 | 异常返回未选择标记或空文本 | `__NONE__` 或空字符串 | 按未选择功能处理。 |
@@ -133,7 +141,9 @@ xcode_opener,terminal_open
 
 ```mermaid
 flowchart TD
-    A[根安装器完成自述和环境检查] --> B[编译并运行 Swift 选择器窗口]
+    A[根安装器完成自述] --> P{环境与全部工程配置齐全?}
+    P -->|否| Q[提示缺失项并停止]
+    P -->|是| B[编译并运行 Swift 选择器窗口]
     B --> C{执行成功?}
     C -->|否| D[按非零退出码停止]
     C -->|是| E{返回结果}
@@ -150,6 +160,7 @@ flowchart TD
 | 现象 | 检查方式 |
 | --- | --- |
 | 总安装器提示缺少功能选择 UI | 确认 `./SelectFinderExtensionFeatures.swift` 存在，且 `Scripts` 与根安装器保持当前目录关系。 |
+| 总安装器提示工程源码不完整 | 根据日志核对缺失的 `.xcodeproj/project.pbxproj`，重新取得包含全部工程源码的完整仓库；仅复制总安装器或创建空工程目录不能满足检查。 |
 | 选择器编译失败 | 用上面的编译检查命令定位错误；不要用完整安装流程检查语法。 |
 | 窗口没有出现或选择器非零退出 | 检查是否在本机图形桌面运行、Xcode 与 AppKit 是否可用，并查看终端错误输出。 |
 | 上次勾选没有保留 | 属于当前行为：每次新建窗口都默认全选。Terminal 已安装功能的持久化配置由安装器或宿主 App 管理。 |

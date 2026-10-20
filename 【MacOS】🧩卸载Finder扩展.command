@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract terminal_opener)
+FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -126,6 +126,24 @@ FEATURE_EXTENSION_ID[flutter-dependency-extract]="com.jobs.JobsFlutterDependency
 FEATURE_REFRESH_MARKER[flutter-dependency-extract]="/tmp/JobsFlutterDependencyExtractorNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[flutter-dependency-extract]="/tmp/JobsFlutterDependencyExtractor.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-dependency-extract]}]="flutter-dependency-extract"
+
+FEATURE_TITLE[ios-simulator-create]="新建 iOS 模拟器"
+FEATURE_PROJECT_DIR[ios-simulator-create]="JobsIOSSimulatorCreator"
+FEATURE_APP_NAME[ios-simulator-create]="JobsIOSSimulatorCreator"
+FEATURE_EXTENSION_PROCESS_NAME[ios-simulator-create]="JobsIOSSimulatorFinderSync"
+FEATURE_EXTENSION_ID[ios-simulator-create]="com.jobs.iossimulatorcreator.findersync"
+FEATURE_REFRESH_MARKER[ios-simulator-create]="/tmp/JobsIOSSimulatorCreatorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[ios-simulator-create]="/tmp/JobsIOSSimulatorCreator.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[ios-simulator-create]}]="ios-simulator-create"
+
+FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
+FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
+FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-run]="JobsFlutterRunFinderSync"
+FEATURE_EXTENSION_ID[flutter-run]="com.jobs.JobsFlutterRunner.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter-run]="/tmp/JobsFlutterRunnerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-run]="/tmp/JobsFlutterRunner.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-run]}]="flutter-run"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
@@ -219,7 +237,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用 fzf 选择并卸载 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：打开 Git 远程地址、复制绝对路径、三个 IDE 打开入口、JobsTerminalOpener。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”，可单独选择或全选。" | jobs_intro_style body
   warn_echo "影响范围：会禁用并注销选中的 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会停止对应宿主 App 和已运行的扩展进程。" | jobs_intro_style body
   warn_echo "影响范围：会删除 Xcode DerivedData 和本工作区 work 下的构建产物。" | jobs_intro_style body
