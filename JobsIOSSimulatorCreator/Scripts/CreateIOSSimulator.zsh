@@ -1,13 +1,14 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：CreateIOSSimulator.zsh。
-# - 核心用途：交互选择本机已安装的 iOS Runtime 和兼容 iPhone / iPad，创建并启动新模拟器。
+# - 核心用途：先选本机完整 iPhone / iPad 型号，再选已安装的 iOS Runtime，创建并启动新模拟器。
 # - 影响范围：只新增一个模拟器并打开 Simulator，不关闭、删除或重置已有设备，不安装工具或 Runtime。
 # - 运行提示：先阅读自述并回车；选择时可取消，最终回车才创建；--help / --check 为只读入口。
 
+# >>> Jobs iOS simulator core >>>
 typeset SCRIPT_DIR=""
 typeset SCRIPT_PATH=""
-typeset SCRIPT_BASENAME="CreateIOSSimulator"
+typeset SCRIPT_BASENAME=""
 typeset LOG_FILE=""
 typeset SIM_MODE="interactive"
 typeset SIM_RUN_DIR=""
@@ -30,8 +31,9 @@ typeset -a SIM_ROWS
 # 仅设置进程内选项、路径及纯文本 / 彩色展示条件。
 sim_prepare_context() {
     setopt NO_NOMATCH PIPE_FAIL
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-    SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
+    SCRIPT_PATH="${ZSH_ARGZERO:A}"
+    SCRIPT_DIR="${SCRIPT_PATH:h}"
+    SCRIPT_BASENAME="${SCRIPT_PATH:t:r}"
     LOG_FILE="${TMPDIR:-/tmp}/${SCRIPT_BASENAME}.$$.log"
 }
 # 同步显示与日志；磁盘日志始终保持纯文本。
@@ -54,14 +56,8 @@ sim_intro_line() {
         print -r -- "$message"
     fi
 }
-# 首屏只说明行为并确认，确认前不探测 Xcode 或写日志。
-show_script_intro_and_wait() {
-    sim_prepare_context
-    sim_intro_line title '━━━━━━━━━━ 新建 iOS 模拟器 ━━━━━━━━━━'
-    sim_intro_line body '1、选择本机已安装的 iOS 系统与兼容 iPhone / iPad，新增并启动一个模拟器。'
-    sim_intro_line body '2、保留现有设备与调试会话；不安装工具 / Runtime，不更改 Xcode、Shell 或网络配置。'
-    sim_intro_line body '3、Ctrl+C 随时停止；选择时按 Esc / 输入 q 取消；创建前会再次确认。'
-    sim_intro_line body "日志位置：${LOG_FILE}（确认后创建；只读入口不写日志）"
+# 在任何真实动作前解析只读入口，并对交互入口完成终端检查和首次确认。
+sim_confirm_entry() {
     case "$#:${1:-}" in
         0:) SIM_MODE=interactive ;;
         1:--help|1:-h) SIM_MODE=help; return 0 ;;
@@ -132,7 +128,7 @@ sim_initialize_runtime() {
     fi
     umask "$old_umask"
     if [[ "$SIM_MODE" == interactive ]]; then
-        sim_log "➤ 操作：只新增模拟器；保留现有设备。日志：${LOG_FILE}"
+        sim_log "➤ 创建阶段：只新增模拟器；保留现有设备。日志：${LOG_FILE}"
     else
         sim_log '➤ 操作：只读检查，临时快照退出时清理，不创建日志。'
     fi
@@ -219,26 +215,13 @@ function run(args) {
         rows.sort(function (a,b) { return b.value - a.value || a.name.localeCompare(b.name); });
         return rows.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
     }
-    if (args[0] === 'devices') {
-        var matches = runtimeList(args[1]).filter(function (runtime) { return runtime.identifier === args[3] && runtime.isAvailable === true; });
-        if (!matches.length) throw Error('选定 Runtime 不再可用，请重新运行');
-        var runtime = matches[0], allowed = null, seen = Object.create(null);
-        if (Array.isArray(runtime.supportedDeviceTypes)) {
-            allowed = Object.create(null);
-            runtime.supportedDeviceTypes.forEach(function (device) { allowed[id(device.identifier, 'com.apple.CoreSimulator.SimDeviceType.')] = true; });
-        }
-        var runtimeVersion = version(runtime.version), rows = [];
-        deviceList(args[2]).forEach(function (device) {
-            if (device.productFamily ? (device.productFamily !== 'iPhone' && device.productFamily !== 'iPad') : !/^iPhone |^iPad /.test(device.name || '')) return;
+    if (args[0] === 'devicetypes') {
+        var seen = Object.create(null), rows = [];
+        deviceList(args[1]).forEach(function (device) {
+            // 与原初始化脚本按名称读取完整机型的规则一致，组合兼容性交给 simctl create。
+            if (!/^iPhone |^iPad /.test(device.name || '')) return;
             var identifier = id(device.identifier, 'com.apple.CoreSimulator.SimDeviceType.'), name = text(device.name);
             if (seen[identifier]) return;
-            if (allowed !== null && !allowed[identifier]) return;
-            if (allowed === null) {
-                var minimum = typeof device.minRuntimeVersion === 'number' ? device.minRuntimeVersion : (device.minRuntimeVersionString ? version(device.minRuntimeVersionString) : null);
-                var maximum = typeof device.maxRuntimeVersion === 'number' ? device.maxRuntimeVersion : (device.maxRuntimeVersionString ? version(device.maxRuntimeVersionString) : null);
-                if (minimum !== null && runtimeVersion < minimum) return;
-                if (maximum !== null && runtimeVersion > maximum) return;
-            }
             seen[identifier] = true;
             rows.push(name + '\t' + identifier);
         });
@@ -295,13 +278,18 @@ sim_check_environment() {
         sim_log "✖ 当前 Xcode 缺少健康的 Simulator / Device Hub：${SIM_DEVELOPER_DIR}"
         return 1
     fi
+    sim_log "✔ 当前 Xcode 工具链：${SIM_DEVELOPER_DIR}"
+    sim_check_selector
+}
+# 单独复检选择器，独立入口安装依赖后即可刷新而不重复体检 Xcode。
+sim_check_selector() {
+    local output="$SIM_RUN_DIR/command.out"
     SIM_FZF="$(command -v fzf 2>/dev/null)"
     if [[ -n "$SIM_FZF" ]]; then
         if ! sim_run_to_file "$output" 5 "$SIM_FZF" --version; then
             SIM_FZF=""
         fi
     fi
-    sim_log "✔ 当前 Xcode 工具链：${SIM_DEVELOPER_DIR}"
     if [[ -n "$SIM_FZF" ]]; then
         sim_log '➤ 选择方式：本机健康 fzf（Esc 取消）。'
     else
@@ -359,31 +347,31 @@ sim_choose_row() {
         done
     fi
 }
-# 先选择已安装系统，再筛选其兼容设备，旧版清单缺兼容元数据时由 create 最终校验。
+# 与原初始化脚本保持机型优先的完整清单，避免最新 Runtime 提前隐藏传统型号。
 sim_select_combination() {
-    local rows="" result=0
-    if ! rows="$(sim_data runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
-        sim_log "✖ 无法解析 Runtime：${rows}"
+    local devices="" runtimes=""
+    if ! devices="$(sim_data devicetypes "$SIM_RUN_DIR/devicetypes.json" 2>&1)"; then
+        sim_log "✖ 无法解析设备型号：${devices}"
         return 1
     fi
-    if [[ -z "$rows" ]]; then
+    if [[ -z "$devices" ]]; then
+        sim_log '✖ 当前 Xcode 没有 iPhone / iPad 设备类型，请检查 Xcode 组件后重试。'
+        return 1
+    fi
+    if ! runtimes="$(sim_data runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
+        sim_log "✖ 无法解析 Runtime：${runtimes}"
+        return 1
+    fi
+    if [[ -z "$runtimes" ]]; then
         sim_log '✖ 没有本机可用的 iOS Runtime。请在 Xcode → Settings → Components 安装后重试。'
         return 1
     fi
-    sim_choose_row '选择 iOS 系统版本' "$rows" || return $?
-    SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
-    SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
-    if ! rows="$(sim_data devices "$SIM_RUN_DIR/runtimes.json" "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUNTIME_ID" 2>&1)"; then
-        sim_log "✖ 无法解析兼容设备：${rows}"
-        return 1
-    fi
-    if [[ -z "$rows" ]]; then
-        sim_log "⚠ ${SIM_RUNTIME_NAME} 没有兼容的 iPhone / iPad，请选择其它系统版本。"
-        return 2
-    fi
-    sim_choose_row '选择兼容 iPhone / iPad' "$rows" || return $?
+    sim_choose_row '选择 iPhone / iPad 型号' "$devices" || return $?
     SIM_DEVICE_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
     SIM_DEVICE_ID="${SIM_SELECTED_ROW#*$'\t'}"
+    sim_choose_row '选择 iOS 系统版本' "$runtimes" || return $?
+    SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
+    SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
 }
 # 创建前刷新已有名称，避开同秒操作或遗留同名设备。
 sim_prepare_unique_name() {
@@ -405,6 +393,7 @@ sim_confirm_creation() {
     sim_log "➤ 设备：${SIM_DEVICE_NAME}"
     sim_log "➤ 系统：${SIM_RUNTIME_NAME}"
     sim_log "➤ 新名称：${SIM_NAME}"
+    sim_log '➤ 型号与系统分别列出，组合是否受支持由 Xcode 创建命令最终校验；不支持时可重新选择。'
     if ! IFS= read -r "?直接回车创建并启动；输入任意字符取消：" answer || [[ -n "$answer" ]]; then
         SIM_CANCELLED=1
         return 130
@@ -481,15 +470,15 @@ sim_interactive_loop() {
 }
 # 显示独立运行接口，不加载或修改模拟器环境。
 sim_show_help() {
-    sim_log '用法：/bin/zsh CreateIOSSimulator.zsh [--help | --check]'
+    sim_log "用法：/bin/zsh \"${SCRIPT_PATH}\" [--help | --check]"
     sim_log '  无参数   在可交互终端中选择并新建一个模拟器。'
     sim_log '  --help   显示帮助；不读取 Xcode 或创建日志。'
-    sim_log '  --check  只读体检 Xcode / simctl，并列出可用 iOS 系统及兼容设备数量。'
+    sim_log '  --check  只读体检 Xcode / simctl，并列出完整机型数量及可用 iOS 系统。'
     sim_log '来源：JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command。'
 }
-# 体检同时验证真实 JSON 数据；没有可用系统或兼容设备时返回失败。
+# 体检完整机型和可用系统清单，不把独立列出的两者误报为全部兼容。
 sim_report_catalog() {
-    local rows="" devices="" row="" count=0 total=0
+    local rows="" devices="" row=""
     local -a device_rows
     if ! rows="$(sim_data runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
         sim_log "✖ Runtime 数据无效：${rows}"
@@ -499,23 +488,20 @@ sim_report_catalog() {
         sim_log '✖ 没有本机可用的 iOS Runtime；本次未创建或下载。'
         return 1
     fi
-    for row in "${(@f)rows}"; do
-        if ! devices="$(sim_data devices "$SIM_RUN_DIR/runtimes.json" "$SIM_RUN_DIR/devicetypes.json" "${row#*$'\t'}" 2>&1)"; then
-            sim_log "✖ 兼容设备数据无效：${devices}"
-            return 1
-        fi
-        count=0
-        if [[ -n "$devices" ]]; then
-            device_rows=("${(@f)devices}")
-            count=${#device_rows}
-        fi
-        (( total += count ))
-        sim_log "✔ ${row%%$'\t'*}：${count} 个兼容 iPhone / iPad"
-    done
-    if (( total == 0 )); then
-        sim_log '✖ 可用系统没有兼容的 iPhone / iPad。'
+    if ! devices="$(sim_data devicetypes "$SIM_RUN_DIR/devicetypes.json" 2>&1)"; then
+        sim_log "✖ 设备型号数据无效：${devices}"
         return 1
     fi
+    if [[ -z "$devices" ]]; then
+        sim_log '✖ 当前 Xcode 没有 iPhone / iPad 设备类型。'
+        return 1
+    fi
+    device_rows=("${(@f)devices}")
+    sim_log "✔ 完整机型清单：${#device_rows} 个 iPhone / iPad（不按 Runtime 隐藏型号）"
+    for row in "${(@f)rows}"; do
+        sim_log "✔ 可用系统：${row%%$'\t'*}"
+    done
+    sim_log '➤ 与原初始化脚本相同：先选型号，再选系统；组合是否受支持由 simctl create 最终校验。'
     sim_log '✔ 只读体检完成；未创建、启动、关闭或删除模拟器。'
 }
 # 将帮助、只读体检与交互创建路由到各自流程，并传播失败状态。
@@ -532,6 +518,18 @@ sim_run_requested_action() {
     else
         sim_interactive_loop
     fi
+}
+# <<< Jobs iOS simulator core <<<
+
+# 首屏只说明行为并确认，确认前不探测 Xcode 或写日志。
+show_script_intro_and_wait() {
+    sim_prepare_context
+    sim_intro_line title '━━━━━━━━━━ 新建 iOS 模拟器 ━━━━━━━━━━'
+    sim_intro_line body '1、先选本机完整 iPhone / iPad 型号，再选已安装的 iOS 系统，新增并启动一个模拟器。'
+    sim_intro_line body '2、保留现有设备与调试会话；不安装工具 / Runtime，不更改 Xcode、Shell 或网络配置。'
+    sim_intro_line body '3、Ctrl+C 随时停止；选择时按 Esc / 输入 q 取消；创建前会再次确认。'
+    sim_intro_line body "日志位置：${LOG_FILE}（确认后创建；只读入口不写日志）"
+    sim_confirm_entry "$@"
 }
 # 编排自述确认与本次请求，所有真实动作都在确认或只读路由后执行。
 main() {

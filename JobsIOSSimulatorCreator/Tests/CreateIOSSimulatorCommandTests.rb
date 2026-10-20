@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-# 真实 zsh / 系统 JXA 隔离回归；xcrun、open、fzf 全部替换为私有夹具，不创建真实模拟器。
+# 两个入口共用的真实 zsh / 系统 JXA 隔离回归；命令与旧入口前置动作均替换为私有夹具。
 
 require 'fileutils'
 require 'json'
@@ -8,7 +8,15 @@ require 'open3'
 require 'tmpdir'
 
 class CreateIOSSimulatorCommandTests < Minitest::Test
-  SCRIPT = File.expand_path('../Scripts/CreateIOSSimulator.zsh', __dir__)
+  FINDER_SCRIPT = File.expand_path('../Scripts/CreateIOSSimulator.zsh', __dir__)
+  SCRIPT = ENV.key?('JOBS_SIMULATOR_TEST_SCRIPT') ? File.expand_path(ENV.fetch('JOBS_SIMULATOR_TEST_SCRIPT')) : FINDER_SCRIPT
+  SOURCE_SCRIPT = if ENV.key?('JOBS_SIMULATOR_SOURCE')
+                    File.expand_path(ENV.fetch('JOBS_SIMULATOR_SOURCE'))
+                  else
+                    File.expand_path('../../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/【MacOS】📱双击初始化iOS模拟器.command', __dir__)
+                  end
+  COMMON_BEGIN = '# >>> Jobs iOS simulator core >>>'
+  COMMON_END = '# <<< Jobs iOS simulator core <<<'
   RUNTIME_PREFIX = 'com.apple.CoreSimulator.SimRuntime.'
   DEVICE_PREFIX = 'com.apple.CoreSimulator.SimDeviceType.'
   UDID = 'A1234567-1234-1234-1234-123456789ABC'
@@ -66,11 +74,24 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       printf '\0' >> "$TEST_TRACE"
       [[ "${TEST_OPEN_FAIL:-0}" == 0 ]] || exit 23
     ZSH
-    @source = File.read(SCRIPT).sub(/^main "\$@"\s*\z/, '')
-    @source = @source.gsub('/usr/bin/xcrun', File.join(@bin, 'xcrun'))
-                     .gsub('/usr/bin/open', File.join(@bin, 'open'))
+    @source = isolated_source(SCRIPT)
     @bootstrap = <<~'ZSH'
       setopt NO_NOMATCH PIPE_FAIL
+      jobs_test_reject_legacy_wrapper() {
+        printf '%s\0' legacy-wrapper "$1" >> "$TEST_TRACE"
+        printf '\0' >> "$TEST_TRACE"
+        print -ru2 -- "unexpected legacy wrapper action: $1"
+        exit 97
+      }
+      cleanup_simulator_background_safely() {
+        jobs_test_reject_legacy_wrapper cleanup_simulator_background_safely
+      }
+      install_homebrew() {
+        jobs_test_reject_legacy_wrapper install_homebrew
+      }
+      install_fzf() {
+        jobs_test_reject_legacy_wrapper install_fzf
+      }
       SIM_RUN_DIR="$TEST_ROOT/run"
       SIM_APP="$TEST_DEVELOPER/Applications/Simulator.app"
       SIM_APP_KIND=com.apple.iphonesimulator
@@ -87,6 +108,13 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     FileUtils.remove_entry(@root)
   end
 
+  # 两个可独立复制的入口必须嵌入同一核心，缺少外仓时明确跳过跨仓一致性检查。
+  def test_self_contained_entries_embed_identical_core_bytes
+    require_source_script
+
+    assert_equal common_core(SOURCE_SCRIPT), common_core(FINDER_SCRIPT), '两个入口的模拟器核心已分叉'
+  end
+
   # 同一展示名、同一标识、不可用系统与其它架构均不会产生重复选择。
   def test_runtime_rows_deduplicate_and_filter_availability_platform_and_architecture
     @runtimes += [runtime('18.0.1', 'iOS 18.0', ['iPhone-Old'], identifier: 'iOS-18-0'),
@@ -99,43 +127,57 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_equal ["iOS 18.0\t#{RUNTIME_PREFIX}iOS-18-0", "iOS 16.0\t#{RUNTIME_PREFIX}iOS-16-0"], output.lines.map(&:strip)
   end
 
-  # 优先使用 Runtime 的真实支持列表，保留 iPad，拒绝该系统未列出的新型号。
-  def test_supported_device_types_filter_the_selected_runtime
-    output, status = execute('sim_data devices "$TEST_ROOT/runtimes.json" "$TEST_ROOT/devicetypes.json" "$SIM_RUNTIME_ID"')
+  # 最新系统只列 Duo 时，型号列表仍保留可配其它系统的传统 iPhone 与 iPad。
+  def test_duo_only_latest_runtime_does_not_hide_traditional_device_types
+    use_duo_catalog
+    output, status = execute('sim_data devicetypes "$TEST_ROOT/devicetypes.json"')
     assert status.success?, output
-    assert_includes output, 'iPhone Old'
-    assert_includes output, 'iPad Test'
-    refute_includes output, 'Future'
-    refute_includes output, 'Legacy'
+    assert_equal ["iPhone Old\t#{DEVICE_PREFIX}iPhone-Old", "iPad Test\t#{DEVICE_PREFIX}iPad-Test",
+                  "iPhone Duo\t#{DEVICE_PREFIX}iPhone-Duo"], output.lines.map(&:strip)
+    assert_empty trace
   end
 
-  # 缺少兼容列表的旧 Xcode 按已知版本范围筛选，未知范围允许最终 create 校验。
-  def test_legacy_device_metadata_accepts_unknown_bounds_and_rejects_known_incompatible_bounds
-    output, status = execute('sim_data devices "$TEST_ROOT/runtimes.json" "$TEST_ROOT/devicetypes.json" com.apple.CoreSimulator.SimRuntime.iOS-16-0')
-    assert status.success?, output
-    assert_includes output, 'iPhone Legacy'
-    refute_includes output, 'iPhone Old'
-    refute_includes output, 'Future'
-    refute_includes output, 'Apple TV'
+  # 缺失或空白名单，以及已知和未知版本范围，均留给 create 最终校验。
+  def test_runtime_support_metadata_and_version_bounds_do_not_hide_device_types
+    @device_types[0].merge!('minRuntimeVersion' => 99 * 65_536, 'maxRuntimeVersion' => 1,
+                            'minRuntimeVersionString' => '99.0', 'maxRuntimeVersionString' => '1.0')
+    [nil, []].each do |supported|
+      if supported.nil?
+        @runtimes[0].delete('supportedDeviceTypes')
+      else
+        @runtimes[0]['supportedDeviceTypes'] = supported
+      end
+      save_catalog
+      output, status = execute('sim_data devicetypes "$TEST_ROOT/devicetypes.json"')
+      assert status.success?, output
+      assert_equal ['iPhone Old', 'iPad Test', 'iPhone Future', 'iPhone Legacy'],
+                   output.lines.map { |line| line.split("\t").first }
+    end
+    assert_empty trace
   end
 
-  # 显式空白名单不能回退为全部设备。
-  def test_explicit_empty_supported_list_produces_no_devices
-    @runtimes[0]['supportedDeviceTypes'] = []
+  # 新版家族字段变化不隐藏具名机型，同一标识去重，其它设备家族仍排除。
+  def test_device_types_use_names_across_family_schema_changes_and_deduplicate_identifiers
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil, 1),
+                     device('iPad Test', 'iPad-Test', nil, nil),
+                     device('iPhone Duo', 'iPhone-Duo', nil, 'future-family'),
+                     device('iPhone Duplicate', 'iPhone-Old', nil),
+                     device('Apple TV', 'Apple-TV', nil, 'iPhone')]
+    @device_types[1].delete('productFamily')
     save_catalog
-    output, status = execute('sim_data devices "$TEST_ROOT/runtimes.json" "$TEST_ROOT/devicetypes.json" "$SIM_RUNTIME_ID"')
+    output, status = execute('sim_data devicetypes "$TEST_ROOT/devicetypes.json"')
     assert status.success?, output
-    assert_empty output.strip
+    assert_equal ['iPhone Old', 'iPad Test', 'iPhone Duo'], output.lines.map { |line| line.split("\t").first }
+    assert_empty trace
   end
 
-  # 同一个 Runtime 标识的重复记录使用首条，与展示去重保持一致。
+  # 同一个 Runtime 标识使用首条记录，与展示去重保持一致。
   def test_duplicate_runtime_identifier_does_not_break_selection
-    @runtimes << runtime('18.0.1', 'iOS 18.0', ['iPhone-Future'], identifier: 'iOS-18-0')
+    @runtimes << runtime('18.0.1', 'iOS 18.0.1', ['iPhone-Future'], identifier: 'iOS-18-0')
     save_catalog
-    output, status = execute('sim_data devices "$TEST_ROOT/runtimes.json" "$TEST_ROOT/devicetypes.json" "$SIM_RUNTIME_ID"')
+    output, status = execute('sim_data runtimes "$TEST_ROOT/runtimes.json" arm64')
     assert status.success?, output
-    assert_includes output, 'iPhone Old'
-    refute_includes output, 'Future'
+    assert_equal ["iOS 18.0\t#{RUNTIME_PREFIX}iOS-18-0", "iOS 16.0\t#{RUNTIME_PREFIX}iOS-16-0"], output.lines.map(&:strip)
   end
 
   # 错误 JSON 与带控制字符的数据均阻断进入创建。
@@ -208,11 +250,80 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   def test_check_entry_reads_catalog_and_cleans_snapshots_without_mutation
     output, status = execute('main --check')
     assert status.success?, output
-    assert_includes output, 'iOS 18.0：2 个兼容'
+    assert_includes output, '完整机型清单：4 个 iPhone / iPad'
+    assert_includes output, '可用系统：iOS 18.0'
+    refute_includes output, '个兼容'
     assert_includes output, '只读体检完成'
     assert trace.all? { |entry| entry[0] == 'xcrun' && (entry[1] == '--find' || entry[2] == 'list') }, trace.inspect
-    assert_empty Dir.glob(File.join(@run, 'CreateIOSSimulator.*'))
+    assert_empty remaining_run_files
     refute_includes output, "\e["
+  end
+
+  # 帮助与无效参数在旧入口的清场、Homebrew 和 fzf 安装流程之前返回。
+  def test_help_and_invalid_arguments_do_not_run_legacy_wrapper_or_probe_environment
+    %w[--help -h].each do |option|
+      output, status = execute("main #{option}")
+      assert status.success?, output
+      assert_includes output, '--check'
+      assert_empty trace
+      assert_empty remaining_run_files
+    end
+    output, status = execute('main --unexpected-option')
+    assert_equal 64, status.exitstatus, output
+    assert_includes output, '参数无效'
+    assert_empty trace
+    assert_empty remaining_run_files
+  end
+
+  # 整份脚本复制到复杂路径后仍能独立读取帮助，路径和日志名取真实入口。
+  def test_complete_script_copied_to_special_character_path_runs_help_independently
+    copied_path = File.join(@root, "可独立复制 空格 ' $.command")
+    FileUtils.cp(SCRIPT, copied_path)
+    output, status = Open3.capture2e(@environment, '/bin/zsh', copied_path, '--help', chdir: @root)
+    assert status.success?, output
+    assert_includes output, copied_path
+    basename = File.basename(copied_path, '.command')
+    assert_match(/日志位置：#{Regexp.escape(@run)}\/+#{Regexp.escape(basename)}\.\d+\.log/, output)
+    refute_includes output, 'sim_prepare_context'
+    assert_empty trace
+    assert_empty remaining_run_files
+  end
+
+  # 独立入口仅在交互确认后按原顺序初始化，然后进入公共选择与创建流程。
+  def test_initialization_wrapper_preserves_legacy_preflight_order
+    output, status = execute(initialization_fixture, source: initialization_source)
+    assert status.success?, output
+    assert_equal initialization_steps.map { |step| ['initialization', step] }, trace
+  end
+
+  # 体检、清场或依赖步骤失败后立即返回，不能继续安装或进入创建流程。
+  def test_initialization_wrapper_propagates_preflight_and_creation_failures
+    source = initialization_source
+    initialization_steps.drop(1).each do |failed|
+      output, status = execute(initialization_fixture, source: source, env: {'TEST_INITIALIZATION_FAIL' => failed})
+      assert_equal 71, status.exitstatus, output
+      expected = initialization_steps.take(initialization_steps.index(failed) + 1)
+      assert_equal expected.map { |step| ['initialization', step] }, trace
+    end
+  end
+
+  # 独立入口的只读模式直接进入公共路由，保留其退出码，不触发前置动作。
+  def test_initialization_wrapper_read_only_modes_bypass_legacy_preflight
+    source = initialization_source
+    %w[help check].each do |mode|
+      output, status = execute(<<~ZSH, source: source)
+        : > "$TEST_TRACE"
+        sim_run_requested_action() {
+          printf '%s\\0' core-read-only "$SIM_MODE" >> "$TEST_TRACE"
+          printf '\\0' >> "$TEST_TRACE"
+          return 37
+        }
+        SIM_MODE=#{mode}
+        run_initialization_requested_action
+      ZSH
+      assert_equal 37, status.exitstatus, output
+      assert_equal [['core-read-only', mode]], trace
+    end
   end
 
   # 系统未安装 Runtime 与清单读取失败均不得触发创建。
@@ -228,13 +339,25 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     refute trace.any? { |entry| entry[2] == 'create' }
   end
 
+  # 缺少 iPhone / iPad 类型时，体检与交互均停止，不把其它家族当作可创建型号。
+  def test_empty_device_catalog_stops_check_and_selection_before_creation
+    @device_types = [device('Apple TV', 'Apple-TV', nil, 'Apple TV')]
+    save_catalog
+    ['main --check', 'sim_load_catalog && sim_interactive_loop'].each do |code|
+      output, status = execute(code)
+      refute status.success?, output
+      assert_includes output, '没有 iPhone / iPad 设备类型'
+    end
+    refute trace.any? { |entry| entry[2] == 'create' }
+  end
+
   # 默认入口拒绝无 TTY，确认前不探测工具链，也不写日志。
   def test_interactive_entry_rejects_non_tty_before_any_business
     output, status = execute('main')
     refute status.success?, output
     assert_includes output, '没有可交互终端'
     assert_empty trace
-    assert_empty Dir.glob(File.join(@run, 'CreateIOSSimulator.*'))
+    assert_empty remaining_run_files
   end
 
   # create / boot / open / bootstatus 顺序与独立参数必须保持完整。
@@ -319,6 +442,18 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_includes output, '新模拟器已完成启动'
   end
 
+  # 重现另一台机器：先选传统型号再选 27.0，不受最新 27.1 的 Duo 白名单影响。
+  def test_complete_flow_selects_traditional_iphone_then_older_runtime_when_latest_only_lists_duo
+    use_duo_catalog
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n2\n\n")
+    assert status.success?, output
+    assert_operator output.index('选择 iPhone / iPad 型号'), :<, output.index('选择 iOS 系统版本')
+    creates = trace.select { |entry| entry[2] == 'create' }
+    assert_equal 1, creates.length
+    assert_equal [DEVICE_PREFIX + 'iPhone-Old', RUNTIME_PREFIX + 'iOS-27-0'], creates.first.last(2)
+    assert_includes output, '新模拟器已完成启动'
+  end
+
   # 在选择或最终确认取消均不创建设备。
   def test_complete_selection_flow_cancels_before_mutation
     ["q\n", "1\nq\n", "1\n1\n \n"].each do |input|
@@ -329,7 +464,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     refute trace.any? { |entry| entry[2] == 'create' }
   end
 
-  # 旧元数据导致不兼容时可回选，回选取消后不会再次创建。
+  # create 判定组合不兼容时可回选，回选取消后不会再次创建。
   def test_incompatible_create_returns_to_selection_and_can_cancel
     output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\nq\n",
                              env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type'})
@@ -347,6 +482,85 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   end
 
   private
+
+  # 核心退出清理可以连同空临时目录一起移除；两种结果都不应留下日志或快照。
+  def remaining_run_files
+    File.directory?(@run) ? Dir.children(@run) : []
+  end
+
+  # 去掉脚本最后的自动入口，设备命令固定替换为私有替身。
+  def isolated_source(path)
+    source = File.read(path)
+    raise "缺少预期的脚本入口：#{path}" unless source.sub!(/^main "\$@"\s*\z/, '')
+
+    source.gsub('/usr/bin/xcrun', File.join(@bin, 'xcrun')).gsub('/usr/bin/open', File.join(@bin, 'open'))
+  end
+
+  # 缺失独立脚本时只跳过其包装层检查，不影响右键核心的本地验证。
+  def initialization_source
+    require_source_script
+
+    isolated_source(SOURCE_SCRIPT)
+  end
+
+  # 默认外仓可缺省，显式指定的规范源不存在则直接报告配置错误。
+  def require_source_script
+    return if File.file?(SOURCE_SCRIPT)
+
+    flunk "显式指定的 JOBS_SIMULATOR_SOURCE 不存在或不是文件：#{SOURCE_SCRIPT}" if ENV.key?('JOBS_SIMULATOR_SOURCE')
+    skip "未找到独立入口 #{SOURCE_SCRIPT}；可通过 JOBS_SIMULATOR_SOURCE 指定规范源"
+  end
+
+  # 这里只验证入口编排，所有步骤都替换成私有 trace，不执行原清场或安装。
+  def initialization_fixture
+    <<~'ZSH'
+      : > "$TEST_TRACE"
+      jobs_test_initialization_step() {
+        printf '%s\0' initialization "$1" >> "$TEST_TRACE"
+        printf '\0' >> "$TEST_TRACE"
+        [[ "${TEST_INITIALIZATION_FAIL:-}" != "$1" ]] || return 71
+        return 0
+      }
+      sim_initialize_runtime() { jobs_test_initialization_step initialize; }
+      sim_check_environment() { jobs_test_initialization_step environment; }
+      cleanup_simulator_background_safely() { jobs_test_initialization_step cleanup; }
+      install_homebrew() { jobs_test_initialization_step homebrew; }
+      install_fzf() { jobs_test_initialization_step fzf; }
+      sim_check_selector() { jobs_test_initialization_step selector; }
+      sim_load_catalog() { jobs_test_initialization_step catalog; }
+      sim_interactive_loop() { jobs_test_initialization_step interactive; }
+      SIM_MODE=interactive
+      run_initialization_requested_action
+    ZSH
+  end
+
+  # 独立初始化入口的预期执行顺序，用于成功与失败边界检查。
+  def initialization_steps
+    %w[initialize environment cleanup homebrew fzf selector catalog interactive]
+  end
+
+  # 按唯一边界提取原始字节，不归一化空白或换行，避免细微修改静默分叉。
+  def common_core(path)
+    content = File.binread(path)
+    first = (COMMON_BEGIN + "\n").b
+    last = (COMMON_END + "\n").b
+    assert_equal 1, content.scan(first).length, "核心起始标记必须唯一：#{path}"
+    assert_equal 1, content.scan(last).length, "核心结束标记必须唯一：#{path}"
+    start = content.index(first) + first.bytesize
+    finish = content.index(last)
+    assert_operator finish, :>, start, "核心标记顺序无效或内容为空：#{path}"
+    content.byteslice(start, finish - start)
+  end
+
+  # 最新 Runtime 的型号白名单与完整 devicetypes 不一致的跨机器问题夹具。
+  def use_duo_catalog
+    @runtimes = [runtime('27.1', 'iOS 27.1', ['iPhone-Duo']),
+                 runtime('27.0', 'iOS 27.0', ['iPhone-Old', 'iPad-Test'])]
+    @device_types = [device('iPhone Old', 'iPhone-Old', 18 * 65_536),
+                     device('iPad Test', 'iPad-Test', 18 * 65_536, 'iPad'),
+                     device('iPhone Duo', 'iPhone-Duo', 27 * 65_536)]
+    save_catalog
+  end
 
   # 生成 Runtime 夹具，nil 表示旧版 Xcode 缺少 supportedDeviceTypes。
   def runtime(version, name, devices = nil, identifier: nil)
@@ -403,10 +617,10 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     ZSH
   end
 
-  # 执行真实函数正文，只有 xcrun 与 GUI 打开命令替换为夹具。
-  def execute(code, input: '', env: {})
+  # 执行真实函数正文；设备命令、GUI 及旧入口的清场和安装函数均由夹具隔离。
+  def execute(code, input: '', env: {}, source: @source)
     FileUtils.mkdir_p(@run)
-    Open3.capture2e(@environment.merge(env), '/bin/zsh', '-c', @source + "\n" + @bootstrap + "\n" + code,
+    Open3.capture2e(@environment.merge(env), '/bin/zsh', '-c', source + "\n" + @bootstrap + "\n" + code,
                    stdin_data: input, chdir: @root)
   end
 
