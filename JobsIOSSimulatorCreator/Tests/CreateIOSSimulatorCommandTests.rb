@@ -137,6 +137,112 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_empty trace
   end
 
+  # 可搭配本机系统的型号排在前面，其余完整型号保留且组内顺序稳定。
+  def test_preferred_device_types_prioritize_supported_then_unknown_without_hiding_models
+    output, status = execute('sim_data preferred-devicetypes "$TEST_ROOT/devicetypes.json" "$TEST_ROOT/runtimes.json" arm64')
+    assert status.success?, output
+    assert_equal ['iPhone Old', 'iPad Test', 'iPhone Legacy', 'iPhone Future'], row_names(output)
+    assert_empty trace
+  end
+
+  # 新电脑只安装 Duo 专用系统时，首项改为 Duo，传统机型仍可手动选择。
+  def test_duo_only_installed_runtime_makes_duo_default_and_retains_all_models
+    use_duo_catalog
+    @runtimes = [@runtimes.first]
+    save_catalog
+    output, status = execute('sim_data preferred-devicetypes "$TEST_ROOT/devicetypes.json" "$TEST_ROOT/runtimes.json" arm64')
+    assert status.success?, output
+    assert_equal ['iPhone Duo', 'iPhone Old', 'iPad Test'], row_names(output)
+    assert_empty trace
+  end
+
+  # 已确认支持的系统优先于元数据未知的较新版本，同组仍按版本从新到旧。
+  def test_compatible_runtimes_prioritize_known_support_and_exclude_known_incompatibility
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil)]
+    @runtimes = [runtime('21.0', 'iOS 21.0', ['iPhone-Duo']),
+                 runtime('20.0', 'iOS 20.0'),
+                 runtime('19.0', 'iOS 19.0', ['iPhone-Old']),
+                 runtime('18.0', 'iOS 18.0', ['iPhone-Old']),
+                 runtime('17.0', 'iOS 17.0')]
+    save_catalog
+    output, status = compatible_runtimes
+    assert status.success?, output
+    assert_equal ['iOS 19.0', 'iOS 18.0', 'iOS 20.0', 'iOS 17.0'], row_names(output)
+    assert_empty trace
+  end
+
+  # 缺失、空或不完整白名单都不能当作明确不兼容而误删系统。
+  def test_missing_empty_and_malformed_support_metadata_preserve_unknown_runtimes
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil)]
+    [nil, [], {}, 'unknown', [{}], [{'identifier' => DEVICE_PREFIX + 'iPhone-Duo'}, {}]].each do |supported|
+      @runtimes = [runtime('27.1', 'iOS 27.1')]
+      @runtimes.first['supportedDeviceTypes'] = supported unless supported.nil?
+      save_catalog
+      output, status = compatible_runtimes
+      assert status.success?, output
+      assert_equal ['iOS 27.1'], row_names(output), "supportedDeviceTypes=#{supported.inspect}"
+    end
+    assert_empty trace
+  end
+
+  # 有效标识白名单既支持对象项，也支持字符串项；不包含所选型号时明确排除。
+  def test_valid_support_identifier_whitelist_accepts_supported_and_rejects_other_models
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil)]
+    @runtimes = [runtime('27.1', 'iOS 27.1', ['iPhone-Duo']), runtime('27.0', 'iOS 27.0')]
+    @runtimes.last['supportedDeviceTypes'] = [DEVICE_PREFIX + 'iPhone-Old']
+    save_catalog
+    output, status = compatible_runtimes
+    assert status.success?, output
+    assert_equal ['iOS 27.0'], row_names(output)
+    assert_empty trace
+  end
+
+  # Runtime 的明确白名单比型号通用版本范围更精确，支持结论不被旧范围推翻。
+  def test_explicit_runtime_whitelist_takes_priority_over_device_version_bounds
+    @device_types = [device('iPhone Old', 'iPhone-Old', 99 * 65_536)]
+    @runtimes = [runtime('27.1', 'iOS 27.1', ['iPhone-Old'])]
+    save_catalog
+    output, status = compatible_runtimes
+    assert status.success?, output
+    assert_equal ['iOS 27.1'], row_names(output)
+    @device_types.first.merge!('minRuntimeVersion' => 1, 'maxRuntimeVersion' => 99 * 65_536)
+    @runtimes.first['supportedDeviceTypes'] = [{'identifier' => DEVICE_PREFIX + 'iPhone-Duo'}]
+    save_catalog
+    output, status = compatible_runtimes
+    assert status.success?, output
+    assert_empty output.strip
+    assert_empty trace
+  end
+
+  # 数字和字符串版本范围均包含端点，补丁版本仍精确区分。
+  def test_device_version_bounds_include_endpoints_and_exclude_outside_versions
+    @runtimes = [runtime('27.2', 'iOS 27.2'), runtime('27.1.1', 'iOS 27.1.1'),
+                 runtime('27.1', 'iOS 27.1'), runtime('27.0', 'iOS 27.0')]
+    [{'minRuntimeVersion' => 27 * 65_536 + 256, 'maxRuntimeVersion' => 27 * 65_536 + 257},
+     {'minRuntimeVersionString' => '27.1', 'maxRuntimeVersionString' => '27.1.1'}].each do |bounds|
+      @device_types = [device('iPhone Old', 'iPhone-Old', nil).merge(bounds)]
+      save_catalog
+      output, status = compatible_runtimes
+      assert status.success?, output
+      assert_equal ['iOS 27.1.1', 'iOS 27.1'], row_names(output)
+    end
+    assert_empty trace
+  end
+
+  # 损坏或相互矛盾的范围不构成可靠的否定证据。
+  def test_invalid_or_contradictory_version_bounds_do_not_hide_runtimes
+    @runtimes = [runtime('27.1', 'iOS 27.1')]
+    [{'minRuntimeVersion' => -1, 'maxRuntimeVersionString' => 'unknown'},
+     {'minRuntimeVersion' => 99 * 65_536, 'maxRuntimeVersion' => 1}].each do |bounds|
+      @device_types = [device('iPhone Old', 'iPhone-Old', nil).merge(bounds)]
+      save_catalog
+      output, status = compatible_runtimes
+      assert status.success?, output
+      assert_equal ['iOS 27.1'], row_names(output)
+    end
+    assert_empty trace
+  end
+
   # 缺失或空白名单，以及已知和未知版本范围，均留给 create 最终校验。
   def test_runtime_support_metadata_and_version_bounds_do_not_hide_device_types
     @device_types[0].merge!('minRuntimeVersion' => 99 * 65_536, 'maxRuntimeVersion' => 1,
@@ -214,9 +320,20 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_empty trace
   end
 
-  # 取消与输入结束不能选中第一项。
+  # 编号回退直接回车采用首项，与健康 fzf 的默认选择一致。
+  def test_numbered_selection_enter_chooses_first_row
+    output, status = execute(<<~'ZSH', input: "\n")
+      sim_choose_row '选择' $'One\tid-one\nTwo\tid-two' || exit $?
+      print -r -- "SELECTED|$SIM_SELECTED_ROW"
+    ZSH
+    assert status.success?, output
+    assert_includes output, "SELECTED|One\tid-one"
+    assert_empty trace
+  end
+
+  # 明确取消与输入结束不能选中第一项。
   def test_cancel_and_eof_never_select_or_create
-    ["q\n", "\n", ''].each do |input|
+    ["q\n", "Q\n", "\e\n", ''].each do |input|
       output, status = execute("sim_choose_row '选择' $'One\\tid-one'", input: input)
       assert_equal 130, status.exitstatus, output
     end
@@ -257,6 +374,19 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert trace.all? { |entry| entry[0] == 'xcrun' && (entry[1] == '--find' || entry[2] == 'list') }, trace.inspect
     assert_empty remaining_run_files
     refute_includes output, "\e["
+  end
+
+  # 只读体检提前展示全部回车会采用的组合，但完整型号总数保持不变。
+  def test_check_entry_reports_compatible_enter_default_without_mutation
+    use_duo_catalog
+    @runtimes = [@runtimes.first]
+    save_catalog
+    output, status = execute('main --check')
+    assert status.success?, output
+    assert_includes output, '完整机型清单：3 个 iPhone / iPad'
+    assert_includes output, '✔ 回车首选组合：iPhone Duo / iOS 27.1'
+    assert trace.all? { |entry| entry[0] == 'xcrun' && (entry[1] == '--find' || entry[2] == 'list') }, trace.inspect
+    assert_empty remaining_run_files
   end
 
   # 帮助与无效参数在旧入口的清场、Homebrew 和 fzf 安装流程之前返回。
@@ -336,6 +466,29 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     output, status = execute('main --check', env: {'TEST_LIST_FAIL' => 'runtimes'})
     refute status.success?, output
     assert_includes output, '读取模拟器清单失败'
+    refute trace.any? { |entry| entry[2] == 'create' }
+  end
+
+  # 未安装 Runtime 时交互流程也必须停止，不能用虚构的默认系统创建。
+  def test_missing_runtime_stops_enter_only_flow_before_selection_and_creation
+    @runtimes = []
+    save_catalog
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\n\n\n")
+    refute status.success?, output
+    assert_includes output, '没有本机可用'
+    refute_includes output, '➤ 选择 iPhone / iPad 型号'
+    refute trace.any? { |entry| entry[2] == 'create' }
+  end
+
+  # 手动选择本机无兼容系统的型号时，在系统列表与创建确认前停止。
+  def test_device_with_no_compatible_installed_runtime_stops_before_creation
+    use_duo_catalog
+    @runtimes = [@runtimes.first]
+    save_catalog
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "2\n\n\n")
+    refute status.success?, output
+    assert_includes output, '没有可搭配的已安装 iOS 系统'
+    refute_includes output, '➤ 选择 iOS 系统版本'
     refute trace.any? { |entry| entry[2] == 'create' }
   end
 
@@ -459,15 +612,70 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_includes output, '新模拟器已完成启动'
   end
 
-  # 重现另一台机器：先选传统型号再选 27.0，不受最新 27.1 的 Duo 白名单影响。
-  def test_complete_flow_selects_traditional_iphone_then_older_runtime_when_latest_only_lists_duo
+  # 两个已装系统分别支持传统型号与 Duo 时，全部回车可直接创建传统型号 + 27.0。
+  def test_enter_only_flow_selects_traditional_iphone_with_compatible_older_runtime
     use_duo_catalog
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n2\n\n")
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\n\n\n")
     assert status.success?, output
+    assert_includes output, '选择 iOS 系统版本'
     assert_operator output.index('选择 iPhone / iPad 型号'), :<, output.index('选择 iOS 系统版本')
     creates = trace.select { |entry| entry[2] == 'create' }
     assert_equal 1, creates.length
     assert_equal [DEVICE_PREFIX + 'iPhone-Old', RUNTIME_PREFIX + 'iOS-27-0'], creates.first.last(2)
+    assert_includes output, '新模拟器已完成启动'
+  end
+
+  # 只安装 Duo 专用系统的新电脑，全部回车直接选择 Duo + 27.1，并且只创建一次。
+  def test_enter_only_flow_defaults_to_duo_when_it_is_the_only_supported_model
+    use_duo_catalog
+    @runtimes = [@runtimes.first]
+    save_catalog
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\n\n\n")
+    assert status.success?, output
+    creates = trace.select { |entry| entry[2] == 'create' }
+    assert_equal 1, creates.length
+    assert_equal [DEVICE_PREFIX + 'iPhone-Duo', RUNTIME_PREFIX + 'iOS-27-1'], creates.first.last(2)
+    assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+    assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+    assert_includes output, '新模拟器已完成启动'
+  end
+
+  # 健康 fzf 的首项也使用兼容组合，重现用户回车选中最新不兼容系统的现场。
+  def test_healthy_fzf_defaults_to_compatible_runtime_for_traditional_iphone
+    use_duo_catalog
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             input: "\n", env: {'TEST_FZF_TRACE' => '1'})
+    assert status.success?, output
+    creates = trace.select { |entry| entry[2] == 'create' }
+    assert_equal 1, creates.length
+    assert_equal [DEVICE_PREFIX + 'iPhone-Old', RUNTIME_PREFIX + 'iOS-27-0'], creates.first.last(2)
+    assert_equal 2, trace.count { |entry| entry[0] == 'fzf' }
+    assert_includes output, '新模拟器已完成启动'
+  end
+
+  # 用户 fzf 的反序 / 查询配置不能改变回车首选组合，父 Shell 原配置仍保留。
+  def test_fzf_user_defaults_cannot_change_enter_default_or_mutate_parent_environment
+    use_duo_catalog
+    options_file = File.join(@root, '个人 fzf 选项.conf')
+    File.write(options_file, "--tac\n--query=Duo\n")
+    write_mock('fzf', <<~'ZSH')
+      if [[ -n "${FZF_DEFAULT_OPTS+x}" || -n "${FZF_DEFAULT_OPTS_FILE+x}" ]]; then
+        print -ru2 -- 'unexpected inherited fzf default options'
+        exit 41
+      fi
+      /usr/bin/head -n 1
+    ZSH
+    output, status = execute(<<~'ZSH', input: "\n", env: {'FZF_DEFAULT_OPTS' => '--tac --query=Duo', 'FZF_DEFAULT_OPTS_FILE' => options_file})
+      SIM_FZF="$TEST_ROOT/bin/fzf"
+      sim_load_catalog && sim_interactive_loop || exit $?
+      print -r -- "PARENT_OPTIONS|${FZF_DEFAULT_OPTS}|${FZF_DEFAULT_OPTS_FILE}"
+    ZSH
+    assert status.success?, output
+    creates = trace.select { |entry| entry[2] == 'create' }
+    assert_equal 1, creates.length
+    assert_equal [DEVICE_PREFIX + 'iPhone-Old', RUNTIME_PREFIX + 'iOS-27-0'], creates.first.last(2)
+    assert_includes output, "PARENT_OPTIONS|--tac --query=Duo|#{options_file}"
     assert_includes output, '新模拟器已完成启动'
   end
 
@@ -554,6 +762,16 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   end
 
   private
+
+  # 比较列表的可见条目，完整 argv 另由创建 trace 核对。
+  def row_names(output)
+    output.lines.map { |line| line.strip.split("\t").first }
+  end
+
+  # 使用固定夹具型号读取可搭配系统，不访问真实 Xcode。
+  def compatible_runtimes
+    execute('sim_data compatible-runtimes "$TEST_ROOT/runtimes.json" arm64 "$TEST_ROOT/devicetypes.json" com.apple.CoreSimulator.SimDeviceType.iPhone-Old')
+  end
 
   # 核心退出清理可以连同空临时目录一起移除；两种结果都不应留下日志或快照。
   def remaining_run_files

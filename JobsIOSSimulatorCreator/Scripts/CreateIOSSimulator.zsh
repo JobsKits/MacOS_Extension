@@ -191,6 +191,55 @@ function run(args) {
         if (!value || !Array.isArray(value.devicetypes)) throw Error('设备 JSON 缺少 devicetypes 数组');
         return value.devicetypes;
     }
+    function availableRuntimes(path, arch) {
+        var seen = Object.create(null), seenIDs = Object.create(null), rows = [];
+        runtimeList(path).forEach(function (entry) {
+            if (entry.isAvailable !== true || !/^com\.apple\.CoreSimulator\.SimRuntime\.iOS-/.test(entry.identifier || '')) return;
+            if (Array.isArray(entry.supportedArchitectures) && entry.supportedArchitectures.indexOf(arch) < 0) return;
+            var name = text(entry.name), identifier = id(entry.identifier, 'com.apple.CoreSimulator.SimRuntime.iOS-');
+            var value = version(entry.version);
+            if (seen[name] || seenIDs[identifier]) return;
+            seen[name] = true;
+            seenIDs[identifier] = true;
+            rows.push({name:name, id:identifier, value:value, entry:entry});
+        });
+        rows.sort(function (a,b) { return b.value - a.value || a.name.localeCompare(b.name); });
+        return rows;
+    }
+    function namedDevices(path) {
+        var seen = Object.create(null), rows = [];
+        deviceList(path).forEach(function (device) {
+            if (!/^iPhone |^iPad /.test(device.name || '')) return;
+            var identifier = id(device.identifier, 'com.apple.CoreSimulator.SimDeviceType.'), name = text(device.name);
+            if (seen[identifier]) return;
+            seen[identifier] = true;
+            rows.push({name:name, id:identifier, entry:device});
+        });
+        return rows;
+    }
+    function runtimeBound(device, prefix) {
+        var value = device[prefix + 'RuntimeVersion'];
+        if (typeof value === 'number' && isFinite(value) && value >= 0 && Math.floor(value) === value) return value;
+        value = device[prefix + 'RuntimeVersionString'];
+        return typeof value === 'string' && /^\d+(?:\.\d+){0,2}$/.test(value) ? version(value) : null;
+    }
+    // 只排除有明确依据的组合；缺失或不完整的兼容元数据保留为未知。
+    function compatibility(device, runtime) {
+        var supported = runtime.entry.supportedDeviceTypes;
+        if (Array.isArray(supported) && supported.length > 0) {
+            var identifiers = supported.map(function (entry) {
+                var identifier = typeof entry === 'string' ? entry : entry && entry.identifier;
+                return typeof identifier === 'string' && /^com\.apple\.CoreSimulator\.SimDeviceType\.[A-Za-z0-9._-]+$/.test(identifier) ? identifier : null;
+            });
+            if (identifiers.indexOf(device.id) >= 0) return 2;
+            if (identifiers.every(function (identifier) { return identifier !== null; })) return 0;
+        }
+        var minimum = runtimeBound(device.entry, 'min'), maximum = runtimeBound(device.entry, 'max');
+        if (minimum !== null && maximum !== null && minimum > maximum) return 1;
+        if (minimum !== null && runtime.value < minimum) return 0;
+        if (maximum !== null && runtime.value > maximum) return 0;
+        return 1;
+    }
     if (args[0] === 'health') return 'jxa-ready';
     if (args[0] === 'app') {
         var appPath = text(args[1]), bundle = $.NSBundle.bundleWithPath(appPath);
@@ -201,31 +250,29 @@ function run(args) {
         return bundleID;
     }
     if (args[0] === 'runtimes') {
-        var seen = Object.create(null), seenIDs = Object.create(null), rows = [], arch = args[2];
-        runtimeList(args[1]).forEach(function (entry) {
-            if (entry.isAvailable !== true || !/^com\.apple\.CoreSimulator\.SimRuntime\.iOS-/.test(entry.identifier || '')) return;
-            if (Array.isArray(entry.supportedArchitectures) && entry.supportedArchitectures.indexOf(arch) < 0) return;
-            var name = text(entry.name), identifier = id(entry.identifier, 'com.apple.CoreSimulator.SimRuntime.iOS-');
-            var value = version(entry.version);
-            if (seen[name] || seenIDs[identifier]) return;
-            seen[name] = true;
-            seenIDs[identifier] = true;
-            rows.push({name:name, id:identifier, value:value});
-        });
-        rows.sort(function (a,b) { return b.value - a.value || a.name.localeCompare(b.name); });
-        return rows.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
+        return availableRuntimes(args[1], args[2]).map(function (row) { return row.name + '\t' + row.id; }).join('\n');
     }
     if (args[0] === 'devicetypes') {
-        var seen = Object.create(null), rows = [];
-        deviceList(args[1]).forEach(function (device) {
-            // 与原初始化脚本按名称读取完整机型的规则一致，组合兼容性交给 simctl create。
-            if (!/^iPhone |^iPad /.test(device.name || '')) return;
-            var identifier = id(device.identifier, 'com.apple.CoreSimulator.SimDeviceType.'), name = text(device.name);
-            if (seen[identifier]) return;
-            seen[identifier] = true;
-            rows.push(name + '\t' + identifier);
+        return namedDevices(args[1]).map(function (row) { return row.name + '\t' + row.id; }).join('\n');
+    }
+    if (args[0] === 'preferred-devicetypes') {
+        var devices = namedDevices(args[1]), runtimes = availableRuntimes(args[2], args[3]);
+        devices.forEach(function (device, index) {
+            device.order = index;
+            device.rank = runtimes.reduce(function (rank, runtime) { return Math.max(rank, compatibility(device, runtime)); }, 0);
         });
-        return rows.join('\n');
+        devices.sort(function (a,b) { return b.rank - a.rank || a.order - b.order; });
+        return devices.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
+    }
+    if (args[0] === 'compatible-runtimes') {
+        var selectedID = id(args[4], 'com.apple.CoreSimulator.SimDeviceType.');
+        var devices = namedDevices(args[3]).filter(function (device) { return device.id === selectedID; });
+        if (devices.length !== 1) throw Error('所选型号不属于当前设备清单');
+        var runtimes = availableRuntimes(args[1], args[2]);
+        runtimes.forEach(function (runtime) { runtime.rank = compatibility(devices[0], runtime); });
+        runtimes = runtimes.filter(function (runtime) { return runtime.rank > 0; });
+        runtimes.sort(function (a,b) { return b.rank - a.rank || b.value - a.value || a.name.localeCompare(b.name); });
+        return runtimes.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
     }
     if (args[0] === 'unique-name') {
         var payload = json(args[1]), names = Object.create(null), base = text(args[2]);
@@ -308,7 +355,7 @@ sim_load_catalog() {
         fi
     done
 }
-# 选择指定列表，空输入、EOF、Esc 和 q 均不会回退到默认设备。
+# 回车选择列表首项，编号可另选；EOF、Esc 和 q 明确取消。
 sim_choose_row() {
     local title="$1" content="$2" answer="" index=0 result=0
     SIM_SELECTED_ROW=""
@@ -318,7 +365,7 @@ sim_choose_row() {
     fi
     sim_log "➤ ${title}"
     if [[ -n "$SIM_FZF" ]]; then
-        SIM_SELECTED_ROW="$(print -rl -- "${SIM_ROWS[@]}" | "$SIM_FZF" --delimiter=$'\t' --with-nth=1 --height=60% --reverse --prompt="${title} > ")" || result=$?
+        SIM_SELECTED_ROW="$(print -rl -- "${SIM_ROWS[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE "$SIM_FZF" --delimiter=$'\t' --with-nth=1 --height=60% --reverse --prompt="${title} > ")" || result=$?
         if (( result != 0 )) || [[ -z "$SIM_SELECTED_ROW" ]]; then
             SIM_CANCELLED=1
             return 130
@@ -332,9 +379,13 @@ sim_choose_row() {
             sim_log "${index}、${SIM_ROWS[index]%%$'\t'*}"
         done
         while true; do
-            if ! IFS= read -r "?输入编号（q 取消）：" answer || [[ -z "$answer" || "$answer" == [qQ] || "$answer" == $'\e' ]]; then
+            if ! IFS= read -r "?输入编号（回车选第 1 项，q 取消）：" answer || [[ "$answer" == [qQ] || "$answer" == $'\e' ]]; then
                 SIM_CANCELLED=1
                 return 130
+            fi
+            if [[ -z "$answer" ]]; then
+                SIM_SELECTED_ROW="${SIM_ROWS[1]}"
+                break
             fi
             if [[ "$answer" == <-> && ${#answer} -le 6 ]]; then
                 index=$(( 10#$answer ))
@@ -347,10 +398,10 @@ sim_choose_row() {
         done
     fi
 }
-# 与原初始化脚本保持机型优先的完整清单，避免最新 Runtime 提前隐藏传统型号。
+# 保留完整型号并优先推荐可搭配已装系统的型号，选定后排除明确不兼容的系统。
 sim_select_combination() {
     local devices="" runtimes=""
-    if ! devices="$(sim_data devicetypes "$SIM_RUN_DIR/devicetypes.json" 2>&1)"; then
+    if ! devices="$(sim_data preferred-devicetypes "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
         sim_log "✖ 无法解析设备型号：${devices}"
         return 1
     fi
@@ -369,6 +420,15 @@ sim_select_combination() {
     sim_choose_row '选择 iPhone / iPad 型号' "$devices" || return $?
     SIM_DEVICE_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
     SIM_DEVICE_ID="${SIM_SELECTED_ROW#*$'\t'}"
+    if ! runtimes="$(sim_data compatible-runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" "$SIM_RUN_DIR/devicetypes.json" "$SIM_DEVICE_ID" 2>&1)"; then
+        sim_log "✖ 无法匹配所选型号的系统：${runtimes}"
+        return 1
+    fi
+    if [[ -z "$runtimes" ]]; then
+        sim_log "✖ ${SIM_DEVICE_NAME} 没有可搭配的已安装 iOS 系统，请在 Xcode 安装对应 Runtime，或重新运行选择其它型号。"
+        return 1
+    fi
+    sim_log '➤ 已排除明确不兼容的系统，优先选择已确认支持的最新版本；回车采用首项。'
     sim_choose_row '选择 iOS 系统版本' "$runtimes" || return $?
     SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
     SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
@@ -509,8 +569,28 @@ sim_report_catalog() {
     for row in "${(@f)rows}"; do
         sim_log "✔ 可用系统：${row%%$'\t'*}"
     done
-    sim_log '➤ 与原初始化脚本相同：先选型号，再选系统；组合是否受支持由 simctl create 最终校验。'
+    sim_report_default_combination || return $?
+    sim_log '➤ 首项优先采用已确认支持的组合；元数据缺失保留候选，仍由 simctl create 最终校验。'
     sim_log '✔ 只读体检完成；未创建、启动、关闭或删除模拟器。'
+}
+# 只读展示两次回车将选择的组合，便于在目标电脑核对默认值。
+sim_report_default_combination() {
+    local devices="" device="" runtimes="" runtime=""
+    if ! devices="$(sim_data preferred-devicetypes "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
+        sim_log "✖ 无法推荐默认型号：${devices}"
+        return 1
+    fi
+    device="${devices%%$'\n'*}"
+    if ! runtimes="$(sim_data compatible-runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" "$SIM_RUN_DIR/devicetypes.json" "${device#*$'\t'}" 2>&1)"; then
+        sim_log "✖ 无法推荐默认系统：${runtimes}"
+        return 1
+    fi
+    if [[ -z "$runtimes" ]]; then
+        sim_log '✖ 当前型号与已装系统没有可推荐的组合，请在 Xcode 安装对应 Runtime。'
+        return 1
+    fi
+    runtime="${runtimes%%$'\n'*}"
+    sim_log "✔ 回车首选组合：${device%%$'\t'*} / ${runtime%%$'\t'*}"
 }
 # 将帮助、只读体检与交互创建路由到各自流程，并传播失败状态。
 sim_run_requested_action() {
@@ -533,7 +613,7 @@ sim_run_requested_action() {
 show_script_intro_and_wait() {
     sim_prepare_context
     sim_intro_line title '━━━━━━━━━━ 新建 iOS 模拟器 ━━━━━━━━━━'
-    sim_intro_line body '1、先选本机完整 iPhone / iPad 型号，再选已安装的 iOS 系统，新增并启动一个模拟器。'
+    sim_intro_line body '1、完整型号中优先显示有可搭配系统的机型，再选兼容系统；一路回车采用首选组合，创建并启动新模拟器。'
     sim_intro_line body '2、保留现有设备与调试会话；不安装工具 / Runtime，不更改 Xcode、Shell 或网络配置。'
     sim_intro_line body '3、Ctrl+C 随时停止；选择时按 Esc / 输入 q 取消；创建前会再次确认。'
     sim_intro_line body "日志位置：${LOG_FILE}（确认后创建；只读入口不写日志）"

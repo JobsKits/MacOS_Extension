@@ -24,13 +24,15 @@
 
 | 入口 / 行为 | 实际结果 |
 | --- | --- |
-| 无参数运行 | 自述确认 → 选择完整 iPhone / iPad 型号 → 选择已安装 iOS 系统 → 回车创建并启动 |
+| 无参数运行 | 自述确认 → 完整机型中可搭配系统的型号优先 → 匹配系统 → 回车创建并启动 |
 | `--help` | 显示说明，不探测工具链或写日志 |
-| `--check` | 只读检查当前 Xcode、simctl、模拟器界面、完整机型数量与可用系统，不创建设备 |
-| 本机已有健康 fzf | 使用可搜索的选择列表，Esc 取消 |
-| 本机没有可用 fzf | 自动使用编号列表，输入 q 或直接回车取消；不安装额外工具 |
+| `--check` | 只读检查当前 Xcode、simctl、模拟器界面、完整机型、可用系统及回车首选组合，不创建设备 |
+| 本机已有健康 fzf | 使用可搜索的选择列表，回车首项、Esc 取消；仅对子进程移除外部默认选项，避免反转或过滤首选组合 |
+| 本机没有可用 fzf | 自动使用编号列表，回车选第 1 项，输入 q / Esc 或 EOF 取消；不安装额外工具 |
 
-机型来源与独立初始化脚本相同，均为当前 Xcode 的 `simctl list devicetypes`；两个入口使用逐字节相同的 JSON 解析和创建核心，保留完整 iPhone / iPad。先选机型，再选 Runtime，最后由 `simctl create` 判断组合是否支持。`supportedDeviceTypes`、最小 / 最大系统版本及 `productFamily` 不用于提前隐藏型号。
+机型来源与独立初始化脚本相同，均为当前 Xcode 的 `simctl list devicetypes`；两个入口使用逐字节相同的 JSON 解析和创建核心，保留完整 iPhone / iPad。兼容性只调整机型推荐顺序，不隐藏传统型号。选定机型后排除明确不支持它的 Runtime，确认支持的最新版本排首位，最后由 `simctl create` 校验。
+
+Runtime 有效非空 `supportedDeviceTypes` 名单明确包含 / 排除时优先采用该结论；字段缺失、空数组或不完整且未匹配时，再用机型有效的最小 / 最大版本排除越界项。范围内的未知候选保留，排在已确认支持的系统之后。默认组合来自本机数据，不按固定型号或版本硬编码。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -50,7 +52,7 @@
 
 2、检查当前 [**Xcode**](https://developer.apple.com/xcode/) 的 `xcrun simctl`、系统 JavaScript for Automation，以及同一 Xcode 内的模拟器界面。支持传统 `Simulator.app` 与新版 [**Device Hub**](https://developer.apple.com/documentation/xcode/managing-your-simulated-and-physical-devices-in-device-hub)，通过 Bundle ID 和实际可执行文件核验，不跨 Xcode 混用应用。
 
-3、读取 `simctl list ... --json`。从完整设备类型清单按名称取得 iPhone / iPad，按标识去重并保留原顺序，先选择机型；再选择可用且支持本机架构的 iOS Runtime，系统按展示名和标识去重。机型和系统独立列出，不把最新 Runtime 的支持范围误当成 Xcode 的全部型号；正常流程两张列表各选一次，创建时由 `simctl create` 最终校验。
+3、读取 `simctl list ... --json`。从完整设备类型清单按名称取得 iPhone / iPad，按标识去重；存在确认支持的已装系统的机型优先，其次是兼容信息未知的机型，最后是暂时没有可搭配系统的机型，组内保留原顺序。选定型号后匹配本机可用且支持当前架构的 Runtime；按展示名和标识去重，确认支持组优先，组内按版本从新到旧。型号与系统列表回车均采用首项；没有可搭配系统时明确提示并停止，不尝试已知不兼容组合。
 
 4、自动命名为 `设备名@年月日 时:分:秒-进程编号`，并刷新所有既有设备名称；冲突时追加数字后缀。格式示例：`iPhone 18 Pro@2026.10.20 21:30:00-12345`。不同终端同时运行也不会只因同秒操作而使用同一默认名称。
 
@@ -64,7 +66,7 @@
 
 两侧都携带完整核心，不依赖外部公共库或另一仓库的运行时路径。独立入口在创建前保留原有清场、Homebrew / fzf 自检；右键入口不执行这些前置动作。独立入口的 `--help` / `--check` 提前进入只读分支，绕过清场和依赖安装。
 
-以本机 2026-10-20 的只读快照为例：iOS 27.1 的 `supportedDeviceTypes` 只有 iPhone Duo，iOS 27.0 有 62 种设备；完整 `devicetypes` 按名称取得 45 种 iPhone 和 43 种 iPad。先按 27.1 筛选只会显示 Duo，完整型号优先的流程仍可选择传统 iPhone 再搭配 27.0。清单因机器和组件而异，显示型号不代表它能与每个系统组合。`--check` 只验证两份独立清单可读，不创建探测设备或宣称所有组合兼容。
+以本机 2026-10-21 的只读快照为例：iOS 27.1 的 `supportedDeviceTypes` 只有 iPhone Duo，iOS 27.0 有 62 种设备；完整 `devicetypes` 按名称取得 45 种 iPhone 和 43 种 iPad。交互仍保留全部 88 个型号，默认 iPhone 18 Pro 的系统首项为 27.0；若只装了支持 Duo 的系统，则将 Duo 排到机型首项，传统机型仍保留供查看。`--check` 展示本机回车首选组合，不创建探测设备，也不宣称未知组合一定兼容。
 
 目标机器需取得更新后的源码并重新运行安装器，才能把新脚本打包进宿主 App；修改工程中的脚本不会自动更新已安装的旧 App 资源。
 
@@ -90,7 +92,7 @@ JOBS_SIMULATOR_TEST_SCRIPT='../../../JobsCommand@iOS/其他/【MacOS】📱双�
 
 默认一致性检查定位同一 `JobsGenesis` 下的独立脚本；源码放在其它位置时用 `JOBS_SIMULATOR_SOURCE` 指定。仅复制本工程而缺少规范源时，该项明确跳过，其余隔离回归仍可独立执行；业务运行不依赖此路径。
 
-测试执行真实 zsh / 系统 JSON 解析代码，将 `xcrun`、`open` 和 `fzf` 替换为私有假命令，覆盖完整机型、Duo 单项 Runtime 名单下选择传统型号与旧系统、元数据差异、去重、损坏工具、编号 / fzf 取消、完整创建流程、参数引用、启动失败、Device Hub 新布局与超时；同时验证正常流程只选择一轮、创建失败后连续回车不重弹，以及精确 `r` / `R` 重选。测试不会新增、启动或清理真实模拟器；真实 Finder 菜单、系统权限和 GUI 操作另按安装后的实际机器验收。
+测试执行真实 zsh / 系统 JSON 解析代码，将 `xcrun`、`open` 和 `fzf` 替换为私有假命令，覆盖完整机型稳定推荐、编号 / fzf 一路回车采用兼容组合、Duo 单 Runtime 默认推荐、有效白名单优先级、缺失 / 损坏兼容字段、版本范围、无兼容系统停止，以及既有去重、取消、创建启动、参数引用、失败与超时；同时验证正常流程只选择一轮、失败不自动重弹，以及精确 `r` / `R` 重选。测试不会新增、启动或清理真实模拟器；真实 Finder 菜单、系统权限和 GUI 操作另按安装后的实际机器验收。
 
 宿主去重测试单独编译真实 AppDelegate 与测试文件内的假 Model，不与生产 `IOSSimulatorModel.swift` 一起编译；它只在内存中模拟 URL 回调，不打开 Terminal 或注册扩展。从本工程目录执行：
 
