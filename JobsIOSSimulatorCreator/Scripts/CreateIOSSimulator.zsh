@@ -393,7 +393,7 @@ sim_confirm_creation() {
     sim_log "➤ 设备：${SIM_DEVICE_NAME}"
     sim_log "➤ 系统：${SIM_RUNTIME_NAME}"
     sim_log "➤ 新名称：${SIM_NAME}"
-    sim_log '➤ 型号与系统分别列出，组合是否受支持由 Xcode 创建命令最终校验；不支持时可重新选择。'
+    sim_log '➤ 型号与系统分别列出，组合是否受支持由 Xcode 创建命令最终校验；不支持时需输入 r 才重新选择。'
     if ! IFS= read -r "?直接回车创建并启动；输入任意字符取消：" answer || [[ -n "$answer" ]]; then
         SIM_CANCELLED=1
         return 130
@@ -406,8 +406,8 @@ sim_create_and_boot() {
     sim_run_to_file "$output" 30 /usr/bin/xcrun simctl create "$SIM_NAME" "$SIM_DEVICE_ID" "$SIM_RUNTIME_ID" || result=$?
     value="$(<"$output")"
     if (( result != 0 )); then
-        if (( result != 124 )) && [[ "$value" == *'Unable to create a device for device type'* || "$value" == *'Incompatible device'* ]]; then
-            sim_log "⚠ 当前设备 / 系统组合不受支持，可重新选择：${value}"
+        if (( result != 124 )) && [[ "$value" == *'Incompatible device'* ]]; then
+            sim_log "⚠ 当前设备 / 系统组合不受支持：${value}"
             return 2
         fi
         sim_log "✖ 创建未成功确认（退出码 ${result}）：${value}"
@@ -441,7 +441,16 @@ sim_create_and_boot() {
         sim_log "➤ 已打开 Device Hub；可按设备名选中 ${SIM_NAME}（${SIM_UDID}）。"
     fi
 }
-# 交互取消正常返回；仅明确不兼容时回到选择，不重复创建已确认的设备。
+# 仅在明确不兼容且用户输入 r / R 后重选，连续回车不会再弹出列表。
+sim_confirm_reselection() {
+    local answer=""
+    if IFS= read -r "?输入 r 重新选择型号和系统；直接回车或其它输入停止：" answer && [[ "$answer" == [rR] ]]; then
+        return 0
+    fi
+    sim_log '➤ 已停止，未重复选择或再次创建模拟器。'
+    return 1
+}
+# 交互取消正常返回；成功或普通失败均结束，重选必须再次明确发起。
 sim_interactive_loop() {
     local result=0
     while true; do
@@ -450,8 +459,6 @@ sim_interactive_loop() {
         if (( result == 130 )); then
             sim_log '➤ 已取消，未创建模拟器。'
             return 0
-        elif (( result == 2 )); then
-            continue
         elif (( result != 0 )); then
             return "$result"
         fi
@@ -463,6 +470,7 @@ sim_interactive_loop() {
         result=0
         sim_create_and_boot || result=$?
         if (( result == 2 )); then
+            sim_confirm_reselection || return 1
             continue
         fi
         return "$result"

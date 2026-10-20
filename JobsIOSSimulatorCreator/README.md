@@ -121,7 +121,9 @@ flowchart TD
     F -->|否| G["取消，不新增设备"]
     F -->|是| H["simctl create"]
     H --> K{"组合受支持且创建成功?"}
-    K -->|明确不兼容| E
+    K -->|明确不兼容| M{"输入 r / R 重选?"}
+    M -->|是| E
+    M -->|回车 / 其它 / EOF| L
     K -->|其它失败| L["显示错误并停止"]
     K -->|是| I["simctl boot / 打开 Simulator"]
     I --> J["输出名称、UDID 与日志"]
@@ -147,11 +149,12 @@ JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 xcodebuild \
 - Xcode 27 没有旧 `Simulator.app`：脚本会核验同一 Xcode 内的 Device Hub 并打开，不因此阻断创建。新的设备管理方式见 [Apple Device Hub 文档](https://developer.apple.com/documentation/xcode/managing-your-simulated-and-physical-devices-in-device-hub)。
 - 无法打开 Terminal：在系统设置的“隐私与安全性 → 自动化”检查宿主控制 Terminal 的权限；不自动修改 TCC 数据库。
 - 创建后启动失败：保留 UDID 和日志，修复环境后在 Xcode / Simulator 中启动；程序不以删除新设备掩盖失败。
+- 选择列表重复出现：正常创建只选择一轮型号和系统。创建失败不会自动回到列表；明确不兼容时，只有输入 `r` / `R` 才重选，回车停止。宿主在同一次运行中只派发一次合法创建请求，重复 URL 回调只记日志；已派发完成也不再次打开 Terminal。目标 Mac 需重新运行安装器以更新宿主与内嵌脚本。若仍重复，保留终端显示的业务日志和系统临时目录中的 `JobsIOSSimulatorCreator.log`，据此区分业务重选与重复启动。
 - 本工程无服务器、API、假数据模式或网络图片；列表只来自本机真实 CoreSimulator，空列表提供修复提示，重新运行即可重新读取。
 
 桌面路径修复：沙盒中的 `NSHomeDirectoryForUser` 仍可能返回容器 Home，导致只监控 `Data/Desktop` 别名而收不到真实桌面的菜单回调。现用 `getpwuid_r(getuid())` 取得真实 Home，保留系统桌面别名，并监控根目录 `/` 接收 Finder 回调；菜单层按桌面完整路径白名单过滤，普通文件夹背景及所有选中项菜单均隐藏。白名单命中不依赖桌面文件属性读取权限。
 
-验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 33 项 / 206 断言隔离回归，核心块字节一致；覆盖 27.1 名单只有 Duo 时选择传统 iPhone 搭配 27.0、独立入口前置顺序与失败停止、只读分流，以及脚本单独复制到中文 / 空格 / 特殊字符路径运行。两侧真实只读 `--check` 都返回 88 种机型，与 `simctl` 文本清单的 45 种 iPhone / 43 种 iPad 名称及顺序逐项一致。没有创建或启动真实模拟器，目标机器需重新安装后验收。
+验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 38 项 / 279 断言隔离回归，核心块字节一致；覆盖正常型号 / 系统各选一次、失败后连续回车不重弹、精确 `r` / `R` 重选、泛化创建错误停止，以及 27.1 名单只有 Duo 时选择传统 iPhone 搭配 27.0、独立入口前置顺序与失败停止、只读分流、特殊字符路径运行。真实 AppDelegate 配假 Model 的隔离回归通过 26 条断言，覆盖两种 URL 回调交错、重入、派发完成前后重复与无效请求；生产宿主相关源码的 Swift 类型检查通过。新电脑上无错误提示却重复列表的具体触发点仍待目标机器日志确认，隔离测试不等同于现场复现。此前两侧真实只读 `--check` 都返回 88 种机型，与 `simctl` 文本清单的 45 种 iPhone / 43 种 iPad 名称及顺序逐项一致。没有创建或启动真实模拟器，目标机器需重新安装后验收。
 
 宿主与菜单既有验收：Xcode **27.1 / 27A9275**、macOS arm64 的 Debug 双 target 构建与 ad-hoc 深度签名验证通过；安装注册 10 项 / 66 断言、原生传输与菜单 66 断言、父安装映射 19 项 / 108 断言通过。真实只读 `--check` 已核验同一 Xcode 的 Device Hub。桌面范围回归 `Tests/DesktopFinderMenuTests.rb` 直接执行真实菜单源码，177 条 Swift 菜单断言通过。
 

@@ -50,7 +50,7 @@
 
 2、检查当前 [**Xcode**](https://developer.apple.com/xcode/) 的 `xcrun simctl`、系统 JavaScript for Automation，以及同一 Xcode 内的模拟器界面。支持传统 `Simulator.app` 与新版 [**Device Hub**](https://developer.apple.com/documentation/xcode/managing-your-simulated-and-physical-devices-in-device-hub)，通过 Bundle ID 和实际可执行文件核验，不跨 Xcode 混用应用。
 
-3、读取 `simctl list ... --json`。从完整设备类型清单按名称取得 iPhone / iPad，按标识去重并保留原顺序，先选择机型；再选择可用且支持本机架构的 iOS Runtime，系统按展示名和标识去重。机型和系统独立列出，不把最新 Runtime 的支持范围误当成 Xcode 的全部型号；创建时由 `simctl create` 最终校验，不支持则回到选择。
+3、读取 `simctl list ... --json`。从完整设备类型清单按名称取得 iPhone / iPad，按标识去重并保留原顺序，先选择机型；再选择可用且支持本机架构的 iOS Runtime，系统按展示名和标识去重。机型和系统独立列出，不把最新 Runtime 的支持范围误当成 Xcode 的全部型号；正常流程两张列表各选一次，创建时由 `simctl create` 最终校验。
 
 4、自动命名为 `设备名@年月日 时:分:秒-进程编号`，并刷新所有既有设备名称；冲突时追加数字后缀。格式示例：`iPhone 18 Pro@2026.10.20 21:30:00-12345`。不同终端同时运行也不会只因同秒操作而使用同一默认名称。
 
@@ -60,7 +60,7 @@
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、来源与安全边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-业务规范源为 `JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/【MacOS】📱双击初始化iOS模拟器.command`。两侧 `# >>> Jobs iOS simulator core >>>` 到对应结束标记之间的状态与函数逐字节一致：完整 iPhone / iPad、Runtime 去重、自动命名、创建启动、不兼容组合回选、明确退出码和只读体检均在该核心内。自述和 `main` 等入口编排位于标记外。维护核心时先改独立规范源，再完整同步此标记块到右键脚本；一致性测试拒绝两侧不同的实现。
+业务规范源为 `JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/【MacOS】📱双击初始化iOS模拟器.command`。两侧 `# >>> Jobs iOS simulator core >>>` 到对应结束标记之间的状态与函数逐字节一致：完整 iPhone / iPad、Runtime 去重、自动命名、创建启动、不兼容组合的明确重选、退出码和只读体检均在该核心内。自述和 `main` 等入口编排位于标记外。维护核心时先改独立规范源，再完整同步此标记块到右键脚本；一致性测试拒绝两侧不同的实现。
 
 两侧都携带完整核心，不依赖外部公共库或另一仓库的运行时路径。独立入口在创建前保留原有清场、Homebrew / fzf 自检；右键入口不执行这些前置动作。独立入口的 `--help` / `--check` 提前进入只读分支，绕过清场和依赖安装。
 
@@ -70,7 +70,7 @@
 
 原脚本的清场、Homebrew / fzf 安装升级不属于本入口的执行范围。脚本只新增设备，不关闭、删除、擦除或重置既有模拟器，不下载 Runtime，不更改 `xcode-select`、Shell 配置或网络代理。缺少组件时提示在 Xcode 中准备后重试。
 
-创建命令只有明确返回组合不兼容才回到选择；其它失败或无法确认的返回值立即停止，避免自动重试产生重复设备。新设备创建后即使启动、界面打开或等待失败也保留设备并打印 UDID。多数只读命令限时 20–30 秒，启动完成等待上限 120 秒；超时只停止本次命令。
+创建命令明确返回 `Incompatible device` 时显示原始错误，只有精确输入 `r` / `R` 才回到选择；直接回车、其它输入或 EOF 均停止并返回失败。泛化的 `Unable to create a device for device type` 不能证明组合不兼容，与其它失败或无法确认的返回值一样立即停止。连续回车不会自动弹出第二轮列表或再次执行创建。新设备创建后即使启动、界面打开或等待失败也保留设备并打印 UDID。多数只读命令限时 20–30 秒，启动完成等待上限 120 秒；超时只停止本次命令。
 
 交互日志为 `$TMPDIR/CreateIOSSimulator.<进程编号>.log`，确认后才创建；终端业务输出同步记录为纯文本。每次私有 JSON 快照在退出时清理，`--help` / `--check` 不创建持久日志。
 
@@ -90,7 +90,19 @@ JOBS_SIMULATOR_TEST_SCRIPT='../../../JobsCommand@iOS/其他/【MacOS】📱双�
 
 默认一致性检查定位同一 `JobsGenesis` 下的独立脚本；源码放在其它位置时用 `JOBS_SIMULATOR_SOURCE` 指定。仅复制本工程而缺少规范源时，该项明确跳过，其余隔离回归仍可独立执行；业务运行不依赖此路径。
 
-测试执行真实 zsh / 系统 JSON 解析代码，将 `xcrun`、`open` 和 `fzf` 替换为私有假命令，覆盖完整机型、Duo 单项 Runtime 名单下选择传统型号与旧系统、元数据差异、去重、损坏工具、编号 / fzf 取消、完整创建流程、参数引用、启动失败、Device Hub 新布局与超时。测试不会新增、启动或清理真实模拟器；真实 Finder 菜单、系统权限和 GUI 操作另按安装后的实际机器验收。
+测试执行真实 zsh / 系统 JSON 解析代码，将 `xcrun`、`open` 和 `fzf` 替换为私有假命令，覆盖完整机型、Duo 单项 Runtime 名单下选择传统型号与旧系统、元数据差异、去重、损坏工具、编号 / fzf 取消、完整创建流程、参数引用、启动失败、Device Hub 新布局与超时；同时验证正常流程只选择一轮、创建失败后连续回车不重弹，以及精确 `r` / `R` 重选。测试不会新增、启动或清理真实模拟器；真实 Finder 菜单、系统权限和 GUI 操作另按安装后的实际机器验收。
+
+宿主去重测试单独编译真实 AppDelegate 与测试文件内的假 Model，不与生产 `IOSSimulatorModel.swift` 一起编译；它只在内存中模拟 URL 回调，不打开 Terminal 或注册扩展。从本工程目录执行：
+
+```shell
+simulator_test_dir="$(mktemp -d "${TMPDIR:-/tmp}/JobsIOSSimulatorAppDelegateTests.XXXXXX")"
+swiftc \
+  ./JobsIOSSimulatorCreator/AppDelegate.swift \
+  ./JobsIOSSimulatorShared/IOSSimulatorRequest/IOSSimulatorRequest.swift \
+  ./Tests/IOSSimulatorAppDelegateTests.swift \
+  -o "$simulator_test_dir/IOSSimulatorAppDelegateTests"
+"$simulator_test_dir/IOSSimulatorAppDelegateTests"
+```
 
 ## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、构建后启用入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 

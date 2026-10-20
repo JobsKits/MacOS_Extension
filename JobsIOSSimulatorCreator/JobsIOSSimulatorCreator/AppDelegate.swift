@@ -10,6 +10,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = IOSSimulatorModel()
     private var pendingOperations = 0
+    private var didAcceptCreateRequest = false
     private var didFinishLaunching = false
     private var idleWorkItem: DispatchWorkItem?
     private var idleGeneration = 0
@@ -58,6 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rejectRequest()
             return
         }
+        guard !didAcceptCreateRequest else {
+            model.record("忽略重复的新建 iOS 模拟器请求：本次宿主已接收过创建动作。")
+            return
+        }
+        // 派发完成后宿主即将退出，期间收到的重复事件也不能再次打开终端。
+        didAcceptCreateRequest = true
         model.record("收到 Finder 新建 iOS 模拟器请求。")
         beginOperation()
         model.createSimulator { [weak self] in

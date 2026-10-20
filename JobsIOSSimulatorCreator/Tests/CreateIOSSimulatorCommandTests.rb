@@ -375,10 +375,13 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
 
   # 仅明确的组合不兼容返回回选状态，其它失败停止。
   def test_create_failure_only_retries_explicit_incompatibility
-    output, status = execute('sim_create_and_boot', env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type iPhone'})
+    output, status = execute('sim_create_and_boot', env: {'TEST_CREATE_FAIL' => 'Incompatible device'})
     assert_equal 2, status.exitstatus, output
-    output, status = execute('sim_create_and_boot', env: {'TEST_CREATE_FAIL' => 'CoreSimulator service unavailable'})
-    assert_equal 1, status.exitstatus, output
+    ['Unable to create a device for device type iPhone', 'CoreSimulator service unavailable'].each do |error|
+      output, status = execute('sim_create_and_boot', env: {'TEST_CREATE_FAIL' => error})
+      assert_equal 1, status.exitstatus, output
+      refute_includes output, '组合不受支持'
+    end
     assert trace.all? { |entry| entry[2] == 'create' }
   end
 
@@ -442,6 +445,20 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_includes output, '新模拟器已完成启动'
   end
 
+  # 健康 fzf 正常流程只各显示一次型号和系统选择，并且只创建一次。
+  def test_complete_healthy_fzf_flow_selects_each_list_once_and_creates_once
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             input: "\n", env: {'TEST_FZF_TRACE' => '1'})
+    assert status.success?, output
+    selections = trace.select { |entry| entry[0] == 'fzf' }
+    assert_equal 2, selections.length, selections.inspect
+    assert_equal ['--prompt=选择 iPhone / iPad 型号 > ', '--prompt=选择 iOS 系统版本 > '],
+                 selections.map { |entry| entry.find { |argument| argument.start_with?('--prompt=') } }
+    assert_equal 1, trace.count { |entry| entry[2] == 'create' }
+    assert_includes output, '新模拟器已完成启动'
+  end
+
   # 重现另一台机器：先选传统型号再选 27.0，不受最新 27.1 的 Duo 白名单影响。
   def test_complete_flow_selects_traditional_iphone_then_older_runtime_when_latest_only_lists_duo
     use_duo_catalog
@@ -464,13 +481,68 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     refute trace.any? { |entry| entry[2] == 'create' }
   end
 
-  # create 判定组合不兼容时可回选，回选取消后不会再次创建。
-  def test_incompatible_create_returns_to_selection_and_can_cancel
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\nq\n",
+  # 明确不兼容也不自动回选；回车、任意其它输入和 EOF 都保留失败并停止。
+  def test_incompatible_create_stops_without_explicit_retry
+    ["\n", "yes\n", "r \n", " r\n", ''].each do |retry_input|
+      output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop',
+                               input: "1\n1\n\n" + retry_input,
+                               env: {'TEST_CREATE_FAIL' => 'Incompatible device'})
+      refute status.success?, output
+      assert_includes output, '组合不受支持'
+      assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+      assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+      assert_equal 1, trace.count { |entry| entry[2] == 'create' }, trace.inspect
+    end
+  end
+
+  # 只有精确 r / R 才进入第二轮，随后取消不会再次创建。
+  def test_incompatible_create_returns_to_selection_only_after_explicit_retry
+    %w[r R].each do |retry_input|
+      output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop',
+                               input: "1\n1\n\n#{retry_input}\nq\n",
+                               env: {'TEST_CREATE_FAIL' => 'Incompatible device'})
+      assert status.success?, output
+      assert_includes output, '组合不受支持'
+      assert_includes output, '已取消，未创建模拟器'
+      refute_includes output, '请输入列表内的编号'
+      assert_equal 2, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+      assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+      assert_equal 1, trace.count { |entry| entry[2] == 'create' }, trace.inspect
+    end
+  end
+
+  # fzf 创建失败后继续回车也只能显示首轮两个列表，不会因重选重新创建。
+  def test_incompatible_create_with_fzf_and_enter_stops_after_one_selection_round
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             input: "\n\n", env: {'TEST_FZF_TRACE' => '1', 'TEST_CREATE_FAIL' => 'Incompatible device'})
+    refute status.success?, output
+    selections = trace.select { |entry| entry[0] == 'fzf' }
+    assert_equal 2, selections.length, selections.inspect
+    assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+    assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+    assert_equal 1, trace.count { |entry| entry[2] == 'create' }
+  end
+
+  # 泛化创建失败可能来自服务或组件问题，不能把它当成兼容错误重新弹出列表。
+  def test_generic_create_error_stops_without_reselection
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\n\n",
+                             env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type iPhone: CoreSimulator service unavailable'})
+    refute status.success?, output
+    refute_includes output, '组合不受支持'
+    assert_includes output, '创建未成功确认'
+    assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+    assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+    assert_equal 1, trace.count { |entry| entry[2] == 'create' }
+  end
+
+  # 泛化创建失败即使预留 r 输入，也不得触发兼容性重选。
+  def test_generic_create_error_does_not_offer_retry
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\nr\nq\n",
                              env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type'})
-    assert status.success?, output
-    assert_includes output, '组合不受支持'
-    assert_includes output, '已取消，未创建模拟器'
+    refute status.success?, output
+    refute_includes output, '组合不受支持'
+    assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
     assert_equal 1, trace.count { |entry| entry[2] == 'create' }
   end
 
@@ -611,6 +683,10 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       if [[ "$1" == --version ]]; then
         [[ "${TEST_FZF_BAD:-0}" == 0 ]]
         exit $?
+      fi
+      if [[ "${TEST_FZF_TRACE:-0}" == 1 ]]; then
+        printf '%s\0' fzf "$@" >> "$TEST_TRACE"
+        printf '\0' >> "$TEST_TRACE"
       fi
       [[ "${TEST_FZF_CANCEL:-0}" == 0 ]] || exit 130
       /usr/bin/head -n 1
