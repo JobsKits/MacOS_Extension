@@ -10,8 +10,8 @@ require 'fileutils'
 
 class InstallerRegistrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】安装iOS模拟器Finder扩展.command/【MacOS】安装iOS模拟器Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】卸载iOS模拟器Finder扩展.command/【MacOS】卸载iOS模拟器Finder扩展.command')
+  INSTALLER = File.join(ROOT, '【MacOS】安装iOS模拟器Finder扩展.command')
+  UNINSTALLER = File.join(ROOT, '【MacOS】卸载iOS模拟器Finder扩展.command')
   HELPER = File.join(ROOT, 'Scripts/EnableFinderExtension.zsh')
   APP_ID = 'com.jobs.iossimulatorcreator'
   EXTENSION_ID = "#{APP_ID}.findersync"
@@ -146,17 +146,17 @@ class InstallerRegistrationTests < Minitest::Test
   end
 
   def test_independent_install_rejects_noninteractive_input_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "install\n")
+    output, status = run_source(INSTALLER, 'main "$@"', input: "\n")
     refute status.success?, output
     assert_includes output, '请在可交互终端运行'
     assert_empty calls
     refute File.exist?(File.join(@directory, 'JobsIOSSimulatorCreatorInstall.log'))
   end
 
-  def test_independent_install_enter_skips_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', interactive: true)
+  def test_independent_install_nonempty_input_skips_before_any_mutation
+    output, status = run_source(INSTALLER, 'main "$@"', input: "skip\n", interactive: true)
     assert status.success?, output
-    assert_includes output, '直接回车跳过'
+    assert_includes output, '直接回车安装；输入任意字符后回车跳过'
     assert_empty calls
     refute File.exist?(File.join(@directory, 'JobsIOSSimulatorCreatorInstall.log'))
   end
@@ -221,7 +221,7 @@ class InstallerRegistrationTests < Minitest::Test
     status = nil
     Timeout.timeout(10) do
       PTY.spawn(environment, '/bin/zsh', '-f', fixture) do |reader, writer, pid|
-        writer.write("\n")
+        writer.write(input)
         begin
           loop { output << reader.readpartial(4096) }
         rescue EOFError, Errno::EIO

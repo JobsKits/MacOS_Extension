@@ -20,6 +20,8 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   RUNTIME_PREFIX = 'com.apple.CoreSimulator.SimRuntime.'
   DEVICE_PREFIX = 'com.apple.CoreSimulator.SimDeviceType.'
   UDID = 'A1234567-1234-1234-1234-123456789ABC'
+  UNCONFIRMED = '（未确认支持）'
+  NO_RUNTIME = '（本机无可搭配系统）'
 
   # 构造完整但私有的 Xcode、simctl 与 Simulator 路径。
   def setup
@@ -137,11 +139,11 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_empty trace
   end
 
-  # 可搭配本机系统的型号排在前面，其余完整型号保留且组内顺序稳定。
+  # 可搭配本机系统的型号排在前面；没有可搭配系统的型号保留但带标注。
   def test_preferred_device_types_prioritize_supported_then_unknown_without_hiding_models
     output, status = execute('sim_data preferred-devicetypes "$TEST_ROOT/devicetypes.json" "$TEST_ROOT/runtimes.json" arm64')
     assert status.success?, output
-    assert_equal ['iPhone Old', 'iPad Test', 'iPhone Legacy', 'iPhone Future'], row_names(output)
+    assert_equal ['iPhone Old', 'iPad Test', 'iPhone Legacy', "iPhone Future#{NO_RUNTIME}"], row_names(output)
     assert_empty trace
   end
 
@@ -152,7 +154,20 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     save_catalog
     output, status = execute('sim_data preferred-devicetypes "$TEST_ROOT/devicetypes.json" "$TEST_ROOT/runtimes.json" arm64')
     assert status.success?, output
-    assert_equal ['iPhone Duo', 'iPhone Old', 'iPad Test'], row_names(output)
+    assert_equal ['iPhone Duo', "iPhone Old#{NO_RUNTIME}", "iPad Test#{NO_RUNTIME}"], row_names(output)
+    assert_empty trace
+  end
+
+  # 只读汇总同时给出可搭配 / 无可搭配机型数量，以及每个系统支持的机型数。
+  def test_catalog_summary_counts_matched_models_and_runtime_support
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil), device('iPhone Future', 'iPhone-Future', 20 * 65_536)]
+    @runtimes = [runtime('18.0', 'iOS 18.0', ['iPhone-Old']), runtime('17.0', 'iOS 17.0')]
+    save_catalog
+    output, status = execute('sim_data catalog-summary "$TEST_ROOT/devicetypes.json" "$TEST_ROOT/runtimes.json" arm64')
+    assert status.success?, output
+    rows = output.lines.map(&:strip)
+    assert_equal %w[models 2 1 1], rows[0].split("\t")
+    assert_equal ["runtime\tiOS 18.0\t1", "runtime\tiOS 17.0\t-1"], rows[1..]
     assert_empty trace
   end
 
@@ -167,8 +182,21 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     save_catalog
     output, status = compatible_runtimes
     assert status.success?, output
-    assert_equal ['iOS 19.0', 'iOS 18.0', 'iOS 20.0', 'iOS 17.0'], row_names(output)
+    assert_equal ['iOS 19.0', 'iOS 18.0', "iOS 20.0#{UNCONFIRMED}", "iOS 17.0#{UNCONFIRMED}"], row_names(output)
     assert_empty trace
+  end
+
+  # 未确认支持的系统在最终确认前明确提示风险，避免误以为一定可创建。
+  def test_unconfirmed_runtime_warns_before_final_confirmation
+    @device_types = [device('iPhone Old', 'iPhone-Old', nil)]
+    @runtimes = [runtime('27.1', 'iOS 27.1')]
+    save_catalog
+    output, status = execute('sim_load_catalog && sim_select_combination && sim_prepare_unique_name && sim_confirm_creation',
+                             input: "1\n1\n")
+    assert_includes output, "iOS 27.1#{UNCONFIRMED}"
+    assert_includes output, '未被 Xcode 明确列为支持该型号'
+    assert_equal 130, status.exitstatus, output
+    refute trace.any? { |entry| entry[2] == 'create' }
   end
 
   # 缺失、空或不完整白名单都不能当作明确不兼容而误删系统。
@@ -180,7 +208,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       save_catalog
       output, status = compatible_runtimes
       assert status.success?, output
-      assert_equal ['iOS 27.1'], row_names(output), "supportedDeviceTypes=#{supported.inspect}"
+      assert_equal ["iOS 27.1#{UNCONFIRMED}"], row_names(output), "supportedDeviceTypes=#{supported.inspect}"
     end
     assert_empty trace
   end
@@ -224,7 +252,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       save_catalog
       output, status = compatible_runtimes
       assert status.success?, output
-      assert_equal ['iOS 27.1.1', 'iOS 27.1'], row_names(output)
+      assert_equal ["iOS 27.1.1#{UNCONFIRMED}", "iOS 27.1#{UNCONFIRMED}"], row_names(output)
     end
     assert_empty trace
   end
@@ -238,7 +266,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       save_catalog
       output, status = compatible_runtimes
       assert status.success?, output
-      assert_equal ['iOS 27.1'], row_names(output)
+      assert_equal ["iOS 27.1#{UNCONFIRMED}"], row_names(output)
     end
     assert_empty trace
   end
@@ -480,16 +508,47 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     refute trace.any? { |entry| entry[2] == 'create' }
   end
 
-  # 手动选择本机无兼容系统的型号时，在系统列表与创建确认前停止。
+  # 手动选择本机无兼容系统的型号时，在系统列表与创建确认前停止；不自动重弹列表。
   def test_device_with_no_compatible_installed_runtime_stops_before_creation
     use_duo_catalog
     @runtimes = [@runtimes.first]
     save_catalog
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "2\n\n\n")
-    refute status.success?, output
+    ["2\n\n\n", "2\nyes\n", "2\n \n", "2\n"].each do |input|
+      output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: input)
+      refute status.success?, output
+      assert_includes output, '没有可搭配的已安装 iOS 系统'
+      refute_includes output, '➤ 选择 iOS 系统版本'
+      assert_equal 1, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+      refute trace.any? { |entry| entry[2] == 'create' }
+    end
+  end
+
+  # 选到无系统机型后只有精确 r 才回到机型选择，并能继续完成一次创建。
+  def test_model_without_runtime_returns_to_selection_only_after_explicit_retry
+    use_duo_catalog
+    @runtimes = [@runtimes.first]
+    save_catalog
+    output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: "2\nr\n1\n\n\n")
+    assert status.success?, output
     assert_includes output, '没有可搭配的已安装 iOS 系统'
-    refute_includes output, '➤ 选择 iOS 系统版本'
-    refute trace.any? { |entry| entry[2] == 'create' }
+    assert_equal 2, output.scan('➤ 选择 iPhone / iPad 型号').length, output
+    assert_equal 1, output.scan('➤ 选择 iOS 系统版本').length, output
+    creates = trace.select { |entry| entry[2] == 'create' }
+    assert_equal 1, creates.length, trace.inspect
+    assert_equal [DEVICE_PREFIX + 'iPhone-Duo', RUNTIME_PREFIX + 'iOS-27-1'], creates.first.last(2)
+    refute_includes creates.first[3], NO_RUNTIME
+  end
+
+  # 只读体检给出可搭配 / 无可搭配机型数量，以及每个系统支持的机型数。
+  def test_check_entry_reports_matched_model_counts_and_runtime_support
+    use_duo_catalog
+    output, status = execute('main --check')
+    assert status.success?, output
+    assert_includes output, '完整机型清单：3 个 iPhone / iPad'
+    assert_includes output, '其中 3 个已有可搭配系统，0 个本机无可搭配系统'
+    assert_includes output, '可用系统：iOS 27.1（支持 1 个机型）'
+    assert_includes output, '可用系统：iOS 27.0（支持 2 个机型）'
+    assert_empty remaining_run_files
   end
 
   # 缺少 iPhone / iPad 类型时，体检与交互均停止，不把其它家族当作可创建型号。

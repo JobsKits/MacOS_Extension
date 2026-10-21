@@ -126,6 +126,53 @@ class FlutterRunnerJSONTests < Minitest::Test
     assert_equal "com.apple.CoreSimulator.SimDeviceType.iPhone-17\tiPhone 17", output.strip
   end
 
+  def test_preferred_types_put_models_with_available_runtime_first
+    output = successful('preferred-types', write_json('preferred.json', combination_fixture), 'arm64')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    assert_equal ['iPhone New', 'iPhone Old', 'iPhone Unknown', 'iPhone Range（本机无可搭配系统）'], labels
+    assert_equal 'com.apple.CoreSimulator.SimDeviceType.iPhone-New', output.lines.first.split("\t", 2)[0]
+    output.lines.each { |line| assert_equal 2, line.chomp.split("\t", -1).length }
+  end
+
+  def test_preferred_types_rank_by_current_architecture_only
+    output = successful('preferred-types', write_json('preferred.json', combination_fixture), 'x86_64')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    # 26.0 只支持 arm64，x86_64 下 iPhone New 降到未知组，iPhone Old 升到已确认组；
+    # 型号本身不因架构隐藏，只是推荐顺序变化。
+    assert_equal ['iPhone Old', 'iPhone Unknown', 'iPhone New', 'iPhone Range（本机无可搭配系统）'], labels
+  end
+
+  def test_compatible_runtimes_hide_unsupported_versions_and_mark_unknown
+    output = successful('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                        'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-New')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    assert_equal ['iOS 26.0', 'iOS 17.0（未确认支持）'], labels
+    refute_includes output, 'iOS 18.5'
+    refute_includes output, ios_runtime('16-4')
+  end
+
+  def test_compatible_runtimes_respect_version_bounds_without_whitelist
+    assert_empty successful('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                            'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-Range').strip
+  end
+
+  def test_compatible_runtimes_reject_unknown_model
+    output, status = execute('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                             'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-Missing')
+    refute status.success?, output
+    assert_includes output, '所选型号不属于当前设备清单'
+  end
+
+  def test_combination_modes_reject_malformed_simctl_response
+    output, status = execute('preferred-types', write_json('bad-preferred.json', { runtimes: [] }))
+    refute status.success?, output
+    assert_includes output, 'simctl 响应缺少'
+    output, status = execute('compatible-runtimes', write_json('bad-compatible.json', { runtimes: [] }),
+                             'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-New')
+    refute status.success?, output
+    assert_includes output, 'simctl 响应缺少'
+  end
+
   def test_simctl_missing_structure_is_a_parse_failure
     %w[simulators runtimes types].each do |mode|
       output, status = execute(mode, write_json('simctl-bad.json', { runtimes: [] }))
@@ -348,6 +395,48 @@ class FlutterRunnerJSONTests < Minitest::Test
     assert_includes output, '参数无效'
   end
 
+  def test_fvm_version_reads_both_config_layouts
+    assert_equal '3.47.7', successful('fvm-version', write_json('fvmrc.json', flutter: '3.47.7')).strip
+    assert_equal 'stable', successful('fvm-version', write_json('legacy.json', flutterSdkVersion: 'stable')).strip
+  end
+
+  def test_fvm_version_rejects_missing_or_unsafe_values
+    [{ flutter: '3.47.7; rm -rf /' }, { flutter: '' }, { flutter: 3 }, { other: 'x' }, nil, []].each_with_index do |data, index|
+      output, status = execute('fvm-version', write_json("fvm-bad#{index}.json", data))
+      refute status.success?, output
+      assert_includes output, 'FVM'
+    end
+  end
+
+  def test_unique_simulator_name_appends_suffix_for_existing_names
+    path = write_json('devices.json', devices: {
+      ios_runtime('26-0') => [
+        { name: 'iPhone 18 Pro@2026.10.21 11:30:00-1234' },
+        { name: 'iPhone 18 Pro@2026.10.21 11:30:00-1234 (2)' }
+      ],
+      ios_runtime('18-5') => [{ name: 'iPhone 16' }]
+    })
+    assert_equal 'iPhone 18 Pro@2026.10.21 11:30:00-1234 (3)',
+                 successful('unique-name', path, 'iPhone 18 Pro@2026.10.21 11:30:00-1234').strip
+    assert_equal 'iPhone 18 Pro@2026.10.21 11:30:00-9999',
+                 successful('unique-name', path, 'iPhone 18 Pro@2026.10.21 11:30:00-9999').strip
+  end
+
+  def test_unique_simulator_name_rejects_empty_base_or_malformed_devices
+    path = write_json('devices.json', devices: {})
+    output, status = execute('unique-name', path, '   ')
+    refute status.success?, output
+    assert_includes output, '模拟器名称不能为空'
+    [{ devices: [] }, { devices: 'x' }, nil, {}].each_with_index do |data, index|
+      output, status = execute('unique-name', write_json("bad-name#{index}.json", data), 'iPhone')
+      refute status.success?, output
+      assert_includes output, '已有设备 JSON'
+    end
+    output, status = execute('unique-name', write_json('bad-list.json', devices: { 'r' => 'not-array' }), 'iPhone')
+    refute status.success?, output
+    assert_includes output, '格式无效'
+  end
+
   private
 
   def execute(*args, env: {})
@@ -398,5 +487,30 @@ class FlutterRunnerJSONTests < Minitest::Test
       ios_runtime('17-0') => [{ udid: 'old-ios', name: 'unavailable', state: 'Shutdown', isAvailable: true }],
       'com.apple.CoreSimulator.SimRuntime.tvOS-26-0' => [{ udid: 'tv-device', name: 'Apple TV', state: 'Booted', isAvailable: true }]
     } }
+  end
+
+  # 型号 / 系统组合夹具：26.0 只确认支持 iPhone New 且仅 arm64，18.5 只支持 iPhone Old 且仅 x86_64，
+  # 17.0 无白名单只能靠版本范围，16.4 只确认支持 iPhone Unknown 且仅 x86_64。
+  def combination_fixture
+    { runtimes: [
+      { identifier: ios_runtime('26-0'), name: 'iOS 26.0', version: '26.0', isAvailable: true,
+        supportedArchitectures: ['arm64'], supportedDeviceTypes: [{ identifier: iphone_type('New') }] },
+      { identifier: ios_runtime('18-5'), name: 'iOS 18.5', version: '18.5', isAvailable: true,
+        supportedArchitectures: ['x86_64'], supportedDeviceTypes: [{ identifier: iphone_type('Old') }] },
+      { identifier: ios_runtime('17-0'), name: 'iOS 17.0', version: '17.0', isAvailable: true },
+      { identifier: ios_runtime('16-4'), name: 'iOS 16.4', version: '16.4', isAvailable: true,
+        supportedArchitectures: ['x86_64'], supportedDeviceTypes: [{ identifier: iphone_type('Unknown') }] }
+    ], devicetypes: [
+      { identifier: iphone_type('New'), name: 'iPhone New', productFamily: 'iPhone' },
+      { identifier: iphone_type('Old'), name: 'iPhone Old', productFamily: 'iPhone' },
+      { identifier: iphone_type('Unknown'), name: 'iPhone Unknown', productFamily: 'iPhone' },
+      { identifier: iphone_type('Range'), name: 'iPhone Range', productFamily: 'iPhone',
+        minRuntimeVersion: 18 * 65_536 },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.iPad-Pro', name: 'iPad Pro', productFamily: 'iPad' }
+    ], devices: {} }
+  end
+
+  def iphone_type(name)
+    'com.apple.CoreSimulator.SimDeviceType.iPhone-' + name
   end
 end

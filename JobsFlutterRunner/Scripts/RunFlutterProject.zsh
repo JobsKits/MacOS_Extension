@@ -4,6 +4,7 @@
 # - 核心用途：终端选择设备，独立后台运行 Flutter，并查看日志及控制热重载。
 # - 影响范围：Flutter 构建可更新项目依赖和构建目录；按需创建、启动所选 iOS 模拟器。
 # - 运行提示：先回车确认；关闭终端只离开日志，输入 s 才停止后台任务。
+# - 选择方式：终端内优先用 fzf 上下键 + 输入筛选选择；fzf 不可用或非终端时自动回退编号输入。
 
 SCRIPT_DIR=""
 SCRIPT_PATH=""
@@ -21,6 +22,7 @@ START_LOCK=""
 LOCK_FD=""
 QUERY_PID=""
 REPLY=""
+FZF_BIN=""
 typeset -a ROWS=()
 
 intro_line() {
@@ -38,9 +40,10 @@ show_script_intro_and_wait() {
   intro_line body '1、选择设备后构建、运行当前 Flutter 项目；沿用项目 FVM SDK 或终端 Flutter。'
   intro_line body '2、Flutter 由当前登录会话的 launchd 托管，关闭 Terminal 不影响运行。'
   intro_line body '3、iOS 可选择已有模拟器；没有时内置选择型号、系统版本、创建及启动流程。'
-  intro_line body '4、可能下载项目依赖、生成构建文件；不安装或升级 Flutter / Xcode。'
+  intro_line body '4、可能下载项目依赖、生成构建文件；项目声明的 FVM SDK 缺失时会确认后下载，不安装或升级全局 Flutter / Xcode。'
   intro_line body '5、日志与会话保存在用户资源库 Application Support/JobsFlutterRunner/sessions。'
   intro_line body '6、回车继续，非空或 Ctrl+C 取消；运行后 d 离开日志，s 停止后台任务。'
+  intro_line body '7、设备、模拟器型号与系统版本用上下键选择，可直接输入关键字筛选；未装 fzf 时回退编号输入。'
   local answer=""
   IFS= read -r 'answer?已了解用途与范围，按回车继续；非空取消：' || exit 0
   [[ -z "$answer" ]] || exit 0
@@ -144,11 +147,79 @@ read_project() {
   log "项目：$PROJECT_PATH"
 }
 
+project_fvm_config() {
+  if [[ -f "$PROJECT_PATH/.fvmrc" ]]; then
+    REPLY="$PROJECT_PATH/.fvmrc"
+    return 0
+  fi
+  if [[ -f "$PROJECT_PATH/.fvm/fvm_config.json" ]]; then
+    REPLY="$PROJECT_PATH/.fvm/fvm_config.json"
+    return 0
+  fi
+  return 1
+}
+
+resolve_fvm_cli() {
+  local candidate=""
+  for candidate in "${JOBS_FVM_BIN:-}" "${commands[fvm]:-}" /opt/homebrew/bin/fvm /usr/local/bin/fvm \
+    "$HOME/.pub-cache/bin/fvm" "$HOME/.local/bin/fvm"; do
+    if [[ -n "$candidate" && -x "$candidate" && ! -d "$candidate" ]]; then
+      REPLY="${candidate:A}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 项目 FVM SDK 就绪就直接返回；断链或缺失时补齐：本机缓存已有只重建链接，没有才下载。
+prepare_project_fvm_sdk() {
+  local link="$PROJECT_PATH/.fvm/flutter_sdk" config="" version="" fvm_bin="" answer="" cached=""
+  if [[ -x "$link/bin/flutter" ]]; then
+    REPLY="${link:A}/bin/flutter"
+    return 0
+  fi
+  project_fvm_config || { log '⚠ 项目声明了 FVM，但既没有可用的 .fvm/flutter_sdk，也读不到版本声明。'; return 1; }
+  config="$REPLY"
+  version="$(json_helper fvm-version "$config")" || { log "⚠ 无法解析 FVM 版本声明：$config"; return 1; }
+  resolve_fvm_cli || { log '⚠ 未找到 fvm；请先安装（brew install fvm）或设置 JOBS_FVM_BIN，再重新运行。'; return 1; }
+  fvm_bin="$REPLY"
+  log "ℹ 项目声明 Flutter $version，但 .fvm/flutter_sdk 未就绪。"
+  cached="$HOME/fvm/versions/$version/bin/flutter"
+  if [[ -x "$cached" ]]; then
+    log '➤ 本机 FVM 缓存已有该版本，将重建项目链接；不下载。'
+  else
+    log "➤ 本机 FVM 缓存没有该版本，将下载并初始化 Flutter $version（需要联网，可能几分钟）。"
+  fi
+  IFS= read -r 'answer?回车补齐并继续；非空取消：' || return 1
+  [[ -z "$answer" ]] || { log '➤ 已取消，未改动项目 FVM 配置。'; return 1; }
+  if [[ ! -x "$cached" ]]; then
+    run_bounded 1800 "$LOG_FILE.fvminstall" "$fvm_bin" install "$version" || {
+      log "✖ fvm install $version 失败，详情：$LOG_FILE.fvminstall"
+      return 1
+    }
+  fi
+  run_bounded 300 "$LOG_FILE.fvmuse" "$fvm_bin" use "$version" --skip-pub-get --skip-setup \
+    || log "⚠ fvm use $version 未成功确认，详情：$LOG_FILE.fvmuse"
+  # fvm 在声明版本已一致时可能只写配置、不重建链接，这里按本机缓存兜底。
+  if [[ ! -x "$link/bin/flutter" && -x "$cached" ]]; then
+    # 只清理失效的符号链接本身，不动真实 SDK 目录。
+    if [[ -L "$link" ]] && ! /bin/rm -f -- "$link"; then
+      log '⚠ 无法清理失效的 .fvm/flutter_sdk 链接。'
+      return 1
+    fi
+    /bin/ln -s "${cached:h:h}" "$link" || { log '⚠ 无法重建 .fvm/flutter_sdk 链接。'; return 1; }
+    log '➤ 已按本机 FVM 缓存重建 .fvm/flutter_sdk 链接。'
+  fi
+  [[ -x "$link/bin/flutter" ]] || { log "✖ fvm 执行后 .fvm/flutter_sdk 仍不可用：$link"; return 1; }
+  REPLY="${link:A}/bin/flutter"
+  log "✔ FVM SDK 已就绪：Flutter $version → $REPLY"
+}
+
 find_flutter() {
   local candidate="" output="$LOG_FILE.version"
   if [[ -e "$PROJECT_PATH/.fvmrc" || -e "$PROJECT_PATH/.fvm/fvm_config.json" || -L "$PROJECT_PATH/.fvm/flutter_sdk" ]]; then
-    candidate="$PROJECT_PATH/.fvm/flutter_sdk/bin/flutter"
-    [[ -x "$candidate" ]] || die '项目声明了 FVM，但本地 .fvm/flutter_sdk 尚未就绪；请先安装对应 SDK。'
+    prepare_project_fvm_sdk || die '项目 FVM SDK 未就绪且未自动补齐，详见日志；可手动运行 fvm use 后重试。'
+    candidate="$REPLY"
   else
     candidate="${commands[flutter]:-}"
   fi
@@ -158,9 +229,72 @@ find_flutter() {
   log "Flutter：$FLUTTER_BIN"
 }
 
+# fzf 只用于终端交互；找不到就保持编号输入，不阻断运行。
+resolve_fzf() {
+  local candidate=""
+  for candidate in "${commands[fzf]:-}" /opt/homebrew/bin/fzf /usr/local/bin/fzf "$HOME/.fzf/bin/fzf"; do
+    if [[ -n "$candidate" && -x "$candidate" && ! -d "$candidate" ]]; then
+      FZF_BIN="${candidate:A}"
+      return 0
+    fi
+  done
+  FZF_BIN=""
+  return 1
+}
+
+# JOBS_FLUTTER_RUNNER_FZF：0 关闭；always 忽略终端检测（供测试注入）。
+fzf_ready() {
+  local mode="${JOBS_FLUTTER_RUNNER_FZF:-auto}"
+  [[ "$mode" != 0 ]] || return 1
+  if [[ "$mode" != always ]]; then
+    [[ -t 0 && -t 1 ]] || return 1
+  fi
+  if [[ -z "$FZF_BIN" ]]; then
+    resolve_fzf || return 1
+  fi
+  [[ -n "$FZF_BIN" ]] || return 1
+}
+
+# 每行是 "id\tdisplay"：只展示 display，输出整行以便回取原始 id。
+fzf_pick_row() {
+  local heading="$1" row="" answer="" pick_status=0
+  local -a lines=()
+  for row in "${ROWS[@]}"; do
+    if [[ "$row" == *$'\t'* ]]; then
+      lines+=("$row")
+    else
+      lines+=("$row"$'\t'"$row")
+    fi
+  done
+  # 用户自己的 FZF 默认配置可能改变排序或多选，先清空保证输出恒为一行。
+  answer="$(printf '%s\n' "${lines[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
+    "$FZF_BIN" --no-multi --cycle --layout=reverse \
+    --height=40% --min-height=12 --border \
+    --delimiter=$'\t' --with-nth=2.. \
+    --prompt="${heading}› " \
+    --header='↑/↓ 选择；输入即筛选；Esc 取消' 2>> "$LOG_FILE")"
+  pick_status=$?
+  # 退出码 2 是参数不兼容等运行错误，去掉装饰类参数再试一次；130 是用户取消，不再重试。
+  if (( pick_status == 2 )); then
+    answer="$(printf '%s\n' "${lines[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
+      "$FZF_BIN" --no-multi --layout=reverse --height=40% \
+      --delimiter=$'\t' --with-nth=2.. --prompt="${heading}› " 2>> "$LOG_FILE")"
+    pick_status=$?
+  fi
+  (( pick_status == 0 )) || return 1
+  [[ -n "$answer" ]] || return 1
+  REPLY="${answer%%$'\t'*}"
+  return 0
+}
+
 select_row() {
   local heading="$1" answer="" row="" index=1
   (( ${#ROWS} > 0 )) || return 1
+  if fzf_ready; then
+    log "$heading"
+    fzf_pick_row "$heading" || return 1
+    return 0
+  fi
   log "$heading"
   for row in "${ROWS[@]}"; do
     log "  ${index}、${row#*$'\t'}"
@@ -177,16 +311,21 @@ select_row() {
   done
 }
 
+# 可选第一个参数为超时秒数；新 FVM 版本首次冷启动 flutter_tools 远超 30 秒，默认留给普通刷新。
 refresh_devices() {
-  local output="$LOG_FILE.devices.json" table=""
+  local seconds="${1:-30}" output="$LOG_FILE.devices.json" table=""
   log 'ℹ 正在读取 Flutter 设备列表…'
-  if run_bounded 30 "$output" "$FLUTTER_BIN" devices --machine --device-timeout 10; then
+  if run_bounded "$seconds" "$output" "$FLUTTER_BIN" devices --machine --device-timeout 10; then
     table="$(json_helper devices "$output" "$PROJECT_PATH")" || { log "⚠ 无法解析设备响应：$output"; ROWS=(); return 1; }
     ROWS=("${(@f)table}")
     [[ -n "$table" ]] || ROWS=()
   else
     ROWS=()
     log "⚠ 设备查询失败，可重新加载或选择 iOS 模拟器；详情：$output"
+    if [[ -s "$output" ]]; then
+      log '➤ 最近输出：'
+      /usr/bin/tail -n 5 "$output" | while IFS= read -r line; do log "  $line"; done
+    fi
     return 1
   fi
 }
@@ -196,28 +335,138 @@ read_simulator_inventory() {
   run_bounded 30 "$LOG_FILE.simulators.json" /usr/bin/xcrun simctl list --json || die 'simctl 不可用，请确认当前开发目录是完整 Xcode，且已接受许可。'
 }
 
+# 只在明确不兼容且用户精确输入 r 后才重选，一路回车不会再反复弹出型号 / 系统列表。
+confirm_simulator_reselection() {
+  local answer=""
+  if IFS= read -r 'answer?输入 r 重新选择型号和系统；直接回车或其它输入停止：' && [[ "$answer" == [rR] ]]; then
+    return 0
+  fi
+  log '➤ 已停止，未重复选择或再次创建模拟器。'
+  return 1
+}
+
+# 与独立初始化脚本同款命名：型号名@时间-进程号；创建前刷新已有设备，撞名追加“ (2)”。
+simulator_name_for() {
+  local type_name="$1" base="" name="" output="$LOG_FILE.devices.json"
+  [[ -n "$type_name" ]] || return 1
+  base="${type_name}@$(/bin/date '+%Y.%m.%d %H:%M:%S')-$$"
+  run_bounded 30 "$output" /usr/bin/xcrun simctl list devices --json || return 1
+  name="$(json_helper unique-name "$output" "$base")" || return 1
+  [[ -n "$name" ]] || return 1
+  REPLY="$name"
+}
+
+# 型号与系统分别列出：先按“有无可搭配系统”推荐型号，再只列匹配该型号的系统。
 create_simulator() {
-  local table="" type_id="" runtime_id="" simulator_id="" answer="" output="$LOG_FILE.create"
-  table="$(json_helper types "$LOG_FILE.simulators.json")" || die '无法解析模拟器型号。'
-  ROWS=("${(@f)table}")
-  [[ -n "$table" ]] || die 'Xcode 没有可用 iPhone 型号。'
-  select_row '选择模拟器设备型号：' || return 1
-  type_id="$REPLY"
-  table="$(json_helper runtimes "$LOG_FILE.simulators.json")" || die '无法解析 iOS Runtime。'
-  ROWS=("${(@f)table}")
-  [[ -n "$table" ]] || die '没有可用的 iOS Runtime，请在 Xcode → Settings → Components（旧版 Platforms）安装 iOS，再重新运行。'
-  select_row '选择 iOS 系统版本（已去重）：' || return 1
-  runtime_id="$REPLY"
-  log "将创建模拟器：$type_id / $runtime_id"
-  IFS= read -r 'answer?回车创建并启动；非空取消：' || return 1
-  [[ -z "$answer" ]] || return 1
-  if ! run_bounded 45 "$output" /usr/bin/xcrun simctl create "Jobs Flutter $(/bin/date '+%Y.%m.%d %H-%M-%S')" "$type_id" "$runtime_id"; then
-    log "✖ 型号与 Runtime 不兼容或创建失败，未删除任何既有模拟器：$output"
+  local table="" type_id="" runtime_id="" type_name="" runtime_name="" simulator_name=""
+  local simulator_id="" answer="" row="" output="$LOG_FILE.create" create_status=0
+  while true; do
+    table="$(json_helper preferred-types "$LOG_FILE.simulators.json" "$(/usr/bin/uname -m)")" || die '无法解析模拟器型号。'
+    ROWS=("${(@f)table}")
+    [[ -n "$table" ]] || die 'Xcode 没有可用 iPhone 型号。'
+    select_row '选择模拟器设备型号：' || return 1
+    type_id="$REPLY"
+    type_name=""
+    for row in "${ROWS[@]}"; do
+      if [[ "${row%%$'\t'*}" == "$type_id" ]]; then
+        # 展示列的“（本机无可搭配系统）”标注只用于选择，不进入设备名。
+        type_name="${row#*$'\t'}"
+        type_name="${type_name%%'（本机无可搭配系统）'}"
+        break
+      fi
+    done
+    [[ -n "$type_name" ]] || type_name="$type_id"
+    table="$(json_helper runtimes "$LOG_FILE.simulators.json")" || die '无法解析 iOS Runtime。'
+    [[ -n "$table" ]] || die '没有可用的 iOS Runtime，请在 Xcode → Settings → Components（旧版 Platforms）安装 iOS，再重新运行。'
+    table="$(json_helper compatible-runtimes "$LOG_FILE.simulators.json" "$(/usr/bin/uname -m)" "$type_id")" || die '无法匹配所选型号的 iOS 系统。'
+    ROWS=("${(@f)table}")
+    if [[ -z "$table" ]]; then
+      log '✖ 所选型号没有可搭配的已安装 iOS 系统；请在 Xcode 安装对应 Runtime，或重新选择型号。'
+      confirm_simulator_reselection || return 1
+      continue
+    fi
+    select_row '选择 iOS 系统版本（已按所选型号匹配排序）：' || return 1
+    runtime_id="$REPLY"
+    runtime_name=""
+    for row in "${ROWS[@]}"; do
+      if [[ "${row%%$'\t'*}" == "$runtime_id" ]]; then
+        runtime_name="${row#*$'\t'}"
+        break
+      fi
+    done
+    simulator_name_for "$type_name" || die '无法确认唯一的模拟器名称。'
+    simulator_name="$REPLY"
+    log "将创建模拟器：$type_name / $runtime_name"
+    log "➤ 新名称：$simulator_name"
+    IFS= read -r 'answer?回车创建并启动；非空取消：' || return 1
+    [[ -z "$answer" ]] || return 1
+    create_status=0
+    run_bounded 45 "$output" /usr/bin/xcrun simctl create "$simulator_name" "$type_id" "$runtime_id" || create_status=$?
+    simulator_id="$(/bin/cat "$output" 2>/dev/null)"
+    if (( create_status == 0 )); then
+      if [[ ! "$simulator_id" =~ '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' ]]; then
+        log "✖ simctl 没有返回有效 UDID：$output"
+        log '➤ 已停止，未自动重试；请检查 Simulator 设备列表。'
+        return 1
+      fi
+      REPLY="$simulator_id"
+      return 0
+    fi
+    # 只有 Xcode 明确写出 Incompatible device 才算组合不受支持；
+    # 泛化的 Unable to create a device for device type 可能来自权限或状态问题，不自动重选。
+    if (( create_status != 124 )) && [[ "$simulator_id" == *'Incompatible device'* ]]; then
+      log "⚠ 当前型号 / 系统组合不受支持：$simulator_id"
+      log '➤ 未删除任何既有模拟器，设备列表保持不变。'
+      confirm_simulator_reselection || return 1
+      continue
+    fi
+    log "✖ 创建失败（退出码 ${create_status}），未自动重试，未删除任何既有模拟器：$output"
+    return 1
+  done
+}
+
+# Xcode 27 起模拟器界面改名为 DeviceHub.app 并移到 Xcode.app/Contents/Applications；
+# 旧版为 Xcode.app/Contents/Developer/Applications/Simulator.app，两种布局都要认。
+simulator_interface_path() {
+  local developer="$1" candidate=""
+  for candidate in "$developer/Applications/Simulator.app" "${developer:h}/Applications/Simulator.app" \
+    "${developer:h}/Applications/DeviceHub.app"; do
+    [[ -d "$candidate" ]] || continue
+    REPLY="$candidate"
+    return 0
+  done
+  return 1
+}
+
+simulator_interface_app() {
+  local simctl_path=""
+  simctl_path="$(/usr/bin/xcrun --find simctl 2>/dev/null)" || return 1
+  [[ "$simctl_path" == */usr/bin/simctl ]] || return 1
+  simulator_interface_path "${simctl_path%/usr/bin/simctl}"
+}
+
+# 设备已启动，界面打不开只提示，不终止本次运行。
+reveal_simulator_interface() {
+  local simulator_id="$1" app=""
+  if ! simulator_interface_app; then
+    log '⚠ 当前 Xcode 没有 Simulator / Device Hub，跳过打开界面；设备已启动，可在 Xcode → Devices and Simulators 查看。'
     return 1
   fi
-  simulator_id="$(/bin/cat "$output")"
-  [[ "$simulator_id" =~ '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' ]] || die "simctl 没有返回有效 UDID：$output"
-  REPLY="$simulator_id"
+  app="$REPLY"
+  if [[ "${app:t}" == 'Simulator.app' ]]; then
+    /usr/bin/open -a "$app" --args -CurrentDeviceUDID "$simulator_id" || {
+      log "⚠ 无法打开模拟器界面：$app"
+      return 1
+    }
+    log "➤ 已打开模拟器界面：$app"
+    return 0
+  fi
+  /usr/bin/open -a "$app" || {
+    log "⚠ 无法打开模拟器界面：$app"
+    return 1
+  }
+  log "➤ 已打开 Device Hub：$app"
+  log "➤ 请在 Device Hub 按设备名选中该模拟器（$simulator_id）。"
 }
 
 select_ios_simulator() {
@@ -243,9 +492,23 @@ select_ios_simulator() {
   }
   log "ℹ 等待所选模拟器就绪：$simulator_id"
   run_bounded 180 "$LOG_FILE.bootstatus" /usr/bin/xcrun simctl bootstatus "$simulator_id" -b || die "模拟器未在 180 秒内启动完成：$LOG_FILE.bootstatus"
-  /usr/bin/open -a Simulator --args -CurrentDeviceUDID "$simulator_id" || die '无法打开 Simulator.app。'
-  for attempt in 1 2 3; do
-    refresh_devices || continue
+  reveal_simulator_interface "$simulator_id" || log 'ℹ 界面未打开不影响运行；Flutter 仍会使用已启动的模拟器。'
+  # 新建模拟器后 Flutter 首次冷启动可能重建 flutter_tools，前两次给足时间；仍失败再按普通超时重试。
+  wait_for_simulator_recognition "$simulator_id"
+}
+
+# 新建模拟器后等设备出现在 Flutter 列表：首次 120 秒、第二次 60 秒、之后 30 秒，共 4 次。
+wait_for_simulator_recognition() {
+  local simulator_id="$1" attempt=0 timeout=30
+  for attempt in 1 2 3 4; do
+    if (( attempt == 1 )); then
+      timeout=120
+    elif (( attempt == 2 )); then
+      timeout=60
+    else
+      timeout=30
+    fi
+    refresh_devices "$timeout" || { log "ℹ 第 ${attempt} 次读取设备列表失败，将继续重试。"; /bin/sleep 2; continue; }
     for row in "${ROWS[@]}"; do
       if [[ "${(L)${row%%$'\t'*}}" == "${(L)simulator_id}" ]]; then
         DEVICE_ID="${row%%$'\t'*}"
@@ -253,7 +516,7 @@ select_ios_simulator() {
       fi
     done
     log 'ℹ Flutter 尚未发现所选模拟器，正在重新加载…'
-    /bin/sleep 2
+    /bin/sleep 3
   done
   die '模拟器已启动，但 Flutter 尚未识别；保留模拟器，请检查 flutter doctor 后重试。'
 }
@@ -390,12 +653,17 @@ stop_session() {
 
 watch_session() {
   local answer=""
-  log "运行日志：$SESSION_DIR/run.log"
-  log 'r 热重载 / R 热重启 / s 停止 / d 离开；Ctrl+C 或关闭终端也只离开。'
-  /usr/bin/tail -n 80 -f "$SESSION_DIR/run.log" &
+  log ''
+  log '━━━━━━━━━━ Flutter 构建与运行 ━━━━━━━━━━'
+  log "完整原始日志：$SESSION_DIR/run.log"
+  log '控制：输入 r 热重载 / R 热重启 / s 停止 / d 离开，再按回车。'
+  log '关闭终端或 Ctrl+C 只离开；[警告] 不等于失败，以 [成功] / [错误] 为准。'
+  log '──────────────────────────────────────'
+  /usr/bin/osascript -l JavaScript "$HELPER" watch-log "$SESSION_DIR/run.log" "$SESSION_DIR/exitcode" &
   TAIL_PID=$!
   while true; do
-    IFS= read -r 'answer?运行控制 > ' || return 0
+    # 不输出悬挂的输入提示符，避免异步日志接在“运行控制 >”后面。
+    IFS= read -r answer || return 0
     case "$answer" in
       r) send_control reload ;;
       R) send_control restart ;;
@@ -427,11 +695,13 @@ run_worker() {
   exec 9<>"$session/control.fifo"
   trap '[[ -z "$child_pid" ]] || kill -TERM "$child_pid" 2>/dev/null; print 143 > "$session/exitcode"; exit 143' TERM INT
   print -r -- "Flutter 后台运行：$project / $device"
-  "$flutter" run --machine -d "$device" <&9 &
+  # fd 9 只负责保持 FIFO 打开；Dart 的异步 stdin 必须另用只读描述符。
+  # macOS 下直接继承 O_RDWR FIFO 会让 stdin.listen 收不到热重载 / 停止请求。
+  "$flutter" run --machine -d "$device" < "$session/control.fifo" &
   child_pid=$!
   wait "$child_pid" || result=$?
-  print -r -- "$result" > "$session/exitcode"
   print -r -- "Flutter 已退出：$result"
+  print -r -- "$result" > "$session/exitcode"
   return "$result"
 }
 

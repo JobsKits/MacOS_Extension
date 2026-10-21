@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
+FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -108,6 +108,15 @@ FEATURE_EXTENSION_ID[flutter_version_manager]="com.jobs.JobsFlutterVersionMgr.Fi
 FEATURE_REFRESH_MARKER[flutter_version_manager]="/tmp/JobsFlutterVersionMgrNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[flutter_version_manager]="/tmp/JobsFlutterVersionMgr.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter_version_manager]}]="flutter_version_manager"
+
+FEATURE_TITLE[flutter_sdk_version]="查看当前 Flutter SDK 版本"
+FEATURE_PROJECT_DIR[flutter_sdk_version]="JobsFlutterSdkInspector"
+FEATURE_APP_NAME[flutter_sdk_version]="JobsFlutterSdkInspector"
+FEATURE_EXTENSION_PROCESS_NAME[flutter_sdk_version]="JobsFlutterSdkInspectorFinderSync"
+FEATURE_EXTENSION_ID[flutter_sdk_version]="com.jobs.JobsFlutterSdkInspector.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter_sdk_version]="/tmp/JobsFlutterSdkInspectorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter_sdk_version]="/tmp/JobsFlutterSdkInspector.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter_sdk_version]}]="flutter_sdk_version"
 
 FEATURE_TITLE[git-pull]="拉取 Git 到最新"
 FEATURE_PROJECT_DIR[git-pull]="JobsGitPuller"

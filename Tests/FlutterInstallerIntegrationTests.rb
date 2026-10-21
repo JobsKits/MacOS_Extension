@@ -1,14 +1,55 @@
 # frozen_string_literal: true
-# 在隔离 Shell 内核对真实选择器、安装映射与卸载映射，不执行构建或注册。
+# 在隔离 Shell 内核对真实选择器、安装映射与确认交互，不执行构建或注册。
 
 require 'minitest/autorun'
 require 'open3'
+require 'pty'
+require 'timeout'
 require 'tmpdir'
 
 class FlutterInstallerIntegrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
   UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
+  INDEPENDENT_INSTALLERS = Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】安装*Finder扩展.command')).select { |path| File.file?(path) }.sort.freeze
+  INSTALL_PHASES = %w[initialize_runtime check_environment build_extension register_extension].freeze
+
+  def test_every_independent_install_enter_runs_installation_in_order
+    assert_equal 13, INDEPENDENT_INSTALLERS.length
+    INDEPENDENT_INSTALLERS.each do |path|
+      output, result, phases = run_install_confirmation(path, "\n")
+      assert result.success?, "#{path}\n#{output}"
+      assert_includes output, '直接回车安装；输入任意字符后回车跳过'
+      assert_equal INSTALL_PHASES, phases, path
+    end
+  end
+
+  def test_every_independent_install_nonempty_input_skips_before_initialization
+    INDEPENDENT_INSTALLERS.each do |path|
+      ["skip\n", "跳过\n", " \n", "\t\n", "\\\n"].each do |input|
+        output, result, phases = run_install_confirmation(path, input)
+        assert result.success?, "#{path} input=#{input.inspect}\n#{output}"
+        assert_empty phases, "#{path} input=#{input.inspect}"
+      end
+    end
+  end
+
+  def test_every_independent_install_eof_skips_before_initialization
+    INDEPENDENT_INSTALLERS.each do |path|
+      output, result, phases = run_install_confirmation(path, "\u0004")
+      assert result.success?, "#{path}\n#{output}"
+      assert_empty phases, path
+    end
+  end
+
+  def test_every_independent_install_without_tty_rejects_enter_before_initialization
+    INDEPENDENT_INSTALLERS.each do |path|
+      output, result, phases = run_install_confirmation(path, "\n", interactive: false)
+      assert_equal 1, result.exitstatus, "#{path}\n#{output}"
+      assert_includes output, '请在可交互终端运行'
+      assert_empty phases, path
+    end
+  end
 
   def test_selector_all_and_checkbox_identifiers_stay_in_the_same_order
     selector = File.read(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
@@ -319,6 +360,57 @@ end
   end
 
   private
+
+  def run_install_confirmation(path, input, interactive: true)
+    source = File.read(path)
+    raise '入口未找到' unless source.sub!(/^main "\$@"\s*\z/, '')
+    main_body = source[/^main\(\) \{\n(.*?)^\}/m, 1]
+    phases = main_body&.lines&.map { |line| line.sub(/\s*#.*$/, '').strip }&.reject(&:empty?)
+    raise "安装入口编排已改变，需重新隔离：#{path}" unless phases == ['show_script_intro_and_wait'] + INSTALL_PHASES
+
+    Dir.mktmpdir('jobs-finder-install-confirmation-') do |directory|
+      fixture = File.join(directory, 'confirmation.zsh')
+      trace = File.join(directory, 'phases')
+      # 保留真实自述、read 和 main；所有确认后的业务阶段仅记录顺序。
+      stubs = INSTALL_PHASES.map { |phase| "#{phase}() { print -r -- #{phase} >> \"$JOBS_TEST_PHASES\"; }" }.join("\n")
+      File.write(fixture, source + "\n" + stubs + "\nmain \"$@\"\n")
+      environment = {'NO_COLOR' => '1', 'TMPDIR' => "#{directory}/", 'JOBS_TEST_PHASES' => trace}
+      if interactive
+        output = +''.b
+        result = nil
+        PTY.spawn(environment, '/bin/zsh', '-f', fixture) do |reader, writer, pid|
+          begin
+            Timeout.timeout(10) do
+              output << reader.readpartial(4096) until output.include?('输入任意字符后回车跳过：'.b)
+              refute File.exist?(trace), "#{path} 确认前执行了安装阶段"
+              writer.write(input)
+              begin
+                loop { output << reader.readpartial(4096) }
+              rescue EOFError, Errno::EIO
+                _, result = Process.wait2(pid)
+              end
+            end
+          ensure
+            unless result
+              begin
+                Process.kill('TERM', pid)
+              rescue Errno::ESRCH
+              end
+              begin
+                Process.waitpid(pid)
+              rescue Errno::ECHILD
+              end
+            end
+          end
+        end
+        output.force_encoding(Encoding::UTF_8)
+      else
+        output, result = Open3.capture2e(environment, '/bin/zsh', '-f', fixture, stdin_data: input)
+      end
+      recorded = File.exist?(trace) ? File.readlines(trace, chomp: true) : []
+      [output, result, recorded]
+    end
+  end
 
   def assert_missing_project_stops(missing_key, project_name)
     Dir.mktmpdir('jobs-missing-repository-project-') do |workspace|

@@ -13,9 +13,11 @@
 - [三、运行方式](#jobs-toc-heading-4)
 - [四、实现边界](#jobs-toc-heading-5)
 - [五、排查说明](#jobs-toc-heading-6)
-- [六、本仓目录与脚本入口](#repository-layout-and-entrypoints)
-  - [【MacOS】卸载复制绝对路径Finder扩展.command](#jobs-toc-heading-8)
-  - [EnableFinderExtension.zsh](#jobs-toc-heading-9)
+- [六、安装与卸载](#install-uninstall)
+  - [【MacOS】安装复制绝对路径Finder扩展.command](#jobs-toc-heading-8)
+  - [【MacOS】卸载复制绝对路径Finder扩展.command](#jobs-toc-heading-9)
+- [七、本仓目录与脚本入口](#repository-layout-and-entrypoints)
+  - [EnableFinderExtension.zsh](#jobs-toc-heading-11)
 
 </details>
 <!-- jobs-toc:end -->
@@ -105,15 +107,35 @@ pluginkit -m -p com.apple.FinderSync -A -v | grep JobsPathCopier
   tail -n 200 "$HOME/Library/Containers/com.jobs.JobsPathCopier.FinderSyncExtension/Data/Library/Application Support/JobsPathCopyFinderSync/FinderSync.log"
   ```
 
-## 六、<span id="repository-layout-and-entrypoints">本仓目录与脚本入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 六、<span id="install-uninstall">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
+
+### <span id="jobs-toc-heading-8" data-jobs-toc="v2">[【MacOS】安装复制绝对路径Finder扩展.command](./【MacOS】安装复制绝对路径Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 独立构建、注册并启用本工程的“复制绝对路径”Finder 扩展。
+
+- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止，不自动改 `xcode-select`。
+- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
+- 路径复制发生在右键点击时，安装过程无其它副作用。日志为系统临时目录中的 `JobsPathCopierInstall.log`。
+
+### <span id="jobs-toc-heading-9" data-jobs-toc="v2">[【MacOS】卸载复制绝对路径Finder扩展.command](./【MacOS】卸载复制绝对路径Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 卸载 JobsPathCopier 的 Finder 扩展，移除对应右键菜单入口并保留工程源码。
+
+- 阅读自述并回车，检查系统工具，显示当前扩展注册状态与待处理路径。
+- 停用扩展，停止宿主 APP 和扩展进程，再注销相应 Finder Sync 注册；必须输入 `YES` 才继续。
+- 清理对应构建 APP、运行标记、旧日志及 Automator 服务残留；源码目录保留，结束时重启 Finder。
+- 日志为系统临时目录中的 `【MacOS】卸载复制绝对路径Finder扩展.command.log`。
+
+## 七、<span id="repository-layout-and-entrypoints">本仓目录与脚本入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 以下为本工程源码与维护入口；依赖环境、Git 元数据、构建缓存和生成产物略去。
 
 ```text
 .
-├── 【MacOS】卸载复制绝对路径Finder扩展.command/
-│   ├── 【MacOS】卸载复制绝对路径Finder扩展.command
-│   └── README.md
+├── 【MacOS】安装复制绝对路径Finder扩展.command
+├── 【MacOS】卸载复制绝对路径Finder扩展.command
 ├── assets/
 ├── icon.png
 ├── JobsPathCopier/
@@ -133,18 +155,9 @@ pluginkit -m -p com.apple.FinderSync -A -v | grep JobsPathCopier
 ```
 
 * `JobsPathCopier/` 保存宿主 APP；`JobsPathCopyFinderSync/` 保存 Finder 扩展与菜单逻辑；`JobsPathCopier.xcodeproj/` 保存工程和构建阶段配置。
-* `Scripts/` 保存构建后自动注册入口；同名 `.command/` 包保存卸载脚本与其详细说明。
+* `Scripts/` 保存构建后自动注册入口；工程根的裸露双击脚本提供独立安装与卸载入口。
 
-### <span id="jobs-toc-heading-8" data-jobs-toc="v2">[【MacOS】卸载复制绝对路径Finder扩展.command](./【MacOS】卸载复制绝对路径Finder扩展.command/【MacOS】卸载复制绝对路径Finder扩展.command)</span><!-- jobs-toc:heading-end -->
-
-> **目的：** 卸载 JobsPathCopier 的 Finder 扩展，移除复制绝对路径入口并保留工程源码。
-
-* 阅读自述并回车，检查系统工具，显示当前扩展注册状态。
-* 停用扩展，停止宿主 APP 和扩展进程，再注销相应 Finder Sync 注册。
-* 清理对应构建 APP、运行标记、旧日志及 Automator 服务残留；源码目录保留。
-* 刷新 Services 缓存并重启 Finder，显示结束提示与系统临时目录中的日志位置。
-
-### <span id="jobs-toc-heading-9" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-11" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在 Xcode 构建后注册、启用 JobsPathCopier 扩展并刷新 Finder。
 

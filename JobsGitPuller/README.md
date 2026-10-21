@@ -8,11 +8,12 @@
 <summary>📚 目录（点击展开 / 收起）</summary>
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
-- [一、安装与运行](#install)
+- [一、安装与卸载](#install)
   - [【MacOS】安装Git拉取Finder扩展.command](#jobs-toc-heading-3)
   - [【MacOS】卸载Git拉取Finder扩展.command](#jobs-toc-heading-4)
-  - [PullGitRepository.zsh](#jobs-toc-heading-5)
-- [二、工作区与恢复边界](#safety)
+- [二、运行与恢复边界](#jobs-toc-heading-5)
+  - [PullGitRepository.zsh](#jobs-toc-heading-6)
+- [二、工作区与恢复边界](#jobs-toc-heading-7)
 - [三、目录与验证](#files-tests)
 
 </details>
@@ -40,26 +41,31 @@
 
 本地文档保留 `[toc]`，由总仓根目录的 [目录过滤器](../.jobs-markdown-toc/README.md) 统一管理；新克隆后在总仓根目录安装一次，整文件暂存时生成远端折叠目录。
 
-## 一、<span id="install">安装与运行</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-要求 macOS 12+、[**Xcode**](https://developer.apple.com/xcode/) 和健康 Git。已有 Git 直接复用，不安装依赖，不改变网络代理、全局 Git 配置或分支 upstream。分支没有 upstream、游离 HEAD、尚无提交、稀疏检出、特殊索引、已有 merge / rebase 等事务时停止。
+两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Git拉取Finder扩展.command](./【MacOS】安装Git拉取Finder扩展.command/【MacOS】安装Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Git拉取Finder扩展.command](./【MacOS】安装Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 构建并注册本项 Finder 扩展。
 
-- 阅读自述并回车，核对 Xcode 工具与本工程。
-- 构建独立 App，注册并启用扩展，刷新 Finder；安装过程不会拉取任何目标仓库。
-- 回到 Finder，单选文件夹或右键目录背景，点击“拉取 Git 到最新”。也可使用[总仓统一安装器](../【MacOS】🧩安装Finder扩展.command)仅勾选本项。
+- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK 与本工程文件，缺失时明确停止；健康 Git 由右键动作在运行时另行核验。
+- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
+- 安装过程不会拉取任何目标仓库；日志为系统临时目录中的 `JobsGitPullerInstall.log`。也可使用[总仓统一安装器](../【MacOS】🧩安装Finder扩展.command)仅勾选本项。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载Git拉取Finder扩展.command](./【MacOS】卸载Git拉取Finder扩展.command/【MacOS】卸载Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载Git拉取Finder扩展.command](./【MacOS】卸载Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 停用并注销本项扩展，清理本工程安装产物。
 
 - 阅读自述并回车确认，停止本项宿主和扩展。
 - 注销并清理构建产物，刷新 Finder；不删除源码、目标项目或目标仓库的恢复快照。
+- 展示真实注册路径后必须输入 `YES` 才继续；日志为系统临时目录中的 `【MacOS】卸载Git拉取Finder扩展.log`。
 
-### <span id="jobs-toc-heading-5" data-jobs-toc="v2">[PullGitRepository.zsh](./Scripts/PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">二、<span id="safety">运行与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+
+要求 macOS 12+、[**Xcode**](https://developer.apple.com/xcode/) 和健康 Git。已有 Git 直接复用，不安装依赖，不改变网络代理、全局 Git 配置或分支 upstream。分支没有 upstream、游离 HEAD、尚无提交、稀疏检出、特殊索引、已有 merge / rebase 等事务时停止。
+
+### <span id="jobs-toc-heading-6" data-jobs-toc="v2">[PullGitRepository.zsh](./Scripts/PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在交互终端执行 Git 保护、拉取和冲突三选一。
 
@@ -75,7 +81,7 @@
   '/实际/项目目录'
 ```
 
-## 二、<span id="safety">工作区与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-7" data-jobs-toc="v2">二、<span id="safety">工作区与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 仅当前工作树，当前分支配置的单个远端 upstream；子目录会显示所属仓库根。保留本地提交，不强制对齐远端，不 push、不自动选择其他 remote。
 - 不递归更新子模块。存在子模块脏状态或检出变化时先停止；远端修改 gitlink 后，子模块实际检出仍保持原样，需要单独同步。

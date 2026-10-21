@@ -223,14 +223,19 @@ function run(args) {
         value = device[prefix + 'RuntimeVersionString'];
         return typeof value === 'string' && /^\d+(?:\.\d+){0,2}$/.test(value) ? version(value) : null;
     }
+    // 有效标识白名单；字段缺失或为空数组时没有结论，返回 null 交给版本范围判断。
+    function supportIdentifiers(runtime) {
+        var supported = runtime.entry.supportedDeviceTypes;
+        if (!Array.isArray(supported) || supported.length === 0) return null;
+        return supported.map(function (entry) {
+            var identifier = typeof entry === 'string' ? entry : entry && entry.identifier;
+            return typeof identifier === 'string' && /^com\.apple\.CoreSimulator\.SimDeviceType\.[A-Za-z0-9._-]+$/.test(identifier) ? identifier : null;
+        });
+    }
     // 只排除有明确依据的组合；缺失或不完整的兼容元数据保留为未知。
     function compatibility(device, runtime) {
-        var supported = runtime.entry.supportedDeviceTypes;
-        if (Array.isArray(supported) && supported.length > 0) {
-            var identifiers = supported.map(function (entry) {
-                var identifier = typeof entry === 'string' ? entry : entry && entry.identifier;
-                return typeof identifier === 'string' && /^com\.apple\.CoreSimulator\.SimDeviceType\.[A-Za-z0-9._-]+$/.test(identifier) ? identifier : null;
-            });
+        var identifiers = supportIdentifiers(runtime);
+        if (identifiers) {
             if (identifiers.indexOf(device.id) >= 0) return 2;
             if (identifiers.every(function (identifier) { return identifier !== null; })) return 0;
         }
@@ -262,7 +267,8 @@ function run(args) {
             device.rank = runtimes.reduce(function (rank, runtime) { return Math.max(rank, compatibility(device, runtime)); }, 0);
         });
         devices.sort(function (a,b) { return b.rank - a.rank || a.order - b.order; });
-        return devices.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
+        // 无可搭配系统的型号永远走不到命名与创建，标注不会污染设备名。
+        return devices.map(function (row) { return (row.rank === 0 ? row.name + '（本机无可搭配系统）' : row.name) + '\t' + row.id; }).join('\n');
     }
     if (args[0] === 'compatible-runtimes') {
         var selectedID = id(args[4], 'com.apple.CoreSimulator.SimDeviceType.');
@@ -272,7 +278,24 @@ function run(args) {
         runtimes.forEach(function (runtime) { runtime.rank = compatibility(devices[0], runtime); });
         runtimes = runtimes.filter(function (runtime) { return runtime.rank > 0; });
         runtimes.sort(function (a,b) { return b.rank - a.rank || b.value - a.value || a.name.localeCompare(b.name); });
-        return runtimes.map(function (row) { return row.name + '\t' + row.id; }).join('\n');
+        // 系统名只用于展示与日志，标注不会进入 simctl create 的参数。
+        return runtimes.map(function (row) { return (row.rank === 2 ? row.name : row.name + '（未确认支持）') + '\t' + row.id; }).join('\n');
+    }
+    if (args[0] === 'catalog-summary') {
+        var summaryDevices = namedDevices(args[1]), summaryRuntimes = availableRuntimes(args[2], args[3]);
+        summaryDevices.forEach(function (device) {
+            device.rank = summaryRuntimes.reduce(function (rank, runtime) { return Math.max(rank, compatibility(device, runtime)); }, 0);
+        });
+        var matched = summaryDevices.filter(function (device) { return device.rank > 0; }).length;
+        var lines = ['models\t' + summaryDevices.length + '\t' + matched + '\t' + (summaryDevices.length - matched)];
+        summaryRuntimes.forEach(function (runtime) {
+            var identifiers = supportIdentifiers(runtime), count = -1;
+            if (identifiers && identifiers.every(function (identifier) { return identifier !== null; })) {
+                count = summaryDevices.filter(function (device) { return identifiers.indexOf(device.id) >= 0; }).length;
+            }
+            lines.push('runtime\t' + runtime.name + '\t' + count);
+        });
+        return lines.join('\n');
     }
     if (args[0] === 'unique-name') {
         var payload = json(args[1]), names = Object.create(null), base = text(args[2]);
@@ -398,9 +421,10 @@ sim_choose_row() {
         done
     fi
 }
-# 保留完整型号并优先推荐可搭配已装系统的型号，选定后排除明确不兼容的系统。
+# 保留完整型号并优先推荐可搭配已装系统的型号，选定后只列匹配该型号的系统。
 sim_select_combination() {
-    local devices="" runtimes=""
+    local devices="" runtimes="" total=0 matched=0
+    local -a all_rows matched_rows
     if ! devices="$(sim_data preferred-devicetypes "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
         sim_log "✖ 无法解析设备型号：${devices}"
         return 1
@@ -417,6 +441,8 @@ sim_select_combination() {
         sim_log '✖ 没有本机可用的 iOS Runtime。请在 Xcode → Settings → Components 安装后重试。'
         return 1
     fi
+    all_rows=("${(@f)runtimes}")
+    total=${#all_rows}
     sim_choose_row '选择 iPhone / iPad 型号' "$devices" || return $?
     SIM_DEVICE_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
     SIM_DEVICE_ID="${SIM_SELECTED_ROW#*$'\t'}"
@@ -425,10 +451,18 @@ sim_select_combination() {
         return 1
     fi
     if [[ -z "$runtimes" ]]; then
-        sim_log "✖ ${SIM_DEVICE_NAME} 没有可搭配的已安装 iOS 系统，请在 Xcode 安装对应 Runtime，或重新运行选择其它型号。"
-        return 1
+        sim_log "✖ ${SIM_DEVICE_NAME} 没有可搭配的已安装 iOS 系统：本机 ${total} 个已装 iOS 系统都不支持该型号。"
+        sim_log '➤ 请在 Xcode 安装该型号可用的 Runtime，或重新选择其它型号；未创建模拟器。'
+        return 2
     fi
-    sim_log '➤ 已排除明确不兼容的系统，优先选择已确认支持的最新版本；回车采用首项。'
+    matched_rows=("${(@f)runtimes}")
+    matched=${#matched_rows}
+    # 明确列出匹配数量，避免把本机全部系统当成该型号的可选项。
+    sim_log "➤ ${SIM_DEVICE_NAME}：本机已装 ${total} 个 iOS 系统，其中 ${matched} 个匹配该型号。"
+    if (( total > matched )); then
+        sim_log "➤ 已排除 $(( total - matched )) 个不支持该型号的已装系统，未被 Xcode 明确列出的系统标注为“（未确认支持）”。"
+    fi
+    sim_log '➤ 已确认支持的最新系统排首位，回车采用首项。'
     sim_choose_row '选择 iOS 系统版本' "$runtimes" || return $?
     SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
     SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
@@ -453,6 +487,9 @@ sim_confirm_creation() {
     sim_log "➤ 设备：${SIM_DEVICE_NAME}"
     sim_log "➤ 系统：${SIM_RUNTIME_NAME}"
     sim_log "➤ 新名称：${SIM_NAME}"
+    if [[ "$SIM_RUNTIME_NAME" == *未确认支持* ]]; then
+        sim_log '⚠ 所选系统未被 Xcode 明确列为支持该型号，创建可能失败；失败时输入 r 可重新选择。'
+    fi
     sim_log '➤ 型号与系统分别列出，组合是否受支持由 Xcode 创建命令最终校验；不支持时需输入 r 才重新选择。'
     if ! IFS= read -r "?直接回车创建并启动；输入任意字符取消：" answer || [[ -n "$answer" ]]; then
         SIM_CANCELLED=1
@@ -519,6 +556,10 @@ sim_interactive_loop() {
         if (( result == 130 )); then
             sim_log '➤ 已取消，未创建模拟器。'
             return 0
+        elif (( result == 2 )); then
+            # 所选型号没有可搭配系统时同不兼容组合一样，只有明确输入 r 才重选。
+            sim_confirm_reselection || return 1
+            continue
         elif (( result != 0 )); then
             return "$result"
         fi
@@ -541,12 +582,13 @@ sim_show_help() {
     sim_log "用法：/bin/zsh \"${SCRIPT_PATH}\" [--help | --check]"
     sim_log '  无参数   在可交互终端中选择并新建一个模拟器。'
     sim_log '  --help   显示帮助；不读取 Xcode 或创建日志。'
-    sim_log '  --check  只读体检 Xcode / simctl，并列出完整机型数量及可用 iOS 系统。'
+    sim_log '  --check  只读体检 Xcode / simctl，并列出完整机型、可搭配系统的机型数量及每个可用 iOS 系统支持的机型数。'
     sim_log '来源：JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command。'
 }
 # 体检完整机型和可用系统清单，不把独立列出的两者误报为全部兼容。
 sim_report_catalog() {
-    local rows="" devices="" row=""
+    local rows="" devices="" row="" summary="" rest=""
+    local matched=0 unmatched=0
     local -a device_rows
     if ! rows="$(sim_data runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
         sim_log "✖ Runtime 数据无效：${rows}"
@@ -565,9 +607,23 @@ sim_report_catalog() {
         return 1
     fi
     device_rows=("${(@f)devices}")
-    sim_log "✔ 完整机型清单：${#device_rows} 个 iPhone / iPad（不按 Runtime 隐藏型号）"
-    for row in "${(@f)rows}"; do
-        sim_log "✔ 可用系统：${row%%$'\t'*}"
+    if ! summary="$(sim_data catalog-summary "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
+        sim_log "✖ 无法汇总机型与系统的匹配关系：${summary}"
+        return 1
+    fi
+    rest="${${summary%%$'\n'*}#*$'\t'}" # 跳过 models 后的机型总数，只取可搭配与无可搭配两项。
+    rest="${rest#*$'\t'}"
+    matched="${rest%%$'\t'*}"
+    unmatched="${rest#*$'\t'}"
+    sim_log "✔ 完整机型清单：${#device_rows} 个 iPhone / iPad（不按 Runtime 隐藏型号；其中 ${matched} 个已有可搭配系统，${unmatched} 个本机无可搭配系统）"
+    for row in "${(@f)${summary#*$'\n'}}"; do
+        [[ "${row%%$'\t'*}" == runtime ]] || continue
+        rest="${row#*$'\t'}"
+        if [[ "${rest#*$'\t'}" == -1 ]]; then
+            sim_log "✔ 可用系统：${rest%%$'\t'*}（支持机型数未知）"
+        else
+            sim_log "✔ 可用系统：${rest%%$'\t'*}（支持 ${rest#*$'\t'} 个机型）"
+        fi
     done
     sim_report_default_combination || return $?
     sim_log '➤ 首项优先采用已确认支持的组合；元数据缺失保留候选，仍由 simctl create 最终校验。'
@@ -613,7 +669,7 @@ sim_run_requested_action() {
 show_script_intro_and_wait() {
     sim_prepare_context
     sim_intro_line title '━━━━━━━━━━ 新建 iOS 模拟器 ━━━━━━━━━━'
-    sim_intro_line body '1、完整型号中优先显示有可搭配系统的机型，再选兼容系统；一路回车采用首选组合，创建并启动新模拟器。'
+    sim_intro_line body '1、完整型号中优先显示有可搭配系统的机型，无可搭配系统的机型带标注；选完型号后只列匹配该型号的系统；一路回车采用首选组合，创建并启动新模拟器。'
     sim_intro_line body '2、保留现有设备与调试会话；不安装工具 / Runtime，不更改 Xcode、Shell 或网络配置。'
     sim_intro_line body '3、Ctrl+C 随时停止；选择时按 Esc / 输入 q 取消；创建前会再次确认。'
     sim_intro_line body "日志位置：${LOG_FILE}（确认后创建；只读入口不写日志）"

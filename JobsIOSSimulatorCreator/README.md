@@ -8,11 +8,14 @@
 <summary>📚 目录（点击展开 / 收起）</summary>
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
-- [一、安装与使用](#installation)
-- [二、依赖、自检与影响范围](#requirements)
-- [三、目录与安装单元](#layout)
-- [四、模块与业务流程](#flow)
-- [五、构建、验证与常见问题](#verification)
+- [一、安装与卸载](#installation)
+  - [【MacOS】安装iOS模拟器Finder扩展.command](#jobs-toc-heading-3)
+  - [【MacOS】卸载iOS模拟器Finder扩展.command](#jobs-toc-heading-4)
+- [二、使用方式](#usage)
+- [三、依赖、自检与影响范围](#requirements)
+- [四、目录与安装单元](#layout)
+- [五、模块与业务流程](#flow)
+- [六、构建、验证与常见问题](#verification)
 
 </details>
 <!-- jobs-toc:end -->
@@ -27,15 +30,15 @@
 | --- | --- |
 | 系统桌面空白处 | 显示“新建 iOS 模拟器”；桌面上的本仓其它开发菜单全部隐藏。 |
 | 文件夹背景、选中的文件或文件夹 | 不显示“新建 iOS 模拟器”；其它扩展仍按自己的项目条件显示。 |
-| 系统版本与设备 | 完整保留 iPhone / iPad，优先显示有可搭配系统的型号；选定后仅列未被兼容元数据否定的 Runtime，确认支持的最新系统排首位，回车采用首项。 |
+| 系统版本与设备 | 完整保留 iPhone / iPad，优先显示有可搭配系统的型号，本机无可搭配系统的型号带“（本机无可搭配系统）”标注；选定型号后只列匹配该型号的系统并打印“已装 N 个 / 匹配 M 个”，确认支持的最新系统排首位，未确认支持的系统带“（未确认支持）”标注，回车采用首项。 |
 | 选择与取消 | 优先复用健康的 fzf，缺失时使用编号选择；取消、EOF 或无交互输入均不会创建。 |
 | 创建结果 | 自动命名并避开已有同名设备，创建并启动新设备；失败保留日志和已创建 UDID 便于重试。 |
 
 本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立 `.xcodeproj`、Scheme、Bundle ID、安装与卸载入口；没有独立 Git 或子模块。业务从[原初始化脚本](../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md)整理，脚本随 App 打包，不依赖原脚本仍在磁盘上。不执行原脚本的 Simulator 清场，不影响已有设备。
 
-两个入口嵌入逐字节相同的核心：完整列出 iPhone / iPad，按本机已装系统的兼容性调整推荐顺序 → 选定机型后匹配 Runtime → `simctl create` 最终校验 → 启动。独立 `.command` 是核心规范源，右键脚本保留自包含副本并随 App 打包；两者均可脱离另一份文件运行，回归测试检查核心块一致，避免平行维护时分叉。不会把某个新 Runtime 的支持列表当成全部可选机型。
+两个入口嵌入逐字节相同的核心：完整列出 iPhone / iPad，按本机已装系统的兼容性调整推荐顺序（本机无可搭配系统的型号带“（本机无可搭配系统）”标注）→ 选定机型后只列匹配该型号的 Runtime，并打印“本机已装 N 个系统，其中 M 个匹配”（未确认支持的系统带“（未确认支持）”标注）→ `simctl create` 最终校验 → 启动。独立 `.command` 是核心规范源，右键脚本保留自包含副本并随 App 打包；两者均可脱离另一份文件运行，回归测试检查核心块一致，避免平行维护时分叉。不会把某个新 Runtime 的支持列表当成全部可选机型。
 
-例如本机的 iOS 27.1 仅列出 Duo，而 27.0 支持 iPhone 18 Pro：直接回车首选 **iPhone 18 Pro / iOS 27.0**。机型与系统不硬编码，`--check` 可只读查看当前电脑的回车首选组合。兼容字段缺失时保留未知候选，不能据此保证创建成功；若组件不足则提示安装对应 Runtime。
+例如本机的 iOS 27.1 仅列出 Duo，而 27.0 支持 iPhone 18 Pro：直接回车首选 **iPhone 18 Pro / iOS 27.0**；88 个机型中 25 个（iPhone 8 / 7 / 6s、iPad Air 2 等老型号）本机无可搭配系统，选择前即可识别，误选后输入 `r` 直接回到机型选择。机型与系统不硬编码，`--check` 可只读查看当前电脑的机型匹配数量、每个系统支持的机型数及回车首选组合。兼容字段缺失时保留未知候选，不能据此保证创建成功；若组件不足则提示安装对应 Runtime。
 
 | 入口封装 | 核心执行前的策略 |
 | --- | --- |
@@ -43,19 +46,35 @@
 | 桌面右键 | 直接体检工具链后进入相同核心，保留已有设备与调试会话，不安装或升级工具。 |
 | 两侧 `--help` / `--check` | 在清场、安装及创建前分流；无 TTY 也可只读运行。 |
 
-## 一、<span id="installation">安装与使用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 一、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-1、推荐运行[总安装器](../【MacOS】🧩安装Finder扩展.command)，只勾选“新建 iOS 模拟器”后点击安装；也可双击[独立安装脚本](./【MacOS】安装iOS模拟器Finder扩展.command/【MacOS】安装iOS模拟器Finder扩展.command)。独立入口先显示自述，直接回车跳过，输入任意字符后回车安装。
+两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。也可运行[总安装器](../【MacOS】🧩安装Finder扩展.command)，只勾选“新建 iOS 模拟器”后点击安装。
 
-2、首次按系统提示启用 `JobsIOSSimulatorCreator` 的 Finder 扩展。右键后若系统询问控制 Terminal，允许后继续；授权由系统管理。宿主是无 Dock 图标的后台转发进程，终端派发完成即退出。
+### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装iOS模拟器Finder扩展.command](./【MacOS】安装iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-3、在桌面空白处右键“新建 iOS 模拟器”，阅读终端自述并回车，型号和系统均可回车采用首选项，也可手动选择其它项。脚本自动生成设备名，最后回车创建并启动，任意非空输入取消。编号模式同样支持回车选第 1 项，输入 q / Esc 或 EOF 取消；最终仍不兼容时输入 `r` / `R` 才重选。
+> **目的：** 独立构建、注册并启用本工程的“新建 iOS 模拟器”桌面右键扩展。
 
-4、创建成功会启动新设备，并打开所选 Xcode 配套的 Simulator 或 Device Hub。Device Hub 中按终端输出的设备名选中设备即可；新建的是 CoreSimulator 设备，不会在桌面生成一个文件夹。窗口启动失败时，终端保留新 UDID，可在 Xcode 中找到该设备。
+- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；只装 Command Line Tools 不够。
+- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。安装过程不创建、不删除任何模拟器或运行时。
+- 首次按系统提示启用 `JobsIOSSimulatorCreator` 的 Finder 扩展；右键后若系统询问控制 Terminal，允许后继续。日志为系统临时目录中的 `JobsIOSSimulatorCreatorInstall.log`。
 
-5、卸载使用[独立卸载脚本](./【MacOS】卸载iOS模拟器Finder扩展.command/【MacOS】卸载iOS模拟器Finder扩展.command)或总卸载器；独立入口显示注册路径后要求输入 `YES`。卸载只移除右键扩展及核验过的宿主 App，已创建的模拟器和系统运行时保留。
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载iOS模拟器Finder扩展.command](./【MacOS】卸载iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-## 二、<span id="requirements">依赖、自检与影响范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+> **目的：** 停用、注销本功能的桌面右键菜单，并移除已登记的自有 App 构建产物。
+
+- 阅读内置自述并回车，展示真实注册路径后必须输入 `YES` 才继续；也可使用总卸载器。
+- 只移除右键扩展及核验过的宿主 App；已创建的模拟器、系统运行时与工程源码保留。
+- 日志为系统临时目录中的 `【MacOS】卸载iOS模拟器Finder扩展.log`。
+
+## 二、<span id="usage">使用方式</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+宿主是无 Dock 图标的后台转发进程，终端派发完成即退出。
+
+1、在桌面空白处右键“新建 iOS 模拟器”，阅读终端自述并回车，型号和系统均可回车采用首选项，也可手动选择其它项。脚本自动生成设备名，最后回车创建并启动，任意非空输入取消。编号模式同样支持回车选第 1 项，输入 q / Esc 或 EOF 取消；最终仍不兼容时输入 `r` / `R` 才重选。
+
+2、创建成功会启动新设备，并打开所选 Xcode 配套的 Simulator 或 Device Hub。Device Hub 中按终端输出的设备名选中设备即可；新建的是 CoreSimulator 设备，不会在桌面生成一个文件夹。窗口启动失败时，终端保留新 UDID，可在 Xcode 中找到该设备。
+
+## 三、<span id="requirements">依赖、自检与影响范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 依赖 | 健康检查 / 边界 |
 | --- | --- |
@@ -77,7 +96,7 @@
 
 自检不会创建、启动、删除设备或安装工具。运行时固定从 App 的资源目录取得脚本，工程复制到任意目录后仍可独立构建和安装。
 
-## 三、<span id="layout">目录与安装单元</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 四、<span id="layout">目录与安装单元</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```text
 ./
@@ -86,8 +105,8 @@
 ├── JobsIOSSimulatorFinderSync/        # 仅桌面空白菜单
 ├── Scripts/                          # 创建业务与构建后启用入口
 ├── Tests/                            # 原生协议及隔离脚本回归
-├── 【MacOS】安装iOS模拟器Finder扩展.command/
-└── 【MacOS】卸载iOS模拟器Finder扩展.command/
+├── 【MacOS】安装iOS模拟器Finder扩展.command
+└── 【MacOS】卸载iOS模拟器Finder扩展.command
 ```
 
 | 标识 | 值 |
@@ -101,7 +120,7 @@
 
 总安装器产物位于仓库 `work/JobsIOSSimulatorCreatorDerivedData/`，独立安装器产物位于本工程 `work/DerivedData/`。系统直接注册相应位置的 App / appex，使用期间保留该目录，清理前先卸载。两种安装方式使用相同 Bundle ID，不同时维护多份注册副本。
 
-## 四、<span id="flow">模块与业务流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 五、<span id="flow">模块与业务流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```mermaid
 flowchart LR
@@ -131,7 +150,7 @@ flowchart TD
     I --> J["输出名称、UDID 与日志"]
 ```
 
-## 五、<span id="verification">构建、验证与常见问题</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 六、<span id="verification">构建、验证与常见问题</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 在本工程目录只编译源码、跳过扩展注册：
 
@@ -152,12 +171,12 @@ JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 xcodebuild \
 - 无法打开 Terminal：在系统设置的“隐私与安全性 → 自动化”检查宿主控制 Terminal 的权限；不自动修改 TCC 数据库。
 - 创建后启动失败：保留 UDID 和日志，修复环境后在 Xcode / Simulator 中启动；程序不以删除新设备掩盖失败。
 - 选择列表重复出现：正常创建只选择一轮型号和系统。创建失败不会自动回到列表；明确不兼容时，只有输入 `r` / `R` 才重选，回车停止。宿主在同一次运行中只派发一次合法创建请求，重复 URL 回调只记日志；已派发完成也不再次打开 Terminal。目标 Mac 需重新运行安装器以更新宿主与内嵌脚本。若仍重复，保留终端显示的业务日志和系统临时目录中的 `JobsIOSSimulatorCreator.log`，据此区分业务重选与重复启动。
-- 一路回车遇到 `Incompatible device` / 403：型号首项与最新系统未必兼容，用户日志中的 iPhone 18 Pro / iOS 27.1 即属此类。现在选定型号后按 Runtime 的 `supportedDeviceTypes` 匹配，不再把两个独立列表的首项直接拼接。有效支持名单优先于通用版本范围；名单缺失或不完整时，仅以有效版本上下限排除明确越界的系统，其余保留为未知候选。
+- 一路回车遇到 `Incompatible device` / 403：型号首项与最新系统未必兼容，用户日志中的 iPhone 18 Pro / iOS 27.1 即属此类。现在选定型号后按 Runtime 的 `supportedDeviceTypes` 匹配，不再把两个独立列表的首项直接拼接；列表只显示匹配该型号的系统并标注数量，未被明确支持的系统带“（未确认支持）”。有效支持名单优先于通用版本范围；名单缺失或不完整时，仅以有效版本上下限排除明确越界的系统，其余保留为未知候选。
 - 本工程无服务器、API、假数据模式或网络图片；列表只来自本机真实 CoreSimulator，空列表提供修复提示，重新运行即可重新读取。
 
 桌面路径修复：沙盒中的 `NSHomeDirectoryForUser` 仍可能返回容器 Home，导致只监控 `Data/Desktop` 别名而收不到真实桌面的菜单回调。现用 `getpwuid_r(getuid())` 取得真实 Home，保留系统桌面别名，并监控根目录 `/` 接收 Finder 回调；菜单层按桌面完整路径白名单过滤，普通文件夹背景及所有选中项菜单均隐藏。白名单命中不依赖桌面文件属性读取权限。
 
-验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 53 项 / 376 断言隔离回归，核心块字节一致；覆盖编号 / fzf 首项直接创建兼容组合、仅安装 Duo 系统时优先推荐 Duo 但保留传统机型、未知兼容字段保留、白名单优先级、版本边界、无可搭配系统停止，以及既有取消、失败不重弹、只读分流和独立入口前置等边界。用户日志已经确认旧默认 iPhone 18 Pro / iOS 27.1 被 Xcode 以 403 / `Incompatible device` 拒绝；本机两侧真实只读 `--check` 均保留 88 种机型，首选组合均为 iPhone 18 Pro / iOS 27.0。此前真实 AppDelegate 配假 Model 的隔离回归已通过 26 条断言，生产宿主相关源码 Swift 类型检查通过；本轮未修改宿主。没有创建或启动真实模拟器，目标机器需重新安装后验收。
+验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 57 项 / 429 断言隔离回归，核心块字节一致；覆盖编号 / fzf 首项直接创建兼容组合、仅安装 Duo 系统时优先推荐 Duo 但保留传统机型、未知兼容字段保留、白名单优先级、版本边界、机型“（本机无可搭配系统）”标注、系统“（未确认支持）”标注与确认前风险提示、无可搭配系统时精确 `r` 重选、`catalog-summary` 数量汇总，以及既有取消、失败不重弹、只读分流和独立入口前置等边界。用户日志已经确认旧默认 iPhone 18 Pro / iOS 27.1 被 Xcode 以 403 / `Incompatible device` 拒绝；本机两侧真实只读 `--check` 均保留 88 种机型（其中 63 个已有可搭配系统，25 个本机无可搭配系统；iOS 27.0 支持 62 个机型、27.1 支持 1 个机型），首选组合均为 iPhone 18 Pro / iOS 27.0。此前真实 AppDelegate 配假 Model 的隔离回归已通过 26 条断言，生产宿主相关源码 Swift 类型检查通过；本轮未修改宿主。没有创建或启动真实模拟器，目标机器需重新安装后验收。
 
 宿主与菜单既有验收：Xcode **27.1 / 27A9275**、macOS arm64 的 Debug 双 target 构建与 ad-hoc 深度签名验证通过；安装注册 10 项 / 66 断言、原生传输与菜单 66 断言、父安装映射 19 项 / 108 断言通过。真实只读 `--check` 已核验同一 Xcode 的 Device Hub。桌面范围回归 `Tests/DesktopFinderMenuTests.rb` 直接执行真实菜单源码，177 条 Swift 菜单断言通过。
 

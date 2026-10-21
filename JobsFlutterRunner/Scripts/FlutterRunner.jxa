@@ -176,19 +176,164 @@ function runtimes(path) {
         return value.identifier + '\t' + field(value.name || value.identifier);
     }).join('\n');
 }
-// 仅列出 iPhone 机型，避免误建成 watchOS / tvOS 设备。
-function deviceTypes(path) {
+// 仅保留具名 iPhone 机型，避免误建成 watchOS / tvOS 设备。
+function iphoneTypes(data) {
     var seen = Object.create(null);
-    return simulatorData(path).devicetypes.filter(function (value) {
+    return data.devicetypes.filter(function (value) {
         if (!value || !identifier(value.identifier) || seen[value.identifier]
             || !(value.productFamily === 'iPhone' || /^iPhone(?:\s|$)/.test(String(value.name || '')))) {
             return false;
         }
         seen[value.identifier] = true;
         return true;
-    }).map(function (value) {
+    });
+}
+// 列出 iPhone 机型供内置初始化使用；第二列只用于展示。
+function deviceTypes(path) {
+    return iphoneTypes(simulatorData(path)).map(function (value) {
         return value.identifier + '\t' + field(value.name || value.identifier);
     }).join('\n');
+}
+// iOS runtime 标识中的版本换成可比较整数，便于按新旧排序。
+function versionNumber(value) {
+    var match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(String(value === undefined || value === null ? '' : value).trim());
+    if (!match) {
+        return -1;
+    }
+    return Number(match[1]) * 65536 + Number(match[2] || 0) * 256 + Number(match[3] || 0);
+}
+// 只保留当前架构支持的 runtime；字段缺失或为空时不据此排除。
+function iosRuntimesForArchitecture(data, arch) {
+    return iosRuntimes(data).filter(function (value) {
+        var architectures = value.supportedArchitectures;
+        return !Array.isArray(architectures) || architectures.length === 0
+            || architectures.indexOf(arch) >= 0;
+    });
+}
+// 兼容白名单；字段缺失或空数组表示没有结论，交由版本范围判断。
+function supportIdentifiers(runtime) {
+    var supported = runtime.entry.supportedDeviceTypes;
+    if (!Array.isArray(supported) || supported.length === 0) {
+        return null;
+    }
+    return supported.map(function (entry) {
+        var value = (entry && typeof entry === 'object') ? entry.identifier : entry;
+        return identifier(value) && value.indexOf('com.apple.CoreSimulator.SimDeviceType.') === 0
+            ? value : null;
+    });
+}
+// 型号的系统上下限，同时兼容数值与字符串两种 simctl 写法。
+function runtimeBound(device, prefix) {
+    var value = device[prefix + 'RuntimeVersion'];
+    if (typeof value === 'number' && isFinite(value) && value >= 0 && Math.floor(value) === value) {
+        return value;
+    }
+    value = device[prefix + 'RuntimeVersionString'];
+    var parsed = versionNumber(value);
+    return parsed >= 0 ? parsed : null;
+}
+// 组合结论：2 已确认支持，1 未知，0 明确不支持；只排除有明确依据的组合。
+function compatibility(device, runtime) {
+    var identifiers = supportIdentifiers(runtime);
+    if (identifiers) {
+        if (identifiers.indexOf(device.identifier) >= 0) {
+            return 2;
+        }
+        if (identifiers.every(function (value) { return value !== null; })) {
+            return 0;
+        }
+    }
+    var minimum = runtimeBound(device, 'min');
+    var maximum = runtimeBound(device, 'max');
+    if (minimum !== null && maximum !== null && minimum > maximum) {
+        return 1;
+    }
+    if (minimum !== null && runtime.value < minimum) {
+        return 0;
+    }
+    if (maximum !== null && runtime.value > maximum) {
+        return 0;
+    }
+    return 1;
+}
+// 保留完整型号，把本机有可搭配系统的型号排前面，避免回车首项落在不支持的组合上。
+function preferredTypes(path, arch) {
+    var data = simulatorData(path);
+    var runtimes = iosRuntimesForArchitecture(data, arch).map(function (value) {
+        return { value: versionNumber(value.version), entry: value };
+    });
+    var devices = iphoneTypes(data);
+    devices.forEach(function (device, index) {
+        device.order = index;
+        device.rank = runtimes.reduce(function (rank, runtime) {
+            return Math.max(rank, compatibility(device, runtime));
+        }, 0);
+    });
+    devices.sort(function (left, right) {
+        return right.rank - left.rank || left.order - right.order;
+    });
+    return devices.map(function (device) {
+        var name = field(device.name || device.identifier);
+        // 无可搭配系统的型号仍然列出，标注只用于展示，不进创建参数。
+        return device.identifier + '\t'
+            + (device.rank === 0 ? name + '（本机无可搭配系统）' : name);
+    }).join('\n');
+}
+// 选定型号后只列可搭配系统；确认支持的排前面，组内版本新的优先。
+function compatibleRuntimes(path, arch, deviceIdentifier) {
+    var data = simulatorData(path);
+    var devices = iphoneTypes(data).filter(function (value) {
+        return value.identifier === deviceIdentifier;
+    });
+    if (devices.length !== 1) {
+        throw new Error('所选型号不属于当前设备清单。');
+    }
+    var runtimes = iosRuntimesForArchitecture(data, arch).map(function (value) {
+        return { value: versionNumber(value.version), name: field(value.name || value.identifier),
+            identifier: value.identifier, entry: value };
+    });
+    runtimes.forEach(function (runtime) {
+        runtime.rank = compatibility(devices[0], runtime);
+    });
+    runtimes = runtimes.filter(function (runtime) {
+        return runtime.rank > 0;
+    });
+    runtimes.sort(function (left, right) {
+        return right.rank - left.rank || right.value - left.value || left.name.localeCompare(right.name);
+    });
+    return runtimes.map(function (runtime) {
+        return runtime.identifier + '\t'
+            + (runtime.rank === 2 ? runtime.name : runtime.name + '（未确认支持）');
+    }).join('\n');
+}
+// 与独立初始化脚本同款命名：型号名@时间-进程号，撞名时追加“ (2)”。
+function uniqueName(path, base) {
+    var value = readJSON(path);
+    var devices = value && value.devices;
+    if (!devices || Array.isArray(devices) || typeof devices !== 'object') {
+        throw new Error('已有设备 JSON 缺少 devices 对象。');
+    }
+    var name = field(base);
+    if (!name) {
+        throw new Error('模拟器名称不能为空。');
+    }
+    var names = Object.create(null);
+    Object.keys(devices).forEach(function (runtime) {
+        if (!Array.isArray(devices[runtime])) {
+            throw new Error('已有设备 JSON 格式无效。');
+        }
+        devices[runtime].forEach(function (device) {
+            if (device) {
+                names[field(device.name)] = true;
+            }
+        });
+    });
+    var suffix = 2;
+    while (names[name]) {
+        name = field(base) + ' (' + suffix + ')';
+        suffix += 1;
+    }
+    return name;
 }
 // 在引号与 flow 容器之外寻找分隔符，注释符还须位于空白之后。
 function delimiter(source, character, comments) {
@@ -464,6 +609,18 @@ function writeEmulatorPlist(args) {
         ProcessType: 'Interactive'
     });
 }
+// 读取项目 FVM 声明版本；只接受可安全作为命令行参数的版本或频道名。
+function fvmVersion(path) {
+    var value = readJSON(path);
+    var version = value && (value.flutter || value.flutterSdkVersion);
+    if (typeof version !== 'string') {
+        throw new Error('FVM 配置没有声明版本。');
+    }
+    if (!/^[0-9A-Za-z][0-9A-Za-z._+\-/:@]{0,63}$/.test(version)) {
+        throw new Error('FVM 声明的版本不可用作命令参数。');
+    }
+    return version;
+}
 // 从 Flutter machine 日志取得最近一次 app.start，生成 daemon 控制消息。
 function daemonCommand(path, operation) {
     if (['reload', 'restart', 'stop'].indexOf(operation) < 0) {
@@ -480,7 +637,7 @@ function daemonCommand(path, operation) {
                 }
             });
         } catch (_) {
-            // Flutter 与构建工具的非 JSON 行保留在原始日志，由终端直接展示。
+            // 原始日志始终保留；终端另行格式化，不影响控制协议读取。
         }
     });
     if (!appID) {
@@ -493,10 +650,177 @@ function daemonCommand(path, operation) {
     }
     return JSON.stringify([{ id: Date.now(), method: operation === 'stop' ? 'app.stop' : 'app.restart', params: params }]);
 }
+// 将 machine 协议转为人读日志；只折叠已知噪声，未知消息与错误保留。
+function logFormatter(write) {
+    var progress = Object.create(null), packages = 0, warnings = 0, spm = false, systemIndexNotice = false;
+    function emit(level, text) {
+        String(text).split(/\r?\n/).forEach(function (line) {
+            if (line.trim()) write('[' + level + '] ' + line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ''));
+        });
+    }
+    function warning(text) { warnings++; emit('警告', text); }
+    // 只识别系统索引器的固定诊断；Flutter 协议事件先解析，不按关键词隐藏应用错误。
+    function systemIndexDiagnostic(line) {
+        var parameter = /^Failed to index (?:parameter type|action parameter): <WF[A-Za-z0-9_]+:/.test(line)
+            && /\(extension in ActionKit\):__C\.WFParameter\.ToolKitConversionError\./.test(line);
+        var spotlight = /^Failed to check availability in Spotlight for action (?:is\.workflow\.actions\.|com\.apple\.)/.test(line)
+            && /NSOSStatusErrorDomain Code=-10814\b/.test(line);
+        if (!parameter && !spotlight) return false;
+        if (!systemIndexNotice) {
+            emit('提示', 'macOS 快捷指令 / Spotlight 系统索引诊断已折叠；Flutter 构建状态请以应用启动事件及退出码判断，详情见原始日志。');
+            systemIndexNotice = true;
+        }
+        return true;
+    }
+    function stage(message) {
+        if (/Running pod install/.test(message)) return '安装 iOS CocoaPods 依赖';
+        if (/Running Xcode build/.test(message)) return 'Xcode 编译';
+        if (/Syncing files to device/.test(message)) return '同步文件到设备';
+        if (/hot reload/i.test(message)) return '热重载';
+        if (/hot restart/i.test(message)) return '热重启';
+        return message;
+    }
+    function event(value) {
+        var p = value.params || {}, name = value.event;
+        if (value.error) { emit('错误', typeof value.error === 'string' ? value.error : JSON.stringify(value.error)); return; }
+        if (!name) {
+            var result = value.result;
+            if (result && typeof result === 'object' && result.code !== undefined) {
+                emit(result.code === 0 ? '完成' : '错误', result.message || ('操作返回码：' + result.code));
+            } else emit('协议', JSON.stringify(value));
+            return;
+        }
+        switch (name) {
+            case 'daemon.connected': case 'device.added': case 'device.removed': case 'app.dtd': return;
+            case 'app.start': emit('启动', '目标设备：' + (p.deviceId || '未知') + '；模式：' + (p.mode || 'debug')); return;
+            case 'app.started':
+                emit('成功', '应用已启动，调试连接已建立。' + (warnings ? ' 本次有 ' + warnings + ' 条警告，请按上方说明处理。' : ''));
+                emit('控制', 'r 热重载 / R 热重启 / s 停止 / d 离开（输入后回车）'); return;
+            case 'app.progress':
+                var key = String(p.appId || '') + ':' + String(p.id);
+                if (!p.finished) { progress[key] = stage(p.message || '处理中'); emit('进行', progress[key]); }
+                // finished 只表示阶段结束（失败时也会发出），不能当作成功。
+                else { emit('进度', (progress[key] || stage(p.message || '当前阶段')) + '结束'); delete progress[key]; }
+                return;
+            case 'app.debugPort': emit('调试', 'Dart VM：' + (p.wsUri || ('端口 ' + p.port))); return;
+            case 'app.devTools': emit('调试', 'DevTools：' + (p.uri || '')); return;
+            case 'app.stop': emit('结束', '应用已停止。'); return;
+            case 'app.log': emit(p.error ? '错误' : '应用', p.log || p.message || ''); return;
+            case 'daemon.log': case 'daemon.logMessage':
+                if (p.error || p.level === 'error') emit('错误', p.message || p.log || JSON.stringify(p));
+                else if (p.level === 'warning') warning(p.message || p.log || JSON.stringify(p));
+                else emit('日志', p.message || p.log || JSON.stringify(p));
+                return;
+            default: emit('事件', name + ' ' + JSON.stringify(p));
+        }
+    }
+    return function (raw) {
+        var line = raw.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\r$/, '');
+        if (!line.trim()) return;
+        var values;
+        try { values = JSON.parse(line); } catch (_) {}
+        if (Array.isArray(values) && values.length && values.every(function (v) {
+            return v && typeof v === 'object' && (v.event || v.id !== undefined || v.error);
+        })) { values.forEach(event); return; }
+        if (line === 'Resolving dependencies...') { emit('依赖', '解析依赖…'); return; }
+        if (line === 'Downloading packages...') { emit('依赖', '下载并检查依赖…'); return; }
+        if (/^[ >+*!-] [a-zA-Z0-9_]+ [0-9][^ ]*(?: .*)?$/.test(line)) {
+            packages++;
+            if (/discontinued|retracted|advisory/i.test(line)) warning(line.trim());
+            return;
+        }
+        if (line === 'Got dependencies!') { emit('完成', '依赖就绪。' + (packages ? ' 已折叠 ' + packages + ' 条版本明细，完整信息见原始日志。' : '')); return; }
+        if (/^\d+ packages? (?:have|has) newer versions/.test(line)) {
+            warning(line.match(/^\d+/)[0] + ' 个依赖有新版，但受当前约束限制；不表示本次运行失败。'); return;
+        }
+        if (/^\d+ packages? (?:is|are) discontinued\./.test(line)) { warning('存在停止维护的依赖：' + line + ' 详情见原始日志。'); return; }
+        if (/^Try `flutter pub outdated`/.test(line)) { emit('提示', '可运行 flutter pub outdated 查看依赖更新详情。'); return; }
+        if (/^The following plugins do not support Swift Package Manager/.test(line)) {
+            spm = true; warning('以下插件尚不支持 Swift Package Manager，当前使用 CocoaPods 兼容处理：'); return;
+        }
+        if (spm && /^\s+- /.test(line)) { emit('警告', '  ' + line.trim()); return; }
+        if (spm && /^This will become an error/.test(line)) {
+            spm = false; emit('警告', '未来 Flutter 版本可能不再兼容，请关注上述插件的更新。当前是否成功以启动结果为准。'); return;
+        }
+        if (/^Xcode build done\./.test(line)) {
+            // Flutter 在检查 xcodebuild 退出码之前就打印 done，不能据此宣告成功。
+            emit('进度', line);
+            emit('进行', '正在确认构建结果并准备设备连接，首次安装可能较慢…');
+            return;
+        }
+        if (/^Launching /.test(line)) { emit('启动', line); return; }
+        if (/^Flutter 后台运行：/.test(line)) { emit('会话', line); return; }
+        if (/^Flutter 已退出：/.test(line)) return; // 使用退出标记统一显示最终状态。
+        if (/Using the Impeller rendering backend/.test(line)) { emit('渲染', 'Impeller / Metal 已启用。'); return; }
+        // 系统动作索引的类型 / 缺失扩展诊断与 Flutter 编译无关，原始日志仍完整保留。
+        if (systemIndexDiagnostic(line)) return;
+        if (/^Cleared Cascade pull bookmarks after full reindex$/.test(line)
+            || /^Skipping: <WF[A-Za-z0-9_]+:.*because union values themselves are not treated as a type$/.test(line)
+            || /^is\.workflow\.actions\.[A-Za-z0-9_.]+ WF[A-Za-z0-9_]+: Skipped because: \[(?:control flow|donation-based action)\]$/.test(line)
+            || /^Skipped: \[(?:donation-based action|control flow):/.test(line)
+            || /^\s+(?:donation-based action|control flow): \d+$/.test(line)) return;
+        // 正常索引计数留在原始日志；非零 Errored 与未知错误继续展示。
+        if (/^(-\[WFIsolatedShortcutRunner (init|init\]_block_invoke|unaliveProcess)|Indexing for request:|Type indexing \(params|Action indexing took|Indexed: \d+$|Errored: 0$|Skipped: \[:\]$|Bundle cache: \d+ hits|Finished in [\d.]+s$)/.test(line)) return;
+        if (/error|exception|failed|fatal|^Errored: [1-9]/i.test(line)) emit('错误', line);
+        else if (/warning|deprecated|discontinued/i.test(line)) warning(line);
+        else emit('日志', line);
+    };
+}
+
+// 按块跟踪原始日志，保留跨写入的 UTF-8 字符及半行；不启动 tail 子进程。
+function watchLog(path, exitPath) {
+    var info = attributes(path);
+    if (!info || info.NSFileType !== 'NSFileTypeRegular') throw new Error('运行日志不是普通文件。');
+    var handle = $.NSFileHandle.fileHandleForReadingAtPath($(path));
+    var stdout = $.NSFileHandle.fileHandleWithStandardOutput;
+    function write(line) { stdout.writeData($(line + '\n').dataUsingEncoding($.NSUTF8StringEncoding)); }
+    var format = logFormatter(write), pending = $.NSMutableData.data, text = '';
+    function decode(final) {
+        var count = Number(pending.length), decoded, used;
+        for (var cut = 0; cut <= Math.min(3, count); cut++) {
+            used = count - cut;
+            decoded = ObjC.unwrap($.NSString.alloc.initWithDataEncoding(pending.subdataWithRange($.NSMakeRange(0, used)), $.NSUTF8StringEncoding));
+            if (typeof decoded === 'string') break;
+        }
+        if (typeof decoded !== 'string' || (final && used !== count)) {
+            used = count;
+            decoded = ObjC.unwrap($.NSString.alloc.initWithDataEncoding(pending, $.NSISOLatin1StringEncoding));
+        }
+        text += decoded || '';
+        var rest = pending.subdataWithRange($.NSMakeRange(used, count - used));
+        pending = $.NSMutableData.dataWithData(rest);
+        var lines = text.split('\n'); text = lines.pop(); lines.forEach(format);
+    }
+    try {
+        while (true) {
+            var data = handle.readDataOfLength(65536);
+            if (Number(data.length)) { pending.appendData(data); decode(false); continue; }
+            if (attributes(exitPath)) {
+                // 再读取一次，避免 EOF 检查与 worker 最终写入之间的竞争。
+                data = handle.readDataOfLength(65536);
+                if (Number(data.length)) { pending.appendData(data); decode(false); continue; }
+                decode(true); if (text) format(text);
+                var code = readText(exitPath, 64).trim();
+                write((code === '0' ? '[结束] Flutter 正常退出。' : '[错误] Flutter 退出，退出码：' + code + '。请检查上方错误与完整原始日志。'));
+                break;
+            }
+            $.NSThread.sleepForTimeInterval(0.2);
+        }
+    } finally { handle.closeFile; }
+}
+
 // 严格分发内部协议，参数数量错误时直接失败。
 function run(argv) {
     var mode = argv[0];
     var args = argv.slice(1);
+    if (mode === 'watch-log' && args.length === 2) {
+        watchLog(args[0], args[1]); return;
+    }
+    if (mode === 'format-log' && args.length === 1) {
+        var output = [], format = logFormatter(function (line) { output.push(line); });
+        readText(args[0], 16 * 1024 * 1024).split('\n').forEach(format);
+        return output.join('\n');
+    }
     if (mode === 'validate' && args.length === 1) {
         return validate(args[0]) ? 'true' : 'false';
     }
@@ -514,6 +838,18 @@ function run(argv) {
     }
     if (mode === 'types' && args.length === 1) {
         return deviceTypes(args[0]);
+    }
+    if (mode === 'preferred-types' && (args.length === 1 || args.length === 2)) {
+        return preferredTypes(args[0], args[1] || '');
+    }
+    if (mode === 'compatible-runtimes' && args.length === 3) {
+        return compatibleRuntimes(args[0], args[1], args[2]);
+    }
+    if (mode === 'fvm-version' && args.length === 1) {
+        return fvmVersion(args[0]);
+    }
+    if (mode === 'unique-name' && args.length === 2) {
+        return uniqueName(args[0], args[1]);
     }
     if (mode === 'plist' && args.length === 6) {
         return writePlist(args);

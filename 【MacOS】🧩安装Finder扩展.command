@@ -46,7 +46,7 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -107,6 +107,13 @@ FEATURE_APP_NAME[flutter_version_manager]="JobsFlutterVersionMgr"
 FEATURE_EXTENSION_NAME[flutter_version_manager]="JobsFlutterVersionFinderSync.appex"
 FEATURE_EXTENSION_ID[flutter_version_manager]="com.jobs.JobsFlutterVersionMgr.FinderSyncExtension"
 
+FEATURE_TITLE[flutter_sdk_version]="查看当前 Flutter SDK 版本"
+FEATURE_PROJECT_DIR[flutter_sdk_version]="JobsFlutterSdkInspector"
+FEATURE_SCHEME[flutter_sdk_version]="JobsFlutterSdkInspector"
+FEATURE_APP_NAME[flutter_sdk_version]="JobsFlutterSdkInspector"
+FEATURE_EXTENSION_NAME[flutter_sdk_version]="JobsFlutterSdkInspectorFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter_sdk_version]="com.jobs.JobsFlutterSdkInspector.FinderSyncExtension"
+
 FEATURE_TITLE[git-pull]="拉取 Git 到最新"
 FEATURE_PROJECT_DIR[git-pull]="JobsGitPuller"
 FEATURE_SCHEME[git-pull]="JobsGitPuller"
@@ -143,7 +150,7 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -158,6 +165,8 @@ SELECTABLE_FUNCTION_TITLE[android_studio_opener]="用 Android Studio 打开项�
 SELECTABLE_FUNCTION_PROJECT_KEY[android_studio_opener]="android_studio_opener"
 SELECTABLE_FUNCTION_TITLE[flutter_version_manager]="安装/切换 Flutter SDK（FVM）"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter_version_manager]="flutter_version_manager"
+SELECTABLE_FUNCTION_TITLE[flutter_sdk_version]="查看当前 Flutter SDK 版本"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter_sdk_version]="flutter_sdk_version"
 SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="git-pull"
 SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"

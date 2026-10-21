@@ -25,6 +25,7 @@ struct FeatureOption {
         FeatureOption(identifier: "vscode_opener", title: "用 VSCode 打开项目"),
         FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
         FeatureOption(identifier: "flutter_version_manager", title: "安装/切换 Flutter SDK（FVM）"),
+        FeatureOption(identifier: "flutter_sdk_version", title: "查看当前 Flutter SDK 版本"),
         FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
         FeatureOption(identifier: "flutter-dependency-extract", title: "提取 Flutter 第三方依赖"),
         FeatureOption(identifier: "flutter-run", title: "运行 Flutter 项目"),

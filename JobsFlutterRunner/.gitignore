@@ -2,3 +2,6 @@
 work/
 xcuserdata/
 *.xcuserstate
+
+# FVM Version Cache
+.fvm/
