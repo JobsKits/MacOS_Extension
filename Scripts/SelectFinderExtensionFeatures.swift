@@ -21,6 +21,7 @@ struct FeatureOption {
         FeatureOption(identifier: "git_remote", title: "打开 Git 远程地址"),
         FeatureOption(identifier: "git_remote_copier", title: "复制 Git 远程地址"),
         FeatureOption(identifier: "path_copier", title: "复制绝对路径"),
+        FeatureOption(identifier: "run-authorize", title: "运行授权"),
         FeatureOption(identifier: "xcode_opener", title: "用 Xcode 打开项目"),
         FeatureOption(identifier: "vscode_opener", title: "用 VSCode 打开项目"),
         FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
@@ -29,7 +30,12 @@ struct FeatureOption {
         FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
         FeatureOption(identifier: "flutter-dependency-extract", title: "提取 Flutter 第三方依赖"),
         FeatureOption(identifier: "flutter-run", title: "运行 Flutter 项目"),
-        FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器")
+        FeatureOption(identifier: "flutter-package", title: "Flutter打包"),
+        FeatureOption(identifier: "flutter-doctor", title: "Flutter 项目体检"),
+        FeatureOption(identifier: "flutter-codegen", title: "Flutter 自动化生产代码"),
+        FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器"),
+        FeatureOption(identifier: "android-simulator-create", title: "新建 Android 模拟器"),
+        FeatureOption(identifier: "git-proxy-configure", title: "配置 Git 动态代理")
     ]
 
     static let terminal: [FeatureOption] = [

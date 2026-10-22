@@ -24,4 +24,16 @@
 "/README.md" filter=jobs-markdown-toc
 "/Scripts/README.md" filter=jobs-markdown-toc
 "/work/README.md" filter=jobs-markdown-toc
+"/JobsFlutterPackager/README.md" filter=jobs-markdown-toc
+"/JobsFlutterPackager/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsAndroidSimulatorCreator/README.md" filter=jobs-markdown-toc
+"/JobsAndroidSimulatorCreator/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsFlutterDoctor/README.md" filter=jobs-markdown-toc
+"/JobsFlutterDoctor/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsFlutterCodegen/README.md" filter=jobs-markdown-toc
+"/JobsFlutterCodegen/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsRunAuthorizer/README.md" filter=jobs-markdown-toc
+"/JobsRunAuthorizer/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsGitProxyConfigurator/README.md" filter=jobs-markdown-toc
+"/JobsGitProxyConfigurator/Scripts/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

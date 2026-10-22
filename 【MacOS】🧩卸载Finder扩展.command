@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
+FEATURE_KEYS=(git_remote path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -72,6 +72,15 @@ FEATURE_RUNTIME_LOG[path_copier]="/tmp/JobsPathCopier.log"
 FEATURE_AUTOMATOR_SERVICE_DIR[path_copier]="${HOME}/Library/Services/复制绝对路径.workflow"
 FEATURE_AUTOMATOR_HELPER_SCRIPT[path_copier]="${HOME}/Library/Scripts/Jobs/CopyAbsolutePath.zsh"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[path_copier]}]="path_copier"
+
+FEATURE_TITLE[run-authorize]="运行授权"
+FEATURE_PROJECT_DIR[run-authorize]="JobsRunAuthorizer"
+FEATURE_APP_NAME[run-authorize]="JobsRunAuthorizer"
+FEATURE_EXTENSION_PROCESS_NAME[run-authorize]="JobsRunAuthorizerFinderSync"
+FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[run-authorize]="/tmp/JobsRunAuthorizerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[run-authorize]="/tmp/JobsRunAuthorizer.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[run-authorize]}]="run-authorize"
 
 FEATURE_TITLE[xcode_opener]="用 Xcode 打开项目"
 FEATURE_PROJECT_DIR[xcode_opener]="JobsXcodeOpener"
@@ -136,6 +145,33 @@ FEATURE_REFRESH_MARKER[flutter-dependency-extract]="/tmp/JobsFlutterDependencyEx
 FEATURE_RUNTIME_LOG[flutter-dependency-extract]="/tmp/JobsFlutterDependencyExtractor.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-dependency-extract]}]="flutter-dependency-extract"
 
+FEATURE_TITLE[flutter-package]="Flutter打包"
+FEATURE_PROJECT_DIR[flutter-package]="JobsFlutterPackager"
+FEATURE_APP_NAME[flutter-package]="JobsFlutterPackager"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-package]="JobsFlutterPackagerFinderSync"
+FEATURE_EXTENSION_ID[flutter-package]="com.jobs.JobsFlutterPackager.findersync"
+FEATURE_REFRESH_MARKER[flutter-package]="/tmp/JobsFlutterPackagerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-package]="/tmp/JobsFlutterPackager.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-package]}]="flutter-package"
+
+FEATURE_TITLE[flutter-doctor]="Flutter 项目体检"
+FEATURE_PROJECT_DIR[flutter-doctor]="JobsFlutterDoctor"
+FEATURE_APP_NAME[flutter-doctor]="JobsFlutterDoctor"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-doctor]="JobsFlutterDoctorFinderSync"
+FEATURE_EXTENSION_ID[flutter-doctor]="com.jobs.JobsFlutterDoctor.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter-doctor]="/tmp/JobsFlutterDoctorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-doctor]="/tmp/JobsFlutterDoctor.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-doctor]}]="flutter-doctor"
+
+FEATURE_TITLE[flutter-codegen]="Flutter 自动化生产代码"
+FEATURE_PROJECT_DIR[flutter-codegen]="JobsFlutterCodegen"
+FEATURE_APP_NAME[flutter-codegen]="JobsFlutterCodegen"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-codegen]="JobsFlutterCodegenFinderSync"
+FEATURE_EXTENSION_ID[flutter-codegen]="com.jobs.JobsFlutterCodegen.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter-codegen]="/tmp/JobsFlutterCodegenNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-codegen]="/tmp/JobsFlutterCodegen.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-codegen]}]="flutter-codegen"
+
 FEATURE_TITLE[ios-simulator-create]="新建 iOS 模拟器"
 FEATURE_PROJECT_DIR[ios-simulator-create]="JobsIOSSimulatorCreator"
 FEATURE_APP_NAME[ios-simulator-create]="JobsIOSSimulatorCreator"
@@ -145,6 +181,15 @@ FEATURE_REFRESH_MARKER[ios-simulator-create]="/tmp/JobsIOSSimulatorCreatorNeedsF
 FEATURE_RUNTIME_LOG[ios-simulator-create]="/tmp/JobsIOSSimulatorCreator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[ios-simulator-create]}]="ios-simulator-create"
 
+FEATURE_TITLE[android-simulator-create]="新建 Android 模拟器"
+FEATURE_PROJECT_DIR[android-simulator-create]="JobsAndroidSimulatorCreator"
+FEATURE_APP_NAME[android-simulator-create]="JobsAndroidSimulatorCreator"
+FEATURE_EXTENSION_PROCESS_NAME[android-simulator-create]="JobsAndroidSimulatorFinderSync"
+FEATURE_EXTENSION_ID[android-simulator-create]="com.jobs.androidsimulatorcreator.findersync"
+FEATURE_REFRESH_MARKER[android-simulator-create]="/tmp/JobsAndroidSimulatorCreatorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[android-simulator-create]="/tmp/JobsAndroidSimulatorCreator.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android-simulator-create]}]="android-simulator-create"
+
 FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
 FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
 FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
@@ -153,6 +198,15 @@ FEATURE_EXTENSION_ID[flutter-run]="com.jobs.JobsFlutterRunner.FinderSyncExtensio
 FEATURE_REFRESH_MARKER[flutter-run]="/tmp/JobsFlutterRunnerNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[flutter-run]="/tmp/JobsFlutterRunner.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-run]}]="flutter-run"
+
+FEATURE_TITLE[git-proxy-configure]="配置 Git 动态代理"
+FEATURE_PROJECT_DIR[git-proxy-configure]="JobsGitProxyConfigurator"
+FEATURE_APP_NAME[git-proxy-configure]="JobsGitProxyConfigurator"
+FEATURE_EXTENSION_PROCESS_NAME[git-proxy-configure]="JobsGitProxyFinderSync"
+FEATURE_EXTENSION_ID[git-proxy-configure]="com.jobs.gitproxyconfigurator.findersync"
+FEATURE_REFRESH_MARKER[git-proxy-configure]="/tmp/JobsGitProxyConfiguratorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[git-proxy-configure]="/tmp/JobsGitProxyConfigurator.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-proxy-configure]}]="git-proxy-configure"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
@@ -246,7 +300,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用 fzf 选择并卸载 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”，可单独选择或全选。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”和“新建 Android 模拟器”，可单独选择或全选。" | jobs_intro_style body
   warn_echo "影响范围：会禁用并注销选中的 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会停止对应宿主 App 和已运行的扩展进程。" | jobs_intro_style body
   warn_echo "影响范围：会删除 Xcode DerivedData 和本工作区 work 下的构建产物。" | jobs_intro_style body

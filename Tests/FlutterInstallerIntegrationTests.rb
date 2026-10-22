@@ -15,7 +15,15 @@ class FlutterInstallerIntegrationTests < Minitest::Test
   INSTALL_PHASES = %w[initialize_runtime check_environment build_extension register_extension].freeze
 
   def test_every_independent_install_enter_runs_installation_in_order
-    assert_equal 13, INDEPENDENT_INSTALLERS.length
+    mapped_projects = run_definitions(INSTALLER, <<~'ZSH').lines.map(&:strip)
+      for key in "${FEATURE_KEYS[@]}"; do
+        print -r -- "${FEATURE_PROJECT_DIR[$key]}"
+      done
+    ZSH
+    independent_projects = INDEPENDENT_INSTALLERS.map { |path| File.basename(File.dirname(path)) }
+    assert_empty mapped_projects - independent_projects, '所有已登记工程必须有独立安装入口'
+    assert_equal mapped_projects.uniq, mapped_projects, '工程映射不能重复'
+    %w[JobsFlutterDoctor JobsFlutterCodegen].each { |app| assert_includes independent_projects, app }
     INDEPENDENT_INSTALLERS.each do |path|
       output, result, phases = run_install_confirmation(path, "\n")
       assert result.success?, "#{path}\n#{output}"
@@ -59,6 +67,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     assert_match(/static let all: \[FeatureOption\] = independent \+ terminal/, selector)
     assert_equal identifiers.uniq, identifiers
     assert_includes identifiers, 'flutter_version_manager'
+    assert_includes independent, 'run-authorize'
     assert_includes independent, 'ios-simulator-create'
     output = run_definitions(INSTALLER, <<~'ZSH', all.join(','))
       parse_feature_selection "$1" || exit 1
@@ -101,6 +110,61 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     ZSH
     assert_equal ['JobsFlutterVersionMgr', 'com.jobs.JobsFlutterVersionMgr.FinderSyncExtension',
                   'flutter_version_manager'], output.lines.map(&:strip)
+  end
+
+  def test_flutter_packaging_mapping_selects_one_independent_project
+    output = run_definitions(INSTALLER, <<~'ZSH')
+      parse_feature_selection "flutter-package,flutter-package" || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_EXTENSION_ID[flutter-package]}"
+      print -r -- "${FEATURE_EXTENSION_NAME[flutter-package]}"
+    ZSH
+    assert_equal ['flutter-package', 'com.jobs.JobsFlutterPackager.findersync',
+                  'JobsFlutterPackagerFinderSync.appex'], output.lines.map(&:strip)
+    output = run_definitions(UNINSTALLER, <<~'ZSH')
+      parse_fzf_selection "${FEATURE_TITLE[flutter-package]}" || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_EXTENSION_ID[flutter-package]}"
+    ZSH
+    assert_equal ['flutter-package', 'com.jobs.JobsFlutterPackager.findersync'], output.lines.map(&:strip)
+  end
+
+  def test_doctor_and_codegen_standalone_install_confirmation
+    maintenance = INDEPENDENT_INSTALLERS.select { |path| path.include?('/JobsFlutterDoctor/') || path.include?('/JobsFlutterCodegen/') }
+    assert_equal 2, maintenance.length
+    maintenance.each do |path|
+      output, result, phases = run_install_confirmation(path, "\n")
+      assert result.success?, output
+      assert_equal INSTALL_PHASES, phases
+      ["skip\n", " \n", "\u0004"].each do |input|
+        output, result, phases = run_install_confirmation(path, input)
+        assert result.success?, output
+        assert_empty phases
+      end
+      output, result, phases = run_install_confirmation(path, "\n", interactive: false)
+      assert_equal 1, result.exitstatus, output
+      assert_empty phases
+    end
+  end
+
+  def test_doctor_and_codegen_are_independent_in_install_and_uninstall
+    %w[flutter-doctor flutter-codegen].each do |key|
+      app = key == 'flutter-doctor' ? 'JobsFlutterDoctor' : 'JobsFlutterCodegen'
+      output = run_definitions(INSTALLER, <<~'ZSH', key)
+        parse_feature_selection "$1,$1" || exit 1
+        print -r -- "${(j:,:)SELECTED_KEYS}"
+        print -r -- "${FEATURE_APP_NAME[$1]}"
+        print -r -- "${FEATURE_EXTENSION_ID[$1]}"
+      ZSH
+      assert_equal [key, app, "com.jobs.#{app}.FinderSyncExtension"], output.lines.map(&:strip)
+      output = run_definitions(UNINSTALLER, <<~'ZSH', key)
+        parse_fzf_selection "${FEATURE_TITLE[$1]}" || exit 1
+        print -r -- "${(j:,:)SELECTED_KEYS}"
+        print -r -- "${FEATURE_APP_NAME[$1]}"
+        print -r -- "${FEATURE_EXTENSION_ID[$1]}"
+      ZSH
+      assert_equal [key, app, "com.jobs.#{app}.FinderSyncExtension"], output.lines.map(&:strip)
+    end
   end
 
   def test_missing_flutter_project_stops_with_complete_repository_guidance
@@ -276,6 +340,61 @@ end
                   '-gj|/fixture/JobsFlutterVersionMgr.app'], output.lines.map(&:strip)
   end
 
+  def test_git_proxy_selection_uses_its_independent_project_and_fixed_identifiers
+    selector = File.read(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
+    independent = selector[/static let independent:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
+    assert_equal 1, independent.count('git-proxy-configure')
+    output = run_definitions(INSTALLER, <<~'ZSH')
+      parse_feature_selection 'git-proxy-configure,terminal_open,git-proxy-configure' || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_TITLE[git-proxy-configure]}"
+      print -r -- "${FEATURE_PROJECT_DIR[git-proxy-configure]}"
+      print -r -- "${FEATURE_SCHEME[git-proxy-configure]}"
+      print -r -- "${FEATURE_APP_NAME[git-proxy-configure]}"
+      print -r -- "${FEATURE_EXTENSION_NAME[git-proxy-configure]}"
+      app_bundle_id_for_key git-proxy-configure
+      print -r -- "${FEATURE_EXTENSION_ID[git-proxy-configure]}"
+      print -r -- "terminal:${TERMINAL_OPENER_ENABLED_FEATURES}"
+    ZSH
+    assert_equal ['git-proxy-configure,terminal_opener', '配置 Git 动态代理', 'JobsGitProxyConfigurator',
+                  'JobsGitProxyConfigurator', 'JobsGitProxyConfigurator', 'JobsGitProxyFinderSync.appex',
+                  'com.jobs.gitproxyconfigurator', 'com.jobs.gitproxyconfigurator.findersync',
+                  'terminal:open'], output.lines.map(&:strip)
+  end
+
+  def test_git_proxy_uninstall_mapping_preserves_the_independent_identity
+    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT)
+      WORKSPACE_DIR="$1"
+      parse_fzf_selection "${FEATURE_TITLE[git-proxy-configure]}" || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_PROJECT_DIR[git-proxy-configure]}"
+      print -r -- "${FEATURE_APP_NAME[git-proxy-configure]}"
+      print -r -- "${FEATURE_EXTENSION_PROCESS_NAME[git-proxy-configure]}"
+      print -r -- "${FEATURE_EXTENSION_ID[git-proxy-configure]}"
+      print -r -- "${FEATURE_REFRESH_MARKER[git-proxy-configure]}"
+      print -r -- "${FEATURE_RUNTIME_LOG[git-proxy-configure]}"
+      local_derived_data_dir_for_key git-proxy-configure
+    ZSH
+    assert_equal ['git-proxy-configure', 'JobsGitProxyConfigurator', 'JobsGitProxyConfigurator',
+                  'JobsGitProxyFinderSync', 'com.jobs.gitproxyconfigurator.findersync',
+                  '/tmp/JobsGitProxyConfiguratorNeedsFinderRestart', '/tmp/JobsGitProxyConfigurator.log',
+                  File.join(ROOT, 'work/JobsGitProxyConfiguratorDerivedData')], output.lines.map(&:strip)
+  end
+
+  def test_git_proxy_registration_launch_only_initializes_the_extension
+    output = run_definitions(INSTALLER, <<~'ZSH', replacements: { '/usr/bin/open' => 'jobs_record_open' })
+      jobs_record_open() {
+        print -r -- "${(j:|:)@}"
+      }
+      open_host_for_extension_registration git-proxy-configure '/fixture/中文 space/JobsGitProxyConfigurator.app'
+    ZSH
+    assert_equal ['-gj|/fixture/中文 space/JobsGitProxyConfigurator.app|--args|--initialize-finder-extension'], output.lines.map(&:strip)
+  end
+
+  def test_missing_git_proxy_project_stops_before_any_registration
+    assert_missing_project_stops('git-proxy-configure', 'JobsGitProxyConfigurator')
+  end
+
   def test_registration_cleanup_finds_explicit_and_legacy_host_identifiers
     Dir.mktmpdir('jobs-finder-registration-records-') do |directory|
       lsregister = File.join(directory, 'lsregister')
@@ -314,6 +433,58 @@ end
 
   def test_missing_simulator_project_stops_with_complete_repository_guidance
     assert_missing_project_stops('ios-simulator-create', 'JobsIOSSimulatorCreator')
+  end
+
+  def test_run_authorization_selection_uses_one_independent_project
+    output = run_definitions(INSTALLER, <<~'ZSH', ROOT)
+      WORKSPACE_DIR="$1"
+      parse_feature_selection 'run-authorize,terminal_open,run-authorize' || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_TITLE[run-authorize]}"
+      print -r -- "${FEATURE_SCHEME[run-authorize]}"
+      print -r -- "${FEATURE_APP_NAME[run-authorize]}"
+      app_bundle_id_for_key run-authorize
+      print -r -- "${FEATURE_EXTENSION_NAME[run-authorize]}"
+      print -r -- "${FEATURE_EXTENSION_ID[run-authorize]}"
+      project_file_for_key run-authorize
+      print -r -- "$TERMINAL_OPENER_ENABLED_FEATURES"
+    ZSH
+    assert_equal ['run-authorize,terminal_opener', '运行授权', 'JobsRunAuthorizer', 'JobsRunAuthorizer',
+                  'com.jobs.JobsRunAuthorizer', 'JobsRunAuthorizerFinderSync.appex',
+                  'com.jobs.JobsRunAuthorizer.FinderSyncExtension',
+                  File.join(ROOT, 'JobsRunAuthorizer/JobsRunAuthorizer.xcodeproj'), 'open'], output.lines.map(&:strip)
+  end
+
+  def test_run_authorization_uninstall_uses_the_matching_process_and_paths
+    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT)
+      WORKSPACE_DIR="$1"
+      [[ " ${(j: :)FEATURE_KEYS} " == *" run-authorize "* ]] || exit 1
+      parse_fzf_selection "${FEATURE_TITLE[run-authorize]}"
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "${FEATURE_APP_NAME[run-authorize]}"
+      print -r -- "${FEATURE_EXTENSION_PROCESS_NAME[run-authorize]}"
+      print -r -- "${FEATURE_EXTENSION_ID[run-authorize]}"
+      print -r -- "${FEATURE_REFRESH_MARKER[run-authorize]}"
+      print -r -- "${FEATURE_RUNTIME_LOG[run-authorize]}"
+      local_derived_data_dir_for_key run-authorize
+    ZSH
+    assert_equal ['run-authorize', 'JobsRunAuthorizer', 'JobsRunAuthorizerFinderSync',
+                  'com.jobs.JobsRunAuthorizer.FinderSyncExtension', '/tmp/JobsRunAuthorizerNeedsFinderRestart',
+                  '/tmp/JobsRunAuthorizer.log', File.join(ROOT, 'work/JobsRunAuthorizerDerivedData')], output.lines.map(&:strip)
+  end
+
+  def test_run_authorization_registration_only_initializes_the_host
+    output = run_definitions(INSTALLER, <<~'ZSH', replacements: { '/usr/bin/open' => 'jobs_record_open' })
+      jobs_record_open() {
+        print -r -- "${(j:|:)@}"
+      }
+      open_host_for_extension_registration run-authorize '/fixture/中文 space/JobsRunAuthorizer.app'
+    ZSH
+    assert_equal ['-gj|/fixture/中文 space/JobsRunAuthorizer.app|--args|--initialize-finder-extension'], output.lines.map(&:strip)
+  end
+
+  def test_missing_run_authorization_project_stops_with_complete_repository_guidance
+    assert_missing_project_stops('run-authorize', 'JobsRunAuthorizer')
   end
 
   def test_registration_activation_requires_the_exact_current_extension_path
@@ -366,7 +537,8 @@ end
     raise '入口未找到' unless source.sub!(/^main "\$@"\s*\z/, '')
     main_body = source[/^main\(\) \{\n(.*?)^\}/m, 1]
     phases = main_body&.lines&.map { |line| line.sub(/\s*#.*$/, '').strip }&.reject(&:empty?)
-    raise "安装入口编排已改变，需重新隔离：#{path}" unless phases == ['show_script_intro_and_wait'] + INSTALL_PHASES
+    valid_intro = ['show_script_intro_and_wait', 'show_script_intro_and_wait "$@"'].include?(phases&.first)
+    raise "安装入口编排已改变，需重新隔离：#{path}" unless valid_intro && phases.drop(1) == INSTALL_PHASES
 
     Dir.mktmpdir('jobs-finder-install-confirmation-') do |directory|
       fixture = File.join(directory, 'confirmation.zsh')

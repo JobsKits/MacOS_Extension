@@ -46,7 +46,7 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -78,6 +78,14 @@ FEATURE_SCHEME[path_copier]="JobsPathCopier"
 FEATURE_APP_NAME[path_copier]="JobsPathCopier"
 FEATURE_EXTENSION_NAME[path_copier]="JobsPathCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[path_copier]="com.jobs.JobsPathCopier.FinderSyncExtension"
+
+FEATURE_TITLE[run-authorize]="运行授权"
+FEATURE_PROJECT_DIR[run-authorize]="JobsRunAuthorizer"
+FEATURE_SCHEME[run-authorize]="JobsRunAuthorizer"
+FEATURE_APP_NAME[run-authorize]="JobsRunAuthorizer"
+FEATURE_APP_ID[run-authorize]="com.jobs.JobsRunAuthorizer"
+FEATURE_EXTENSION_NAME[run-authorize]="JobsRunAuthorizerFinderSync.appex"
+FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtension"
 
 FEATURE_TITLE[xcode_opener]="用 Xcode 打开项目"
 FEATURE_PROJECT_DIR[xcode_opener]="JobsXcodeOpener"
@@ -135,6 +143,27 @@ FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
 FEATURE_EXTENSION_NAME[flutter-run]="JobsFlutterRunFinderSync.appex"
 FEATURE_EXTENSION_ID[flutter-run]="com.jobs.JobsFlutterRunner.FinderSyncExtension"
 
+FEATURE_TITLE[flutter-package]="Flutter打包"
+FEATURE_PROJECT_DIR[flutter-package]="JobsFlutterPackager"
+FEATURE_SCHEME[flutter-package]="JobsFlutterPackager"
+FEATURE_APP_NAME[flutter-package]="JobsFlutterPackager"
+FEATURE_EXTENSION_NAME[flutter-package]="JobsFlutterPackagerFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter-package]="com.jobs.JobsFlutterPackager.findersync"
+
+FEATURE_TITLE[flutter-doctor]="Flutter 项目体检"
+FEATURE_PROJECT_DIR[flutter-doctor]="JobsFlutterDoctor"
+FEATURE_SCHEME[flutter-doctor]="JobsFlutterDoctor"
+FEATURE_APP_NAME[flutter-doctor]="JobsFlutterDoctor"
+FEATURE_EXTENSION_NAME[flutter-doctor]="JobsFlutterDoctorFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter-doctor]="com.jobs.JobsFlutterDoctor.FinderSyncExtension"
+
+FEATURE_TITLE[flutter-codegen]="Flutter 自动化生产代码"
+FEATURE_PROJECT_DIR[flutter-codegen]="JobsFlutterCodegen"
+FEATURE_SCHEME[flutter-codegen]="JobsFlutterCodegen"
+FEATURE_APP_NAME[flutter-codegen]="JobsFlutterCodegen"
+FEATURE_EXTENSION_NAME[flutter-codegen]="JobsFlutterCodegenFinderSync.appex"
+FEATURE_EXTENSION_ID[flutter-codegen]="com.jobs.JobsFlutterCodegen.FinderSyncExtension"
+
 FEATURE_TITLE[ios-simulator-create]="新建 iOS 模拟器"
 FEATURE_PROJECT_DIR[ios-simulator-create]="JobsIOSSimulatorCreator"
 FEATURE_SCHEME[ios-simulator-create]="JobsIOSSimulatorCreator"
@@ -143,6 +172,22 @@ FEATURE_APP_ID[ios-simulator-create]="com.jobs.iossimulatorcreator"
 FEATURE_EXTENSION_NAME[ios-simulator-create]="JobsIOSSimulatorFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-simulator-create]="com.jobs.iossimulatorcreator.findersync"
 
+FEATURE_TITLE[android-simulator-create]="新建 Android 模拟器"
+FEATURE_PROJECT_DIR[android-simulator-create]="JobsAndroidSimulatorCreator"
+FEATURE_SCHEME[android-simulator-create]="JobsAndroidSimulatorCreator"
+FEATURE_APP_NAME[android-simulator-create]="JobsAndroidSimulatorCreator"
+FEATURE_APP_ID[android-simulator-create]="com.jobs.androidsimulatorcreator"
+FEATURE_EXTENSION_NAME[android-simulator-create]="JobsAndroidSimulatorFinderSync.appex"
+FEATURE_EXTENSION_ID[android-simulator-create]="com.jobs.androidsimulatorcreator.findersync"
+
+FEATURE_TITLE[git-proxy-configure]="配置 Git 动态代理"
+FEATURE_PROJECT_DIR[git-proxy-configure]="JobsGitProxyConfigurator"
+FEATURE_SCHEME[git-proxy-configure]="JobsGitProxyConfigurator"
+FEATURE_APP_NAME[git-proxy-configure]="JobsGitProxyConfigurator"
+FEATURE_APP_ID[git-proxy-configure]="com.jobs.gitproxyconfigurator"
+FEATURE_EXTENSION_NAME[git-proxy-configure]="JobsGitProxyFinderSync.appex"
+FEATURE_EXTENSION_ID[git-proxy-configure]="com.jobs.gitproxyconfigurator.findersync"
+
 FEATURE_TITLE[terminal_opener]="JobsTerminalOpener"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
 FEATURE_SCHEME[terminal_opener]="JobsTerminalOpener"
@@ -150,13 +195,15 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run ios-simulator-create terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote_copier]="git_remote_copier"
 SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
+SELECTABLE_FUNCTION_TITLE[run-authorize]="运行授权"
+SELECTABLE_FUNCTION_PROJECT_KEY[run-authorize]="run-authorize"
 SELECTABLE_FUNCTION_TITLE[xcode_opener]="用 Xcode 打开项目"
 SELECTABLE_FUNCTION_PROJECT_KEY[xcode_opener]="xcode_opener"
 SELECTABLE_FUNCTION_TITLE[vscode_opener]="用 VSCode 打开项目"
@@ -173,8 +220,18 @@ SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方�
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-dependency-extract"
 SELECTABLE_FUNCTION_TITLE[flutter-run]="运行 Flutter 项目"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-run]="flutter-run"
+SELECTABLE_FUNCTION_TITLE[flutter-package]="Flutter打包"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-package]="flutter-package"
+SELECTABLE_FUNCTION_TITLE[flutter-doctor]="Flutter 项目体检"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-doctor]="flutter-doctor"
+SELECTABLE_FUNCTION_TITLE[flutter-codegen]="Flutter 自动化生产代码"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-codegen]="flutter-codegen"
 SELECTABLE_FUNCTION_TITLE[ios-simulator-create]="新建 iOS 模拟器"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-simulator-create]="ios-simulator-create"
+SELECTABLE_FUNCTION_TITLE[android-simulator-create]="新建 Android 模拟器"
+SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-create]="android-simulator-create"
+SELECTABLE_FUNCTION_TITLE[git-proxy-configure]="配置 Git 动态代理"
+SELECTABLE_FUNCTION_PROJECT_KEY[git-proxy-configure]="git-proxy-configure"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
 SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
@@ -730,13 +787,13 @@ register_app_with_launchservices() {
 
   return 0
 }
-# 后台启动宿主完成初始化，新模拟器宿主只接受显式初始化参数。
+# 后台初始化扩展；单文件授权、模拟器与代理配置宿主使用显式初始化参数。
 open_host_for_extension_registration() {
   local key="$1"
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == "ios-simulator-create" ]]; then
+  if [[ "$key" == "run-authorize" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "git-proxy-configure" ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   /usr/bin/open "${open_arguments[@]}"

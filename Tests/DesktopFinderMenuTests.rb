@@ -15,6 +15,8 @@ class DesktopFinderMenuTests < Minitest::Test
     JobsFlutterVersionMgr/JobsFlutterVersionFinderSync/FinderSync.swift
     JobsFlutterDependencyExtractor/JobsFlutterDependencyFinderSync/FinderSync.swift
     JobsFlutterRunner/JobsFlutterRunFinderSync/FinderSync.swift
+    JobsFlutterDoctor/JobsFlutterDoctorFinderSync/FinderSync.swift
+    JobsFlutterCodegen/JobsFlutterCodegenFinderSync/FinderSync.swift
   ].freeze
   ITEM_ONLY_EXTENSIONS = %w[
     JobsGitRemoteOpener/JobsGitRemoteFinderSync/FinderSync.swift
@@ -23,8 +25,10 @@ class DesktopFinderMenuTests < Minitest::Test
     JobsTerminalOpener/JobsTerminalFinderSync/FinderSync.swift
   ].freeze
   SIMULATOR = 'JobsIOSSimulatorCreator/JobsIOSSimulatorFinderSync/FinderSync.swift'
+  ANDROID_SIMULATOR = 'JobsAndroidSimulatorCreator/JobsAndroidSimulatorFinderSync/FinderSync.swift'
+  GIT_PROXY = 'JobsGitProxyConfigurator/JobsGitProxyFinderSync/FinderSync.swift'
 
-  def test_independent_extensions_use_identical_real_desktop_policy
+  def test_independent_extensions_keep_their_expected_real_desktop_policy
     helpers = CONTAINER_EXTENSIONS.map do |path|
       source = File.read(File.join(ROOT, path))
       helper = source[/private enum FinderDesktopMenuPolicy \{.*\z/m]
@@ -33,7 +37,9 @@ class DesktopFinderMenuTests < Minitest::Test
       assert_operator source.scan(/candidateURL\(for: menuKind\)/).length, :>=, 2, path
       helper
     end
-    assert_equal 1, helpers.uniq.length, '独立工程必须携带一致的桌面判定。'
+    assert_equal 1, helpers[0...-2].uniq.length, '既有工程的桌面策略应保持一致。'
+    assert_equal 1, helpers.last(2).uniq.length, '体检与生成各自携带一致的目录服务桌面策略。'
+    helpers.last(2).each { |helper| assert_includes helper, 'getpwuid_r' }
   end
 
   def test_existing_item_only_extensions_have_no_container_entry
@@ -49,11 +55,13 @@ class DesktopFinderMenuTests < Minitest::Test
       source_path = File.join(directory, 'main.swift')
       binary_path = File.join(directory, 'desktop-menu-tests')
       sources = CONTAINER_EXTENSIONS.each_with_index.map { |path, index| isolated_source(path, index) }
-      sources << isolated_source(SIMULATOR, 7)
-      %w[IOSSimulatorMenuContext IOSSimulatorRequest].each do |type|
-        path = File.join(ROOT, "JobsIOSSimulatorCreator/JobsIOSSimulatorShared/#{type}/#{type}.swift")
+      sources << isolated_source(SIMULATOR, CONTAINER_EXTENSIONS.length)
+      sources << isolated_source(ANDROID_SIMULATOR, CONTAINER_EXTENSIONS.length + 1)
+      %w[IOSSimulatorMenuContext IOSSimulatorRequest AndroidSimulatorMenuContext AndroidSimulatorRequest].each do |type|
+        platform = type.start_with?('Android') ? 'Android' : 'IOS'
+        path = File.join(ROOT, "Jobs#{platform}SimulatorCreator/Jobs#{platform}SimulatorShared/#{type}/#{type}.swift")
         source = File.read(path)
-        if type == 'IOSSimulatorMenuContext'
+        if type.end_with?('MenuContext')
           # 模拟两种 Foundation Home API 均重定向到沙盒；真实 passwd 查询保持原样。
           source = source.gsub('FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)',
                                'TestSandboxEnvironment.desktopURLs')
@@ -68,6 +76,93 @@ class DesktopFinderMenuTests < Minitest::Test
       output, status = Open3.capture2e({ 'HOME' => fake_home, 'JOBS_TEST_SANDBOX_HOME' => fake_home }, binary_path, directory)
       assert status.success?, output
       assert_match(/PASS: \d+ desktop menu assertions/, output)
+      puts output.lines.grep(/^PASS:/)
+    end
+  end
+
+  def test_git_proxy_menu_uses_the_real_desktop_context_and_a_fixed_action
+    Dir.mktmpdir('jobs-git-proxy-desktop-tests-') do |directory|
+      source_path = File.join(directory, 'main.swift')
+      binary_path = File.join(directory, 'git-proxy-menu-tests')
+      sources = [isolated_source(GIT_PROXY, 900)]
+      %w[GitProxyMenuContext GitProxyRequest].each do |type|
+        path = File.join(ROOT, "JobsGitProxyConfigurator/JobsGitProxyShared/#{type}/#{type}.swift")
+        source = File.read(path)
+        if type == 'GitProxyMenuContext'
+          source = source.gsub('FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)',
+                               'TestSandboxEnvironment.desktopURLs')
+        end
+        sources << source
+      end
+      checks = <<~'SWIFT'
+        var assertionCount = 0
+        func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+            assertionCount += 1
+            if !condition() { fputs("FAILED: \(message)\n", stderr); exit(1) }
+        }
+        func click(_ menu: NSMenu?) {
+            guard let item = menu?.items.first, let target = item.target as? NSObject,
+                  let action = item.action else { expect(false, "missing menu action"); return }
+            _ = target.perform(action, with: item)
+        }
+        let manager = FileManager.default
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        guard let account = getpwuid(getuid()), let home = account.pointee.pw_dir else { fatalError("passwd home missing") }
+        let desktop = URL(fileURLWithPath: String(cString: home), isDirectory: true).appendingPathComponent("Desktop", isDirectory: true)
+        expect(GitProxyMenuContext.desktopURL?.standardizedFileURL == desktop.standardizedFileURL, "real passwd desktop precedes sandbox alias")
+        expect(GitProxyMenuContext.desktopURLs.contains(TestSandboxEnvironment.desktopURLs[0]), "Foundation sandbox alias remains available")
+        let injected = root.appendingPathComponent("云盘/真实桌面", isDirectory: true)
+        let ordinary = root.appendingPathComponent("普通目录", isDirectory: true)
+        let child = injected.appendingPathComponent("子目录", isDirectory: true)
+        let sameName = root.appendingPathComponent("其它/Desktop", isDirectory: true)
+        let prefix = root.appendingPathComponent("云盘/真实桌面-copy", isDirectory: true)
+        for url in [injected, ordinary, child, sameName, prefix] { try manager.createDirectory(at: url, withIntermediateDirectories: true) }
+        let alias = root.appendingPathComponent("桌面别名", isDirectory: true)
+        try manager.createSymbolicLink(at: alias, withDestinationURL: injected)
+        expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: injected, selectedURLs: nil, desktopURL: injected)?.path == injected.path, "explicit desktop accepted")
+        expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: alias, selectedURLs: nil, desktopURL: injected)?.path == injected.path, "desktop symlink accepted")
+        expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: nil, selectedURLs: nil, desktopURL: injected)?.path == injected.path, "nil target falls back to known desktop")
+        for invalid in [ordinary, child, sameName, prefix, URL(string: "https://example.test/Desktop")!] {
+            expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: invalid, selectedURLs: nil, desktopURL: injected) == nil, "ordinary and non-file containers rejected")
+        }
+        expect(GitProxyMenuContext.candidateURL(isContainer: false, targetedURL: injected, selectedURLs: [ordinary], desktopURL: injected) == nil, "item menu rejected")
+        expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: injected, selectedURLs: [ordinary], desktopURL: injected) == nil, "explicit nonempty selection rejected")
+        let unavailable = root.appendingPathComponent("unavailable/Desktop", isDirectory: true)
+        expect(!manager.fileExists(atPath: unavailable.path), "desktop metadata fixture is unavailable")
+        expect(GitProxyMenuContext.candidateURL(isContainer: true, targetedURL: unavailable, selectedURLs: nil, desktopURL: unavailable)?.path == unavailable.path, "known desktop does not require filesystem access")
+        let controller = FIFinderSyncController.default()
+        let extensionInstance = FinderSync900()
+        expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)), "root monitoring preserves real desktop dispatch")
+        controller.selected = nil
+        controller.targeted = desktop
+        let desktopMenu = extensionInstance.menu(for: .contextualMenuForContainer)
+        expect(desktopMenu?.items.map(\.title) == ["配置 Git 动态代理"], "desktop has one Git proxy action")
+        TestActions.count = 0
+        TestActions.lastURL = nil
+        click(desktopMenu)
+        expect(TestActions.count == 1, "desktop click dispatches once")
+        expect(TestActions.lastURL?.absoluteString == "jobsgitproxyconfigurator://git/configure", "desktop click uses only the fixed action URL")
+        controller.targeted = ordinary
+        expect(extensionInstance.menu(for: .contextualMenuForContainer) == nil, "ordinary container has no global configuration entry")
+        TestActions.count = 0
+        click(desktopMenu)
+        expect(TestActions.count == 0, "stale menu cannot dispatch from an ordinary directory")
+        controller.targeted = desktop
+        controller.selected = [ordinary]
+        expect(extensionInstance.menu(for: .contextualMenuForItems) == nil, "selected project has no global configuration entry")
+        expect(extensionInstance.menu(for: .toolbarItemMenu) == nil, "toolbar remains unchanged")
+        controller.targeted = nil
+        controller.selected = nil
+        expect(extensionInstance.menu(for: .contextualMenuForContainer)?.items.count == 1, "Finder nil target uses the real desktop fallback")
+        print("PASS: \(assertionCount) Git proxy desktop menu assertions")
+      SWIFT
+      File.write(source_path, swift_stubs + "\n" + sources.join("\n") + "\n" + checks)
+      output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
+      assert status.success?, output
+      fake_home = File.join(directory, 'Library/Containers/com.jobs.fixture/Data')
+      output, status = Open3.capture2e({ 'HOME' => fake_home, 'JOBS_TEST_SANDBOX_HOME' => fake_home }, binary_path, directory)
+      assert status.success?, output
+      assert_match(/PASS: \d+ Git proxy desktop menu assertions/, output)
       puts output.lines.grep(/^PASS:/)
     end
   end
@@ -131,14 +226,15 @@ class DesktopFinderMenuTests < Minitest::Test
           func addButton(withTitle: String) {}
           func runModal() {}
       }
-      enum TestActions { static var count = 0 }
+      enum TestActions { static var count = 0; static var lastURL: URL? }
       enum TestProjectRules { static var qualifies = true }
       final class NSWorkspace {
           final class OpenConfiguration { var activates = false }
           static let shared = NSWorkspace()
-          func open(_ url: URL) -> Bool { TestActions.count += 1; return true }
+          func open(_ url: URL) -> Bool { TestActions.count += 1; TestActions.lastURL = url; return true }
           func open(_ url: URL, configuration: OpenConfiguration, completionHandler: (NSObject?, Error?) -> Void) {
               TestActions.count += 1
+              TestActions.lastURL = url
               completionHandler(nil, nil)
           }
       }
@@ -164,6 +260,8 @@ class DesktopFinderMenuTests < Minitest::Test
       }
       struct FlutterManagerRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://flutter") } }
       struct FlutterDependencyRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://dependencies") } }
+      struct FlutterDoctorRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://doctor") } }
+      struct FlutterCodegenRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://codegen") } }
       struct FlutterRunRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://run") } }
       struct GitPullRequest { static func url(for: URL) -> URL? { return URL(string: "fixture://git") } }
       final class DistributedNotificationCenter {
@@ -288,7 +386,7 @@ class DesktopFinderMenuTests < Minitest::Test
           expect(extensionInstance.menu(for: .toolbarItemMenu) == nil, "\\(name): toolbar unchanged")
       }
 
-      let simulator = FinderSync7()
+      let simulator = FinderSync#{CONTAINER_EXTENSIONS.length}()
       expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)),
              "simulator: root monitoring must remain enabled for Finder desktop dispatch")
       controller.selected = nil
@@ -328,7 +426,59 @@ class DesktopFinderMenuTests < Minitest::Test
              "simulator: known fallback desktop does not require metadata access")
       expect(IOSSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: ordinary, selectedURLs: nil, desktopURL: unavailableDesktop) == nil,
              "simulator: unavailable desktop metadata never permits ordinary folders")
+      #{android_simulator_checks}
       print("PASS: \\(assertionCount) desktop menu assertions")
+    SWIFT
+  end
+
+  def android_simulator_checks
+    <<~SWIFT
+      expect(AndroidSimulatorMenuContext.desktopURLs.first?.standardizedFileURL.path == passwdDesktop.path,
+             "android: passwd desktop takes priority over sandbox aliases")
+      expect(AndroidSimulatorMenuContext.desktopURLs.dropFirst().contains(TestSandboxEnvironment.desktopURLs[0]),
+             "android: the real discovery code consumes the redirected Foundation alias")
+      expect(AndroidSimulatorMenuContext.desktopURL?.standardizedFileURL.path == passwdDesktop.path,
+             "android: default fallback uses actual passwd desktop")
+      let androidSimulator = FinderSync#{CONTAINER_EXTENSIONS.length + 1}()
+      expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)),
+             "android: root monitoring must remain enabled for Finder desktop dispatch")
+      controller.selected = nil
+      controller.targeted = passwdDesktop
+      let androidDesktopMenu = androidSimulator.menu(for: .contextualMenuForContainer)
+      expect(androidDesktopMenu?.items.map(\\.title) == ["新建 Android 模拟器"], "android: desktop only item")
+      TestActions.count = 0
+      click(androidDesktopMenu)
+      expect(TestActions.count == 1, "android: desktop click dispatched")
+      controller.targeted = ordinary
+      expect(androidSimulator.menu(for: .contextualMenuForContainer) == nil, "android: ordinary folder hidden")
+      TestActions.count = 0
+      click(androidDesktopMenu)
+      expect(TestActions.count == 0, "android: stale ordinary folder click rejected")
+      controller.targeted = passwdDesktop
+      controller.selected = [ordinary]
+      expect(androidSimulator.menu(for: .contextualMenuForItems) == nil, "android: desktop selected directory hidden")
+      controller.targeted = ordinary
+      expect(androidSimulator.menu(for: .contextualMenuForItems) == nil, "android: ordinary selected directory hidden")
+      expect(androidSimulator.menu(for: .toolbarItemMenu) == nil, "android: toolbar unchanged")
+      controller.targeted = nil
+      controller.selected = nil
+      expect(androidSimulator.menu(for: .contextualMenuForContainer)?.items.count == 1, "android: nil targeted desktop fallback")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: nil, selectedURLs: nil)?.path == passwdDesktop.path,
+             "android: nil targeted fallback is the real user desktop, never sandbox Desktop")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: nil, selectedURLs: nil, desktopURL: injectedDesktop) != nil,
+             "android: injected desktop fallback")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: ordinary, selectedURLs: nil, desktopURL: injectedDesktop) == nil,
+             "android: injected ordinary container rejected")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: false, targetedURL: injectedDesktop, selectedURLs: [injectedDesktop], desktopURL: injectedDesktop) == nil,
+             "android: injected items rejected")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: desktopAlias, selectedURLs: nil, desktopURL: injectedDesktop)?.path == injectedDesktop.path,
+             "android: desktop symlink remains eligible")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: unavailableDesktop, selectedURLs: nil, desktopURL: unavailableDesktop)?.path == unavailableDesktop.path,
+             "android: known desktop remains eligible when metadata cannot be read")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: nil, selectedURLs: nil, desktopURL: unavailableDesktop)?.path == unavailableDesktop.path,
+             "android: known fallback desktop does not require metadata access")
+      expect(AndroidSimulatorMenuContext.candidateURL(isContainer: true, targetedURL: ordinary, selectedURLs: nil, desktopURL: unavailableDesktop) == nil,
+             "android: unavailable desktop metadata never permits ordinary folders")
     SWIFT
   end
 end

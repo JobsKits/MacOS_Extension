@@ -53,6 +53,7 @@
 ├── JobsFlutterDependencyExtractorDerivedData/
 ├── JobsFlutterVersionMgrDerivedData/
 ├── JobsGitPullerDerivedData/
+├── JobsGitProxyConfiguratorDerivedData/
 ├── JobsGitRemoteCopierDerivedData/
 ├── JobsGitRemoteOpenerDerivedData/
 ├── JobsIOSSimulatorCreatorDerivedData/
