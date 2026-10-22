@@ -29,7 +29,7 @@
 | 入口 | 与当前目录的关系 |
 | --- | --- |
 | [统一安装脚本](../【MacOS】🧩安装Finder扩展.command) | 按选中的功能创建 `./<项目名>DerivedData/`，将其传给 `xcodebuild -derivedDataPath`；默认构建 `Debug` 配置，再注册其中的 App 和内嵌扩展。 |
-| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 当前覆盖十一个宿主，包含 Flutter 版本管理、依赖提取、Git 拉取、Flutter 运行与 iOS 模拟器创建，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
+| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 20 个工程中覆盖除复制远程地址外的 19 个宿主（按 2026-10-23 当前卸载映射），包含 Flutter 版本管理、依赖提取、Git 拉取、Flutter 运行与 iOS / Android / 鸿蒙模拟器创建，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
 | [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于工程内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
 | [源码与使用说明](../README.md) | 本仓说明安装、卸载和各工程的用途；工程中的源码与工程文件可重新生成构建产物。 |
 
@@ -39,6 +39,8 @@
 ./<项目名>DerivedData/Build/Products/Debug/<项目名>.app
 ./<项目名>DerivedData/Build/Products/Debug/<项目名>.app/Contents/PlugIns/<扩展名>.appex
 ```
+
+鸿蒙扩展对应 `./JobsHarmonySimulatorCreatorDerivedData/`；该目录仅保存本功能的 App / appex 与构建缓存，卸载不处理 DevEco 镜像或模拟器实例。
 
 安装过程直接通过这些路径注册，没有将 App 另行复制到系统应用程序目录。直接从 Xcode 构建时，产物也可能位于 Xcode 自身配置的 DerivedData 位置。
 
@@ -57,6 +59,7 @@
 ├── JobsGitRemoteCopierDerivedData/
 ├── JobsGitRemoteOpenerDerivedData/
 ├── JobsIOSSimulatorCreatorDerivedData/
+├── JobsHarmonySimulatorCreatorDerivedData/
 ├── JobsPathCopierDerivedData/
 ├── JobsTerminalOpenerDerivedData/
 ├── JobsVSCodeOpenerDerivedData/
@@ -83,7 +86,7 @@
 !/work/README.md
 ```
 
-即只把 `./README.md` 纳入版本控制，其余本地产物忽略。该规则不会删除磁盘上的已有文件；十二个工程源码由本仓统一版本管理，本目录只保存可再生的本地产物。
+即只把 `./README.md` 纳入版本控制，其余本地产物忽略。该规则不会删除磁盘上的已有文件；20 个工程源码由本仓统一版本管理，本目录只保存可再生的本地产物。
 
 ## 四、<span id="cleanup">清理与恢复</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

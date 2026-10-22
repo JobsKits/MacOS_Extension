@@ -22,7 +22,7 @@
 
 | 文件 | 职责与边界 |
 | --- | --- |
-| `CreateAndroidSimulator.zsh` | 检查 SDK 与工具，交互创建 / 启动 Android AVD；`--create` 直接新建，`--check` 只读检查，`--help` 显示参数。与独立双击启动脚本保持相同核心。 |
+| `CreateAndroidSimulator.zsh` | 检查并自动补齐 SDK 与工具，交互创建 / 启动 Android AVD；`--create` 直接新建，`--prepare` 仅准备工具链，`--check` 只读检查，`--help` 显示参数。与独立双击启动脚本保持相同核心。 |
 | `EnableFinderExtension.zsh` | Xcode Build Phase 注册当前构建产物、核对扩展启用路径并按标记刷新 Finder；不创建模拟器。独立安装器会跳过自动注册阶段并统一执行注册。 |
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行与风险</span><!-- jobs-toc:heading-end -->
@@ -31,16 +31,19 @@
 
 ```shell
 /bin/zsh ./CreateAndroidSimulator.zsh --check
+/bin/zsh ./CreateAndroidSimulator.zsh --prepare
 /bin/zsh ./CreateAndroidSimulator.zsh
 ```
 
-交互流程在创建及工具 / 组件安装前确认；创建消耗磁盘，启动消耗内存和 CPU；不删除、覆盖已有 AVD，不自动接受 SDK 许可证。缺失命令行工具可从官方源补齐，先核对归档长度与摘要，再在 SDK 同卷私有目录暂存并新增独立版本；保留全部原有版本，完成后重新体检。源与目标在操作前显示，失败输出原因与日志。SDK / Java 准备及安装 / 卸载说明见[功能 README](../README.md)。
+首屏回车统一授权本次必要工具链自动补齐；健康依赖不升级，缺失 / 损坏 SDK、Java、命令行工具与 emulator 自动修复一次并复检，不再另设安装确认。没有本地系统映像时自动读取官方清单，选中后直接安装；创建仍由最终确认决定，SDK 许可证保留官方本人交互。`--prepare` 仅准备工具链，`--check` 始终只读；创建消耗磁盘，启动消耗内存和 CPU，不删除或覆盖已有 AVD。
+
+CLT 与缺失 Java 分别从 Google / Adoptium 官方源补齐，校验归档长度和摘要，在目标同卷 `0700` 私有目录暂存、检查路径与链接，再排他新增独立版本；不覆盖原有版本，不修改系统代理或 Shell 配置。损坏 emulator 仅通过官方管理器重装工具包，保留 AVD 和映像。操作前显示来源与目标，下载显示进度，失败显示阶段、退出码与日志；SDK / Java 准备及安装 / 卸载说明见[功能 README](../README.md)。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、开发验证</span><!-- jobs-toc:heading-end -->
 
 在工程目录使用 `zsh -n` 检查所有脚本，运行 `ruby ./Tests/InstallerRegistrationTests.rb` 验证安装 / 卸载的精确注册与保留设备数据；传输和 AppDelegate 测试通过 `xcrun swiftc` 隔离编译真实源码与替身，覆盖固定 URL、桌面白名单、路径转义、私有载体清理和重复回调。
 
-运行 `ruby ./Tests/CreateAndroidSimulatorTests.rb`，用假 SDK、Java 与官方下载夹具验证健康复用、缺失及损坏分支、安装后复检失败、SDK 同卷发布、已有目标保护、命名冲突与只读入口；测试不会连接真实下载源或操作用户设备。
+运行 `ruby ./Tests/CreateAndroidSimulatorTests.rb`，用假 SDK、Java 与官方下载夹具验证单次首屏授权、`--prepare` 健康 / 多层缺失自动补齐、损坏 emulator 精确重装、Java 校验与重定向边界、安装后复检失败、SDK 同卷发布、已有目标保护、命名冲突与只读入口；测试不会连接真实下载源或操作用户设备。
 
 仅构建、不注册或重启 Finder：
 

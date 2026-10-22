@@ -36,4 +36,6 @@
 "/JobsRunAuthorizer/Scripts/README.md" filter=jobs-markdown-toc
 "/JobsGitProxyConfigurator/README.md" filter=jobs-markdown-toc
 "/JobsGitProxyConfigurator/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsHarmonySimulatorCreator/README.md" filter=jobs-markdown-toc
+"/JobsHarmonySimulatorCreator/Scripts/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

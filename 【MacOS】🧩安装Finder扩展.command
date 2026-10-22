@@ -46,7 +46,7 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_opener)
+FEATURE_KEYS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create harmony-simulator-create git-proxy-configure terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -180,6 +180,14 @@ FEATURE_APP_ID[android-simulator-create]="com.jobs.androidsimulatorcreator"
 FEATURE_EXTENSION_NAME[android-simulator-create]="JobsAndroidSimulatorFinderSync.appex"
 FEATURE_EXTENSION_ID[android-simulator-create]="com.jobs.androidsimulatorcreator.findersync"
 
+FEATURE_TITLE[harmony-simulator-create]="新建鸿蒙模拟器"
+FEATURE_PROJECT_DIR[harmony-simulator-create]="JobsHarmonySimulatorCreator"
+FEATURE_SCHEME[harmony-simulator-create]="JobsHarmonySimulatorCreator"
+FEATURE_APP_NAME[harmony-simulator-create]="JobsHarmonySimulatorCreator"
+FEATURE_APP_ID[harmony-simulator-create]="com.jobs.harmonysimulatorcreator"
+FEATURE_EXTENSION_NAME[harmony-simulator-create]="JobsHarmonySimulatorFinderSync.appex"
+FEATURE_EXTENSION_ID[harmony-simulator-create]="com.jobs.harmonysimulatorcreator.findersync"
+
 FEATURE_TITLE[git-proxy-configure]="配置 Git 动态代理"
 FEATURE_PROJECT_DIR[git-proxy-configure]="JobsGitProxyConfigurator"
 FEATURE_SCHEME[git-proxy-configure]="JobsGitProxyConfigurator"
@@ -195,7 +203,7 @@ FEATURE_APP_NAME[terminal_opener]="JobsTerminalOpener"
 FEATURE_EXTENSION_NAME[terminal_opener]="JobsTerminalFinderSync.appex"
 FEATURE_EXTENSION_ID[terminal_opener]="com.jobs.JobsTerminalOpener.FinderSyncExtension"
 
-SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
+SELECTABLE_FUNCTION_IDS=(git_remote git_remote_copier path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create harmony-simulator-create git-proxy-configure terminal_open pod_install flutter_pub_get codegraph_bootstrap git_empty_commit_push)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="git_remote"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -230,6 +238,8 @@ SELECTABLE_FUNCTION_TITLE[ios-simulator-create]="新建 iOS 模拟器"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-simulator-create]="ios-simulator-create"
 SELECTABLE_FUNCTION_TITLE[android-simulator-create]="新建 Android 模拟器"
 SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-create]="android-simulator-create"
+SELECTABLE_FUNCTION_TITLE[harmony-simulator-create]="新建鸿蒙模拟器"
+SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-create]="harmony-simulator-create"
 SELECTABLE_FUNCTION_TITLE[git-proxy-configure]="配置 Git 动态代理"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-proxy-configure]="git-proxy-configure"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
@@ -793,7 +803,7 @@ open_host_for_extension_registration() {
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == "run-authorize" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "git-proxy-configure" ]]; then
+  if [[ "$key" == "run-authorize" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "harmony-simulator-create" || "$key" == "git-proxy-configure" ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   /usr/bin/open "${open_arguments[@]}"

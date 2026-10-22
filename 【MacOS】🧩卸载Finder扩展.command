@@ -39,7 +39,7 @@ SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 
-FEATURE_KEYS=(git_remote path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create git-proxy-configure terminal_opener)
+FEATURE_KEYS=(git_remote path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create harmony-simulator-create git-proxy-configure terminal_opener)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -190,6 +190,15 @@ FEATURE_REFRESH_MARKER[android-simulator-create]="/tmp/JobsAndroidSimulatorCreat
 FEATURE_RUNTIME_LOG[android-simulator-create]="/tmp/JobsAndroidSimulatorCreator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android-simulator-create]}]="android-simulator-create"
 
+FEATURE_TITLE[harmony-simulator-create]="新建鸿蒙模拟器"
+FEATURE_PROJECT_DIR[harmony-simulator-create]="JobsHarmonySimulatorCreator"
+FEATURE_APP_NAME[harmony-simulator-create]="JobsHarmonySimulatorCreator"
+FEATURE_EXTENSION_PROCESS_NAME[harmony-simulator-create]="JobsHarmonySimulatorFinderSync"
+FEATURE_EXTENSION_ID[harmony-simulator-create]="com.jobs.harmonysimulatorcreator.findersync"
+FEATURE_REFRESH_MARKER[harmony-simulator-create]="/tmp/JobsHarmonySimulatorCreatorNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[harmony-simulator-create]="/tmp/JobsHarmonySimulatorCreator.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[harmony-simulator-create]}]="harmony-simulator-create"
+
 FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
 FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
 FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
@@ -300,7 +309,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用 fzf 选择并卸载 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”和“新建 Android 模拟器”，可单独选择或全选。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”“新建 Android 模拟器”和“新建鸿蒙模拟器”，可单独选择或全选。" | jobs_intro_style body
   warn_echo "影响范围：会禁用并注销选中的 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会停止对应宿主 App 和已运行的扩展进程。" | jobs_intro_style body
   warn_echo "影响范围：会删除 Xcode DerivedData 和本工作区 work 下的构建产物。" | jobs_intro_style body

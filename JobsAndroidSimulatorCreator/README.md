@@ -32,18 +32,21 @@
 
 安装依赖 macOS 12.0+、完整 [**Xcode**](https://developer.apple.com/xcode/) 及 macOS SDK；创建 Android 模拟器使用 [**Android SDK Command-line Tools**](https://developer.android.com/tools)、可用 Java、`sdkmanager`、`avdmanager`、`emulator` 与匹配主机架构的系统映像。SDK 位置由当前环境和标准安装位置发现，不写死本机路径。
 
-没有 SDK 根目录或可用 Java 时，按照终端提示在 [**Android Studio**](https://developer.android.com/studio) 的 SDK Manager / JBR 中准备。已有 SDK 缺失或损坏 Command-line Tools 时，可非空确认后从 Google 官方元数据选择匹配主机架构的稳定归档，校验长度、摘要和 ZIP 内容，再在 SDK 同卷私有目录解压并新增独立版本，保留原有工具。其余组件和映像也在展示来源、目标和影响后等待确认，直接回车跳过安装。每次安装后复检，失败停止；许可证交由官方工具交互处理，不自动接受。创建前再次确认，绝不覆盖已有同名 AVD，不删除已有设备，不改系统代理、Shell 配置或开发目录。
+首屏明确说明影响后，回车即授权本次自动体检并补齐必要工具链，健康组件复用，不再逐层询问是否安装。SDK 根目录不存在时自动建立；Java 优先复用配置项、[**Android Studio**](https://developer.android.com/studio) 内置 JBR 或现有安装，均不可用才从 Adoptium 官方源安装可校验的用户级 [**Temurin 21**](https://adoptium.net/installation/archives/)，仅对本次进程设置 `JAVA_HOME`。Command-line Tools 缺失或损坏时自动从 Google 官方元数据选择匹配主机架构的稳定归档，校验长度、摘要和 ZIP 内容，在 SDK 同卷 `0700` 私有目录解压并排他发布独立版本，保留原有工具；缺失 emulator 自动补装，损坏时仅通过官方管理器重装 emulator 工具包，保留 AVD 与系统映像。每层修复后立即复检，失败显示阶段与日志并停止，不循环下载。
+
+没有完整本地映像时自动读取官方稳定清单，用户选择系统映像后直接安装；SDK 许可证交由官方工具交互，本人阅读接受，不自动同意。创建前仍确认型号、系统与名称，绝不覆盖已有同名 AVD，不删除已有设备，不改系统代理、Shell 配置或开发目录。
 
 在本目录执行：
 
 ```shell
 /bin/zsh ./Scripts/CreateAndroidSimulator.zsh --help
 /bin/zsh ./Scripts/CreateAndroidSimulator.zsh --check
+/bin/zsh ./Scripts/CreateAndroidSimulator.zsh --prepare
 /bin/zsh ./Scripts/CreateAndroidSimulator.zsh --create
 /bin/zsh ./Scripts/CreateAndroidSimulator.zsh
 ```
 
-`--check` 只读检查，不安装组件、不创建或启动设备；`--create` 直接进入新建流程，桌面右键固定使用此参数；无参数保留启动已有 AVD / 新建的选择。交互运行先展示内置自述，再按回车继续；可用时使用 fzf，缺失或损坏时使用编号选择。空列表提供补齐环境后重新运行的入口。创建与启动结果以及本次日志位置在终端中显示。宿主诊断日志是系统临时目录中的 `JobsAndroidSimulatorCreator.log`，安装日志为 `JobsAndroidSimulatorCreatorInstall.log`。
+`--check` 只读检查，不联网、不安装组件、不建日志、不创建或启动设备；`--prepare` 首屏回车后仅体检和自动补齐工具链，完成即退出，不查询系统映像或创建设备；`--create` 直接进入新建流程，桌面右键固定使用此参数；无参数保留启动已有 AVD / 新建的选择。交互运行先展示内置自述，再按回车继续；可用时使用 fzf，缺失或损坏时使用编号选择。空列表不会进入无效选择，失败可以修复后重新运行。创建与启动结果以及本次日志位置在终端中显示。宿主诊断日志是系统临时目录中的 `JobsAndroidSimulatorCreator.log`，安装日志为 `JobsAndroidSimulatorCreatorInstall.log`。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装单元与目录</span><!-- jobs-toc:heading-end -->
 
@@ -86,7 +89,7 @@ flowchart LR
 flowchart TD
     A[内置自述与回车] --> B[检查 SDK / Java / 工具健康]
     B --> C{缺少工具、组件或映像?}
-    C -->|是| D[显示官方来源 / 校验 / 确认安装]
+    C -->|是| D[显示官方来源 / 校验 / 自动补齐]
     D --> E[重新检查依赖]
     C -->|否| E
     E --> F[选择主机架构匹配映像及机型]
@@ -97,6 +100,8 @@ flowchart TD
 
 开发回归与构建方式见 [Scripts 说明](./Scripts/README.md)。隔离测试使用假 SDK 和临时目录，不下载映像或操作真实设备；构建检查不等于真实 Finder / Windows 桌面验收。右键无法打开终端时，检查系统设置“隐私与安全性 → 自动化”中本宿主控制 Terminal 的授权。
 
-2026-10-22 验证：脚本 36 组 / 246 断言、宿主和传输隔离回归通过；macOS 两 target Debug 构建、深度签名、打包脚本字节核对及本机注册通过。真实 Desktop 目录空白菜单已显示 iOS / Android 两项；未下载 SDK 归档 / 系统映像，未创建真实 AVD。本机尚缺命令行工具与完整 ARM 系统映像，首次新建按提示选择是否补齐。
+桌面挂载验证基线（2026-10-22）：宿主和传输隔离回归、macOS 两 target Debug 构建、深度签名、打包脚本字节核对及本机注册通过，真实 Desktop 目录空白菜单已显示 iOS / Android 两项。当时本机尚缺命令行工具与完整 ARM 系统映像，未下载安装归档或创建真实 AVD。
+
+自动补齐验证（2026-10-23）：50 组 / 356 断言通过。已真实运行 `--prepare`，首屏回车后自动下载约 155 MB 的 Google 官方 ARM Command-line Tools 23.0，完成长度与摘要校验、同卷暂存、独立版本安装及健康复检；SDK、Java 21 与 emulator 直接复用。已重新构建安装本机扩展，打包脚本与独立双击脚本逐字节一致，深度签名与精确注册路径核对通过。未下载系统映像、接受 SDK 许可证或创建真实 AVD；设备创建仍单独验收。
 
 <a id="🔚" href="#前言">回到首页</a>

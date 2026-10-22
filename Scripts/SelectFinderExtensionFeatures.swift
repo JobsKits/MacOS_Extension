@@ -35,6 +35,7 @@ struct FeatureOption {
         FeatureOption(identifier: "flutter-codegen", title: "Flutter 自动化生产代码"),
         FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器"),
         FeatureOption(identifier: "android-simulator-create", title: "新建 Android 模拟器"),
+        FeatureOption(identifier: "harmony-simulator-create", title: "新建鸿蒙模拟器"),
         FeatureOption(identifier: "git-proxy-configure", title: "配置 Git 动态代理")
     ]
 

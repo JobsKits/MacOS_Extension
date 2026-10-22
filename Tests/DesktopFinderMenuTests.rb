@@ -80,6 +80,69 @@ class DesktopFinderMenuTests < Minitest::Test
     end
   end
 
+def test_harmony_simulator_menu_only_uses_the_real_desktop_background
+  Dir.mktmpdir('jobs-harmony-desktop-tests-') do |directory|
+    source_path = File.join(directory, 'main.swift')
+    binary_path = File.join(directory, 'harmony-menu-tests')
+    sources = [isolated_source('JobsHarmonySimulatorCreator/JobsHarmonySimulatorFinderSync/FinderSync.swift', 901)]
+    %w[HarmonySimulatorMenuContext HarmonySimulatorRequest].each do |type|
+      source = File.read(File.join(ROOT, "JobsHarmonySimulatorCreator/JobsHarmonySimulatorShared/#{type}/#{type}.swift"))
+      source = source.gsub('FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)', 'TestSandboxEnvironment.desktopURLs')
+      sources << source
+    end
+    checks = <<~'SWIFT'
+      var assertionCount = 0
+      func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+          assertionCount += 1
+          guard condition() else { fatalError(message) }
+      }
+        func click(_ menu: NSMenu?) {
+            guard let item = menu?.items.first, let target = item.target as? NSObject,
+                  let action = item.action else { expect(false, "missing menu action"); return }
+            _ = target.perform(action, with: item)
+        }
+      let controller = FIFinderSyncController.default()
+      let desktop = URL(fileURLWithPath: String(cString: getpwuid(getuid())!.pointee.pw_dir), isDirectory: true).appendingPathComponent("Desktop", isDirectory: true)
+      let folder = URL(fileURLWithPath: "/fixture/ordinary", isDirectory: true)
+      let extensionMenu = FinderSync901()
+      expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)), "Harmony must observe root for real Finder desktop dispatch")
+      controller.targeted = desktop
+      controller.selected = nil
+      let menu = extensionMenu.menu(for: .contextualMenuForContainer)
+      expect(menu?.items.map(\.title) == ["新建鸿蒙模拟器"], "Only desktop background may show Harmony action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 1, "Desktop click dispatches once")
+        controller.selected = [folder]
+        expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Container callback stays eligible despite stale selection metadata")
+      controller.targeted = folder
+      expect(extensionMenu.menu(for: .contextualMenuForContainer) == nil, "Ordinary folder must hide Harmony action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 0, "Stale desktop menu must not dispatch from a folder")
+      controller.targeted = desktop
+      for selected in [[], [desktop], [folder], [desktop, folder]] {
+          controller.selected = selected
+          expect(extensionMenu.menu(for: .contextualMenuForItems) == nil, "All item selections must hide Harmony action")
+      }
+      expect(extensionMenu.menu(for: .toolbarItemMenu) == nil, "Toolbar must not add Harmony action")
+      controller.targeted = nil
+      controller.selected = nil
+      expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Known desktop fallback remains available")
+      expect(HarmonySimulatorRequest.isCreateRequest(HarmonySimulatorRequest.canonicalURL), "Fixed request must pass")
+      expect(!HarmonySimulatorRequest.isCreateRequest(URL(string: "jobsharmonysimulatorcreator://simulator/create?command=bad")!), "Extra URL parameters must be rejected")
+      print("PASS: \(assertionCount) Harmony desktop menu assertions")
+    SWIFT
+    File.write(source_path, swift_stubs + "\n" + sources.join("\n") + "\n" + checks)
+    output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
+    assert status.success?, output
+    output, status = Open3.capture2e(binary_path)
+    assert status.success?, output
+    assert_includes output, 'Harmony desktop menu assertions'
+    puts output.lines.grep(/^PASS:/)
+  end
+end
+
   def test_git_proxy_menu_uses_the_real_desktop_context_and_a_fixed_action
     Dir.mktmpdir('jobs-git-proxy-desktop-tests-') do |directory|
       source_path = File.join(directory, 'main.swift')

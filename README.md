@@ -38,7 +38,7 @@
 
 **项目定位：** 面向 Jobs 与 macOS 开发人员的 Finder 日常开发工具集合。**状态：维护中**（基于当前源码与提交活动）；负责人 **Jobs** / [**JobsKits**](https://github.com/JobsKits)，未登记其他维护团队。当前为 **2026-10-20** 完成的单仓管理结构；功能、工程与代码规模的详细复核日期见统计章。
 
-19 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
+20 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
 
@@ -49,7 +49,7 @@
     branch = main
 ```
 
-`path` 是相对父仓的本地路径，`url` 使用真实远端仓名；本仓根部 `.git` 指向 `../../.git/modules/MacOS@Extension`，不为19 个源码工程重建子 Git。父仓已配置线路的解析如下：
+`path` 是相对父仓的本地路径，`url` 使用真实远端仓名；本仓根部 `.git` 指向 `../../.git/modules/MacOS@Extension`，不为20 个源码工程重建子 Git。父仓已配置线路的解析如下：
 
 | 父仓地址 | 本仓解析地址 |
 | --- | --- |
@@ -58,14 +58,15 @@
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **23 个 Finder 右键功能，可逐项勾选：`打开 Git 远程地址`｜`复制 Git 远程地址`｜`复制绝对路径`｜`运行授权`｜`用 Xcode 打开项目`｜`用 VSCode 打开项目`｜`用 Android Studio 打开项目`｜`安装/切换 Flutter SDK（FVM）`｜`查看当前 Flutter SDK 版本`｜`拉取 Git 到最新`｜`提取 Flutter 第三方依赖`｜`运行 Flutter 项目`｜`Flutter打包`｜`Flutter 项目体检`｜`Flutter 自动化生产代码`｜`新建 iOS 模拟器`｜`新建 Android 模拟器`｜`配置 Git 动态代理`｜`用终端打开`｜`pod install`｜`在终端执行 flutter pub get`｜`更新代码地图（.codegraph）`｜`在终端创建空白 Commit 并 Push`。** 其中 `JobsTerminalOpener` 工程内含 `用终端打开` 至 `空白 Commit 并 Push` 这 5 项；数量按 2026-10-22 的选择器功能标识及根安装映射去重。
+> **24 个 Finder 右键功能，可逐项勾选：`打开 Git 远程地址`｜`复制 Git 远程地址`｜`复制绝对路径`｜`运行授权`｜`用 Xcode 打开项目`｜`用 VSCode 打开项目`｜`用 Android Studio 打开项目`｜`安装/切换 Flutter SDK（FVM）`｜`查看当前 Flutter SDK 版本`｜`拉取 Git 到最新`｜`提取 Flutter 第三方依赖`｜`运行 Flutter 项目`｜`Flutter打包`｜`Flutter 项目体检`｜`Flutter 自动化生产代码`｜`新建 iOS 模拟器`｜`新建 Android 模拟器`｜`新建鸿蒙模拟器`｜`配置 Git 动态代理`｜`用终端打开`｜`pod install`｜`在终端执行 flutter pub get`｜`更新代码地图（.codegraph）`｜`在终端创建空白 Commit 并 Push`。** 其中 `JobsTerminalOpener` 工程内含 `用终端打开` 至 `空白 Commit 并 Push` 这 5 项；数量按 2026-10-23 的选择器功能标识及根安装映射去重。
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。当前目录下有19 个 Finder 扩展工程，共提供23 个右键增强动作：打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过终端 fzf 选择 iOS / Android / 鸿蒙打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取已解析的 Pub 第三方依赖、执行 `flutter pub get`、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新，在桌面右键新建并启动 iOS / Android 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。当前目录下有20 个 Finder 扩展工程，共提供24 个右键增强动作：打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过终端 fzf 选择 iOS / Android / 鸿蒙打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取已解析的 Pub 第三方依赖、执行 `flutter pub get`、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新，在桌面右键新建并启动 iOS / Android / 鸿蒙模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 | 右键入口 | 检查与执行结果 |
 | --- | --- |
 | [新建 iOS 模拟器](./JobsIOSSimulatorCreator/README.md) | 仅桌面空白处右键打开 Terminal，读取本机可用 iOS Runtime，选择兼容 iPhone / iPad 并创建、启动；不关闭已有设备，不自动下载运行时。 |
-| [新建 Android 模拟器](./JobsAndroidSimulatorCreator/README.md) | 仅桌面空白处右键打开 Terminal，检查 SDK / Java，选择匹配主机架构的系统映像及机型，新建并启动 AVD；缺组件经确认补齐，保留已有设备。 |
+| [新建 Android 模拟器](./JobsAndroidSimulatorCreator/README.md) | 仅桌面空白处右键打开 Terminal，首屏回车后检查并自动补齐 SDK / Java / 工具，选择匹配主机架构的系统映像及机型，新建并启动 AVD，保留已有设备。 |
+| [新建鸿蒙模拟器](./JobsHarmonySimulatorCreator/README.md) | 仅系统桌面空白；Terminal 选择已下载 Release 镜像，官方 Emulator 创建并核验唯一实例，按需启动。Mac ARM，缺镜像停止并引导 Device Manager；不自动下载或接受许可。 |
 | [运行授权](./JobsRunAuthorizer/README.md) | 仅选中一个本地普通文件时显示；Terminal 展示目标并等待确认后执行 `chmod +x`，执行位受进程 `umask` 影响。不递归、不执行该文件；文件夹、目录包、符号链接、多选和空白处均不显示。 |
 | [配置 Git 动态代理](./JobsGitProxyConfigurator/README.md) | 仅桌面空白右键打开 Terminal，安装、只读检查或恢复用户级 Git 入口。系统代理可用时优先，失败再直连；不固定 VPN 品牌或端口。Windows [对应独立包](../WindowsOS@Extension/JobsGitProxyConfigurator/README.md)提供相同桌面入口。 |
 | [拉取 Git 到最新](./JobsGitPuller/README.md) | 非 Git 目录静默退出；未提交内容列出后回车确认。先快照再合并，冲突可回滚、`YES` 放弃未提交内容后重试、输入 commit 信息提交后重试；空信息直接回车即可。保留本地提交、不推送、不递归子模块。Windows [对应独立包](../WindowsOS@Extension/JobsGitPuller/README.md)采用相同流程。 |
@@ -86,10 +87,10 @@
 
 | 右键场景 | 本仓加入的菜单 |
 | --- | --- |
-| 系统桌面空白处 | “新建 iOS 模拟器”“新建 Android 模拟器”和“配置 Git 动态代理” |
+| 系统桌面空白处 | “新建 iOS 模拟器”“新建 Android 模拟器”“新建鸿蒙模拟器”和“配置 Git 动态代理” |
 | 普通文件夹背景 | 按项目条件显示原有开发菜单，不加入模拟器创建或 Git 代理配置菜单 |
 | 选中一个本地普通文件（含桌面上的文件） | 按原有条件显示开发菜单，并提供“运行授权” |
-| 选中文件夹、目录包、多选或空白处 | 保留原有条件菜单，“运行授权”隐藏；选中项菜单不加入 iOS / Android 新建模拟器菜单 |
+| 选中文件夹、目录包、多选或空白处 | 保留原有条件菜单，“运行授权”隐藏；选中项菜单不加入 iOS / Android / 鸿蒙新建模拟器菜单 |
 
 系统自带的“新建文件夹”“更改墙纸”等菜单继续由 macOS 管理。规则按系统桌面真实路径判断，不会把其它位置名为 `Desktop` 的普通目录当作桌面。
 
@@ -101,7 +102,7 @@ ruby ./Tests/DesktopFinderMenuTests.rb
 
 <strong id="single-repository-quick-look">源码与工程边界速览</strong>
 
-19 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。原工程独立远端已删除，不再使用 `.gitmodules`、gitlink 或工程内 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
+20 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。原工程独立远端已删除，不再使用 `.gitmodules`、gitlink 或工程内 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
 
 Git 管理合并不改变安装单元：各工程保留自己的 Xcode 工程、Scheme、宿主 App、Finder 扩展、Bundle ID 以及原有独立安装 / 卸载入口；Terminal 工程仍包含五个可逐项勾选的功能。文档目录转换统一使用根目录的 [目录过滤器](./.jobs-markdown-toc/README.md)。
 
@@ -109,14 +110,15 @@ Git 管理合并不改变安装单元：各工程保留自己的 Xcode 工程、
 
 | 检查项 | 最低要求 | 说明 |
 | --- | --- | --- |
-| 系统版本 | macOS `12.0` 及以上 | 19 个工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
+| 系统版本 | macOS `12.0` 及以上 | 20 个工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
 | 开发工具 | [**Xcode**](https://developer.apple.com/xcode) 可正常打开 `.xcodeproj` | 手动运行需要 Xcode；批量安装脚本还需要 `xcodebuild`。首次换机器构建时，按 Xcode 提示完成本机签名配置。 |
 | 命令行工具 | `xcodebuild`、`pluginkit`、`pkill`、`killall` 可用 | `xcodebuild` 负责构建 App，`pluginkit` 负责注册和启用 Finder Sync Extension，`pkill pkd` 和 `killall Finder` 用来刷新扩展发现索引与 Finder 菜单缓存。 |
 | 安装选择 | 系统 `osascript` 与 AppKit 可用 | 根目录安装脚本会打开 macOS 原生复选框窗口，不再依赖 fzf。 |
-| 扩展工程 | 本仓19 个工程源码完整 | 源码随本仓一起取得。安装脚本会列出缺失的 `.xcodeproj` 路径并停止；恢复完整源码后重试。 |
+| 扩展工程 | 本仓20 个工程源码完整 | 源码随本仓一起取得。安装脚本会列出缺失的 `.xcodeproj` 路径并停止；恢复完整源码后重试。 |
 | Finder 扩展权限 | 系统设置中允许对应 Finder 扩展 | 构建或安装后，如果右键菜单未出现，先到系统设置的扩展管理里确认对应 Finder 扩展已启用，再重新打开 Finder 窗口。 |
 | 功能权限 | 按扩展 README 单独确认 | `JobsTerminalOpener` 需要允许控制 `Terminal.app`，iOS / Flutter 依赖操作还要求终端环境已安装 [**CocoaPods**](https://cocoapods.org/) 或 Flutter；代码地图操作会体检实际依赖链，缺失组件时等待回车确认，再按需经 Homebrew 补齐 Node/npm 并安装 CodeGraph；空白 Commit 操作需要 Git 可用、当前分支可推送且暂存区为空；`JobsGitRemoteOpener` 和 `JobsGitRemoteCopier` 需要读取目标仓库的 `.git/config`；`JobsPathCopier` 和 `JobsGitRemoteCopier` 主要依赖系统剪贴板。 |
 | Android 模拟器创建 | [**Android SDK Command-line Tools**](https://developer.android.com/tools)、可运行的 Java / JBR、`sdkmanager`、`avdmanager`、`emulator` 与匹配主机架构的系统映像 | 仅使用本机选定 SDK；缺少 SDK / 命令行工具时提示修复，能补齐的组件展示来源与目标后等待输入；回车跳过安装，不自动接受许可证。`--check` 只读，不下载或创建设备。 |
+| 鸿蒙模拟器创建 | Apple Silicon 原生 Terminal、官方 DevEco Emulator 6.1.0 Beta1+ 及已下载 Release 镜像 | `-help` 核验创建与镜像查询能力；没有本地镜像时在 Device Manager 准备后重跑。Windows 平行实现支持 x86_64（x64），本目录只实现 Mac ARM；macOS 27 尚未实际 DevEco SDK 验收。 |
 
 常用自检命令：
 
@@ -127,11 +129,12 @@ pluginkit -m -p com.apple.FinderSync -A -v
 osascript -e 'return "AppKit UI 可用"'
 ```
 
-在本仓根目录运行安装器集成回归，核对23 项功能、19 个工程的选择映射，以及工程缺失时的停止提示；测试只使用隔离目录，不构建或注册扩展：
+在本仓根目录运行安装器集成回归，核对24 项功能、20 个工程的选择映射，以及工程缺失时的停止提示；测试只使用隔离目录，不构建或注册扩展：
 
 ```shell
 ruby ./Tests/FlutterInstallerIntegrationTests.rb
 ruby ./Tests/AndroidSimulatorInstallerIntegrationTests.rb
+ruby ./Tests/HarmonySimulatorInstallerIntegrationTests.rb
 ```
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、工程索引 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -155,10 +158,11 @@ ruby ./Tests/AndroidSimulatorInstallerIntegrationTests.rb
 | [JobsGitPuller](./JobsGitPuller/README.md) | `拉取 Git 到最新` | 保护未提交改动，合并当前分支 upstream，冲突提供回滚、放弃、提交后三选一。 | `./JobsGitPuller/JobsGitPuller.xcodeproj` |
 | [JobsIOSSimulatorCreator](./JobsIOSSimulatorCreator/README.md) | `新建 iOS 模拟器` | 仅桌面空白右键，选择已安装运行时和兼容机型，新建并启动设备。 | `./JobsIOSSimulatorCreator/JobsIOSSimulatorCreator.xcodeproj` |
 | [JobsAndroidSimulatorCreator](./JobsAndroidSimulatorCreator/README.md) | `新建 Android 模拟器` | 仅桌面空白右键；SDK 体检、架构匹配、独立创建并启动 AVD。 | `./JobsAndroidSimulatorCreator/JobsAndroidSimulatorCreator.xcodeproj` |
+| [JobsHarmonySimulatorCreator](./JobsHarmonySimulatorCreator/README.md) | `新建鸿蒙模拟器` | 仅系统桌面空白，Mac ARM 官方 Emulator CLI 创建本地镜像实例；保留现有设备与许可交互。 | `./JobsHarmonySimulatorCreator/JobsHarmonySimulatorCreator.xcodeproj` |
 | [JobsGitProxyConfigurator](./JobsGitProxyConfigurator/README.md) | `配置 Git 动态代理` | 仅桌面空白右键，Terminal 中安装、检查或恢复用户级 Git 动态代理入口。 | `./JobsGitProxyConfigurator/JobsGitProxyConfigurator.xcodeproj` |
 | `./JobsTerminalOpener` | 5 个可独立勾选的 Terminal 功能 | 包含 `用终端打开`、`pod install`、`flutter pub get`、`更新代码地图（.codegraph）`和空白 Commit Push；安装时或 App 内均可逐项决定是否显示。 | `./JobsTerminalOpener/JobsTerminalOpener.xcodeproj` |
 
-19 个工程均为本仓管理的普通源码目录，可独立构建与卸载。每个工程根目录统一提供裸露的安装 / 卸载双击脚本，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
+20 个工程均为本仓管理的普通源码目录，可独立构建与卸载。每个工程根目录统一提供裸露的安装 / 卸载双击脚本，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
 
 各子功能的独立安装入口统一为：直接回车安装，输入任意字符（包括空格）后回车跳过。根目录总安装入口按回车后进入功能勾选面板，选好功能再点击“安装”。
 
@@ -168,11 +172,11 @@ ruby ./Tests/AndroidSimulatorInstallerIntegrationTests.rb
 
 1、双击根目录脚本 `./【MacOS】🧩安装Finder扩展.command`。
 
-2、脚本打印内置自述后，按回车继续，检查系统工具及19 个工程的 `.xcodeproj`。
+2、脚本打印内置自述后，按回车继续，检查系统工具及20 个工程的 `.xcodeproj`。
 
 3、任一工程文件缺失时，脚本列出具体路径并停止；从本仓恢复完整源码后重新运行。检查通过后打开 macOS 原生复选框窗口。
 
-4、逐项勾选需要安装的右键菜单功能，也可点击“全选”或“全不选”，选好后点击“安装”；没有勾选时安装按钮置灰。功能列表与底部按钮固定显示，中间区域不滚动。`JobsTerminalOpener` 的五项选择会归并为一次工程构建；19 个工程源码均应随本仓完整取得。
+4、逐项勾选需要安装的右键菜单功能，也可点击“全选”或“全不选”，选好后点击“安装”；没有勾选时安装按钮置灰。功能列表与底部按钮固定显示，中间区域不滚动。`JobsTerminalOpener` 的五项选择会归并为一次工程构建；20 个工程源码均应随本仓完整取得。
 
 5、确认后，脚本会调用 `xcodebuild` 构建相关 App，清理同 Bundle ID 的旧 LaunchServices / PlugInKit 记录，注册并启用 Finder Sync Extension，最后重启 `pkd` 和 Finder 刷新右键菜单缓存。
 
@@ -210,7 +214,7 @@ ruby ./Tests/AndroidSimulatorInstallerIntegrationTests.rb
 
 ## 五、<span id="single-repository-management">源码取得与单仓管理</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-从 [**GitHub**](https://github.com/JobsKits/MacOS_Extension) 或 [**Gitee**](https://gitee.com/JobsGo/MacOS_Extension) 取得本仓，19 个工程源码随仓库一起检出，不需要 `--recurse-submodules`。例如：
+从 [**GitHub**](https://github.com/JobsKits/MacOS_Extension) 或 [**Gitee**](https://gitee.com/JobsGo/MacOS_Extension) 取得本仓，20 个工程源码随仓库一起检出，不需要 `--recurse-submodules`。例如：
 
 ```shell
 git clone https://github.com/JobsKits/MacOS_Extension.git
@@ -257,6 +261,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 ├── JobsGitPuller/  # 本仓普通源码目录
 ├── JobsIOSSimulatorCreator/  # 桌面右键新建 iOS 模拟器
 ├── JobsAndroidSimulatorCreator/  # 桌面右键新建 Android 模拟器
+├── JobsHarmonySimulatorCreator/  # 桌面右键新建鸿蒙模拟器
 ├── JobsGitProxyConfigurator/  # 用户级 Git 动态代理
 ├── JobsTerminalOpener/  # 本仓普通源码目录
 ├── README.md
@@ -281,6 +286,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 * [JobsGitPuller](./JobsGitPuller/README.md)：独立安装工程，包含宿主、Finder 扩展及安装 / 卸载入口；拉取 Git 与冲突三选一在 Terminal 内执行。
 * [JobsIOSSimulatorCreator](./JobsIOSSimulatorCreator/README.md)：独立的桌面空白右键入口，后台宿主转发至 Terminal 选择运行时、机型和名称；不清理已有模拟器，内含独立安装 / 卸载脚本。
 * [JobsAndroidSimulatorCreator](./JobsAndroidSimulatorCreator/README.md)：独立的桌面空白右键入口，SDK / Java 体检后选择机型和架构匹配映像，固定以 `--create` 新建；不删除或覆盖已有 AVD，内含独立安装 / 卸载脚本。
+* [JobsHarmonySimulatorCreator](./JobsHarmonySimulatorCreator/README.md)：独立的系统桌面空白入口，以官方 `Emulator -create` 新建并复查实例；要求 Mac ARM / DevEco 6.1.0 Beta1+，只选择已下载 Release 镜像，不自动下载、不接受许可、不覆盖既有设备。
 * [JobsGitProxyConfigurator](./JobsGitProxyConfigurator/README.md)：独立桌面菜单与安装 / 卸载入口，自包含现行 Git 动态代理配置脚本。仅安装或注册菜单不会执行 Git 配置；卸载菜单保留另行安装的 Git 运行态，需从配置脚本选择恢复。
 * [Scripts 目录说明](./Scripts/README.md)：安装器使用的原生功能选择界面及调用约定。
 * [目录过滤器说明](./.jobs-markdown-toc/README.md)：本仓自包含转换工具与精确文档清单；本地保留 `[toc]`，整文件暂存时自动生成折叠目录。受控文档按根工具精确清单登记，新增文档与安装映射分别核对。
@@ -291,7 +297,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 
 > **目的：** 选择并安装本目录的 Finder 右键功能，刷新菜单使其生效。
 
-* 阅读自述并回车，检查系统工具与19 个扩展工程。
+* 阅读自述并回车，检查系统工具与20 个扩展工程。
   * 任一工程缺失：列出具体 `.xcodeproj` 路径并停止；恢复本仓完整源码后重试。
 * 在原生复选框窗口逐项勾选或使用“全选 / 全不选”，再点击“安装”；Terminal 的五项功能归并为一次工程安装。
   * 未选择项目时“安装”置灰；点击取消或关闭窗口退出安装。
@@ -310,19 +316,19 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 
 ## 七、<span id="project-statistics">项目统计与复核口径</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-本章功能与运行边界复核日期为 **2026-10-22（Asia/Shanghai）**；Git 历史于 **2026-10-20** 按本仓当前 `HEAD` 复核。现有19 个工程均为普通目录，当前历史不合并原工程独立历史；第 7.6 节保留迁移前基线，并另列当前单仓源码快照。本仓及各工程均无根 `.codegraph/`，未建立代码索引。后续功能、依赖或工程变化时同步更新本章。
+本章功能与运行边界复核日期为 **2026-10-22（Asia/Shanghai）**；Git 历史于 **2026-10-20** 按本仓当前 `HEAD` 复核。现有20 个工程均为普通目录，当前历史不合并原工程独立历史；第 7.6 节保留迁移前基线，并另列当前单仓源码快照。本仓及各工程均无根 `.codegraph/`，未建立代码索引。后续功能、依赖或工程变化时同步更新本章。
 
 ### <span id="jobs-toc-heading-14" data-jobs-toc="v2">7.1、工具链与锁定状态 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 类别 | 名称 / 版本 | 依据与锁文件入库状态 |
 | --- | --- | --- |
-| 语言 / SDK | Swift 语言模式 `5.0`；macOS SDK 随所选 Xcode | 19 个 `*.xcodeproj/project.pbxproj` 的 `SWIFT_VERSION`；不是编译器版本锁。 |
+| 语言 / SDK | Swift 语言模式 `5.0`；macOS SDK 随所选 Xcode | 20 个 `*.xcodeproj/project.pbxproj` 的 `SWIFT_VERSION`；不是编译器版本锁。 |
 | 构建工具 | Xcode 未固定精确版本；工程 `LastUpgradeCheck = 2650` | 此字段仅为工程升级检查记录，最低可构建 Xcode 版本待实机矩阵核实；用 `xcodebuild -version` 记录实际环境。 |
-| 最低系统 | macOS `12.0` | 19 个工程全部 target 的 `MACOSX_DEPLOYMENT_TARGET`。 |
+| 最低系统 | macOS `12.0` | 20 个工程全部 target 的 `MACOSX_DEPLOYMENT_TARGET`。 |
 | 安装 / 维护 | 系统 zsh、osascript、swiftc、PlugInKit、Git；Ruby 用于隔离测试 | 未设精确版本；本机版本由环境自检确认，不把本机输出视为仓库版本约束。 |
 | Node 工具链 | 文档 Node.js `20+`；CodeGraph `1.6.2` 安装链要求 `>=20 <25`，修复使用 Homebrew `node@24` | `.jobs-markdown-toc/README.md` 与 Terminal 工程 `TerminalOpener.swift`；CodeGraph 兼容范围于 2026-10-20 复核，健康既有工具先复用，非精确补丁版本锁。 |
 | 功能工具 | FVM / fzf / Flutter / Dart；Pod 功能直接使用终端环境中的 CocoaPods；CodeGraph 经健康检查复用 | 工具按功能使用现有环境或原有安装链，版本来源与风险见[依赖清单](#direct-dependencies)。 |
-| Android 模拟器工具链 | SDK Command-line Tools、Java / Android Studio JBR、Android Emulator 与系统映像均未锁精确版本 | `JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh` 实测工具可运行，按主机硬件选择 `arm64-v8a` / `x86_64` 映像；只使用选定 SDK，不自动安装 Java 或接受 SDK 许可证。 |
+| Android 模拟器工具链 | SDK Command-line Tools、Java / Android Studio JBR、Android Emulator 与系统映像均未锁精确版本 | `JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh` 逐层体检并自动补齐，按主机硬件选择 `arm64-v8a` / `x86_64` 映像；只使用选定 SDK，SDK 许可证由本人确认。 |
 | 依赖锁定 | 无已入库 `Package.resolved`、`Podfile.lock`、`pubspec.lock` 或 npm 锁文件 | 扩展源码没有第三方 SPM / Pod 包依赖；目标项目自己的锁文件属于操作对象，不属于扩展依赖。源码版本统一由本仓提交记录；这不替代外部工具自身的版本锁。 |
 
 ### <span id="jobs-toc-heading-15" data-jobs-toc="v2">7.2、建库与提交历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -359,7 +365,7 @@ git rev-parse --is-shallow-repository
 | 后端统计项 | 结果与依据（2026-10-22） |
 | --- | --- |
 | 对外接口：HTTP / RPC / MQ | 均为 `0`；各宿主、FinderSync 与终端脚本未提供对外监听服务。下载与 Git 网络请求是客户端出站调用，不计入。 |
-| 服务模块 / 部署单元 | 后端服务 `0`；本地部署单元为 19 组宿主 App / 内嵌 appex，依据根安装映射与 19 个 Xcode 工程；不计为后端服务。 |
+| 服务模块 / 部署单元 | 后端服务 `0`；本地部署单元为 20 组宿主 App / 内嵌 appex，依据根安装映射与 20 个 Xcode 工程；不计为后端服务。 |
 | 核心业务表 | `0`；未声明自有业务数据库。目标 `.codegraph` 的 SQLite 由外部工具管理。 |
 | 业务状态机 | 后端业务状态机 `0`；安装、确认、冲突恢复是本地操作流程，不作为订单等服务业务对象计数。 |
 | 外部系统集成 | 无支付 / 短信 / ERP 等业务服务；Git 托管、官方 SDK / 包源及 IDE 为条件工具集成，详见依赖表，目标服务地址随项目配置变化。 |
@@ -376,7 +382,7 @@ git rev-parse --is-shallow-repository
 ```mermaid
 flowchart TD
     A["总安装入口<br/>【MacOS】🧩安装Finder扩展.command"] --> B["原生选择器<br/>Scripts/SelectFinderExtensionFeatures.swift"]
-    A --> C["本仓19 个工程<br/>安装映射 + 各 project.pbxproj"]
+    A --> C["本仓20 个工程<br/>安装映射 + 各 project.pbxproj"]
     C --> D["宿主 App<br/>各工程 AppDelegate.swift / main.swift"]
     C --> E["Finder 扩展<br/>各 FinderSync.swift"]
     E --> F["直接系统操作<br/>ProjectOpener.swift / GitRemoteResolver.swift / PathClipboardWriter.swift"]
@@ -455,28 +461,28 @@ pie showData
 | `JobsGitPuller` | `23 / 3,081` |
 | `JobsFlutterDependencyExtractor` | `27 / 5,442` |
 
-<strong id="current-source-statistics">当前单仓源码规模（2026-10-22）</strong>
+<strong id="current-source-statistics">当前单仓源码规模（2026-10-23）</strong>
 
 依据本仓 `git ls-files -c -o --exclude-standard` 合并候选、按相对路径去重，统计现存普通 UTF-8 文本；包含未提交与未跟踪源码，排除 Markdown、资源、锁文件、第三方、生成代码、`xcuserdata`、`work` 与常规依赖 / 构建目录。纳入 Swift、Dart、JXA、Shell、Ruby、JS/MJS、AppleScript、Xcode / plist / entitlements / Scheme / JSON / YAML 和 Git 属性 / 忽略配置、FVM 配置。行数含空行与注释；`Tests/` 独立计为测试，其余运行时 Swift / Dart / JXA 及各功能业务 zsh（排除构建后启用脚本）、Git 动态代理核心 command 计为业务，根 `Scripts` 安装选择器和其它工具 / 配置计为配置与脚本。此快照包含当前磁盘上的自有源码与并行新增工程，不代表已提交或远端发布。
 
 | 类别 | 文件数 | 物理行数 | 行数占比 |
 | --- | --- | --- | --- |
-| 业务代码 | `141` | `26041` | `40.94%` |
-| 测试代码 | `46` | `13675` | `21.50%` |
-| 配置与脚本 | `187` | `23889` | `37.56%` |
-| 纳入合计 | `374` | `63605` | `100.00%` |
+| 业务代码 | `149` | `27230` | `40.47%` |
+| 测试代码 | `51` | `15011` | `22.31%` |
+| 配置与脚本 | `196` | `25046` | `37.22%` |
+| 纳入合计 | `396` | `67287` | `100.00%` |
 
 ```mermaid
 pie showData
-    title 2026-10-22 当前单仓源码物理行数
-    "业务代码" : 26041
-    "测试代码" : 13675
-    "配置与脚本" : 23889
+    title 2026-10-23 当前单仓源码物理行数
+    "业务代码" : 27230
+    "测试代码" : 15011
+    "配置与脚本" : 25046
 ```
 
 ## 八、<span id="direct-dependencies">直接依赖、来源与风险</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-统计日期 **2026-10-22**。19 个 Xcode 工程未声明外部 SPM / Pod 直接源码包，因此构建链接的第三方包数为 `0`；Jobs 工程是自有模块，不当作第三方库。下表列直接调用的外部工具，均为公开官方来源、私库地址不适用；每项按功能条件使用，不将工具自身的传递依赖或目标项目依赖计入包总数。许可证链接核对上游声明，不替代实际分发版本的 LICENSE / NOTICE。
+统计日期 **2026-10-22**。20 个 Xcode 工程未声明外部 SPM / Pod 直接源码包，因此构建链接的第三方包数为 `0`；Jobs 工程是自有模块，不当作第三方库。下表列直接调用的外部工具，均为公开官方来源、私库地址不适用；每项按功能条件使用，不将工具自身的传递依赖或目标项目依赖计入包总数。许可证链接核对上游声明，不替代实际分发版本的 LICENSE / NOTICE。
 
 | 直接工具 | 版本 / 来源 | 许可证 | 用途与仍在使用 |
 | --- | --- | --- | --- |
@@ -488,13 +494,13 @@ pie showData
 | Node.js / npm | 文档 Node `20+`；CodeGraph 缺失安装链为 `node@24`；精确补丁未锁定；[Node](https://nodejs.org/) / [npm](https://docs.npmjs.com/) | [Node MIT 及附带第三方条款](https://github.com/nodejs/node/blob/main/LICENSE)；npm 分发条款须随实际版本复核 | 是；文档目录、FVM JSON 辅助与 CodeGraph 安装链。 |
 | CodeGraph | 健康 CLI 复用；代码注释和行为基线 `1.6.2`，macOS 安装未锁精确包版本；[公有 npm 包](https://www.npmjs.com/package/@colbymchenry/codegraph) | [MIT](https://github.com/colbymchenry/codegraph/blob/main/LICENSE) | 是；用户触发代码地图创建 / 同步；源码位于 Terminal 工程 `TerminalOpener.swift`。 |
 | Ruby / CocoaPods | 复用本机终端环境，精确版由使用者和目标工程决定；[Ruby](https://www.ruby-lang.org/) / [CocoaPods](https://github.com/CocoaPods/CocoaPods) 公有来源 | [Ruby / BSD-2-Clause 双选](https://www.ruby-lang.org/en/about/license.txt)；[CocoaPods MIT](https://github.com/CocoaPods/CocoaPods/blob/master/LICENSE) | 是；Pod 入口直接执行 `pod install`，Ruby 也用于本地测试。 |
-| Android SDK 工具 / 系统映像 | 复用选定 SDK 的 `sdkmanager` / `avdmanager` / `emulator`，只列稳定频道与匹配主机架构的映像；精确版未锁定；[官方工具说明](https://developer.android.com/tools/sdkmanager) | [Android SDK 许可协议](https://developer.android.com/studio/terms)；各组件的开源许可、LICENSE / NOTICE 按实际安装包核对 | 是；仅 Android AVD 创建 / 启动。缺组件时确认后安装，不全量升级、不自动接受许可证，不随扩展分发 SDK 二进制。 |
-| Java / JBR | 验证现有 `JAVA_HOME`、Android Studio 内置 JBR 或本机 Java 可用；未锁版本；[官方运行环境说明](https://developer.android.com/build/jdks) | 依所用 JDK / JBR 发行版的 LICENSE / NOTICE 核对，本仓不指定单一发行版或再分发 Java | 是；运行 Android SDK 命令行工具；脚本只调整当前进程环境，不自动安装 Java。 |
+| Android SDK 工具 / 系统映像 | 复用选定 SDK 的 `sdkmanager` / `avdmanager` / `emulator`，只列稳定频道与匹配主机架构的映像；精确版未锁定；[官方工具说明](https://developer.android.com/tools/sdkmanager) | [Android SDK 许可协议](https://developer.android.com/studio/terms)；各组件的开源许可、LICENSE / NOTICE 按实际安装包核对 | 是；仅 Android AVD 创建 / 启动。首屏回车后自动补齐必要工具，选定映像后直接安装；不全量升级、不自动接受许可证，不随扩展分发 SDK 二进制。 |
+| Java / JBR | 优先验证现有 `JAVA_HOME`、Android Studio 内置 JBR 或本机 Java；均不可用时自动补齐用户目录内的官方 Temurin 21，并校验归档及运行能力；[官方运行环境说明](https://developer.android.com/build/jdks) | 依所用 JDK / JBR 发行版的 LICENSE / NOTICE 核对；[Temurin 官方来源](https://adoptium.net/temurin/releases/) | 是；运行 Android SDK 命令行工具；复用健康依赖，仅调整本次进程环境，不改全局 Java 配置。 |
 | Xcode / Apple 系统框架、IDE 与浏览器 | Xcode / AppKit / FinderSync 随环境；VSCode、Android Studio 按本机安装 | Apple SDK 与各 IDE 自身产品许可；本仓不再分发其二进制 | 是；系统集成与打开目标；不并入第三方源码包数。 |
 
 **风险与处置：** 多数工具浮动或由目标工程决定，首次安装与升级需记录实际 `--version`，健康检查通过仍需验收新版本；尤其 macOS CodeGraph 没有固定 npm 版本，不能把行为基线视为已锁定。Git 的 GPL-2.0 单独标注，当前按外部 CLI 调用，若将工具二进制或源码随产品分发须按该版本条款复核。npm 与 IDE 的完整分发许可仍待核实。未实施安全公告 / 归档状态的全量版本审计，不能声称无漏洞或所有上游均在维护。
 
-Android 工具依赖实际安装版本的可执行性与命令输出；官方已在 [sdkmanager 文档](https://developer.android.com/tools/sdkmanager)标记弃用并推荐 Android CLI，当前脚本兼容已有 Command-line Tools，不声称覆盖替代 CLI。Android SDK 与 Java 的完整许可依具体分发版本核对，SDK 许可提示由使用者本人阅读处理。
+Android 新建流程在首屏说明自动补齐范围并等待回车；之后沿 SDK / Java / 命令行工具 / Emulator 逐层体检，缺失或损坏时自动修复一次并立即复检。没有系统映像时自动读取官方列表，选中映像后直接安装；SDK 许可证仍由本人阅读确认，`--check` 始终只读。官方已在 [sdkmanager 文档](https://developer.android.com/tools/sdkmanager)标记弃用并推荐 Android CLI，当前脚本兼容已有 Command-line Tools，不声称覆盖替代 CLI。Android SDK 与 Java 的完整许可依具体分发版本核对。
 
 ## 九、<span id="run-and-verify">运行、构建与验证补充</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -522,6 +528,6 @@ xcodebuild \
 | 找不到子工程 / 工具 | 工程缺失时恢复本仓完整源码；缺 Xcode Command Line Tools 或对应 SDK 时先修环境。目标路径、Pod 同层 `Podfile` / `*.xcodeproj` 或 Flutter 根声明不合法时修目标，不绕过门禁。 |
 | 网络 / 离线 | 本仓没有 API 假数据模式；FVM 官方列表失败仅可选就绪缓存，其余联网工具依原实现停止并展示来源与错误。 |
 
-本章统计与图按静态源码核对；未因文档维护执行真实安装、卸载、依赖下载、构建、Finder 重启或远端推送。签名加载和全部23 项右键交互仍以对应设备的实际验收为准。
+本章统计与图按静态源码核对；未因文档维护执行真实安装、卸载、依赖下载、构建、Finder 重启或远端推送。签名加载和全部24 项右键交互仍以对应设备的实际验收为准。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

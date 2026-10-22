@@ -7,6 +7,7 @@ require 'open3'
 require 'pty'
 require 'timeout'
 require 'digest'
+require 'json'
 
 class CreateAndroidSimulatorTests < Minitest::Test
   SCRIPT = File.expand_path('../Scripts/CreateAndroidSimulator.zsh', __dir__)
@@ -41,6 +42,10 @@ class CreateAndroidSimulatorTests < Minitest::Test
       #!/bin/zsh
       print -r -- "sdk:$*" >> "$FIXTURE_EVENTS"
       if [[ "$*" == *--version* ]]; then
+        if [[ "${FIXTURE_REQUIRE_JAVA21:-0}" == 1 && "$JAVA_HOME" == "$FIXTURE_OLD_JAVA" ]]; then
+          print -r -- 'UnsupportedClassVersionError: only recognizes class file versions' >&2
+          exit 13
+        fi
         [[ "${FIXTURE_TOOLS_BROKEN:-0}" != 1 ]] || exit 7
         print -r -- 19.0
       elif [[ "$*" == *--list* ]]; then
@@ -61,6 +66,9 @@ class CreateAndroidSimulatorTests < Minitest::Test
           : > "$image_dir/system.img"
           : > "$image_dir/source.properties"
         fi
+      elif [[ "$*" == *'--uninstall emulator'* ]]; then
+        [[ "${FIXTURE_UNINSTALL_FAIL:-0}" != 1 ]] || exit 12
+        /bin/rm -r "$ANDROID_HOME/emulator"
       else
         exit 9
       fi
@@ -151,13 +159,21 @@ class CreateAndroidSimulatorTests < Minitest::Test
       <complete><size>#{File.size(archive)}</size><checksum type="sha1">#{checksum}</checksum><url>#{archive_name}</url></complete>
       </archive></archives></remotePackage></repository>
     XML
+    @env['FIXTURE_BOOTSTRAP_XML'] = xml
+    @env['FIXTURE_BOOTSTRAP_ZIP'] = archive
+    write_download_fixture
+    FileUtils.rm_rf(File.join(@sdk, 'cmdline-tools', 'latest'))
+  end
+
+  def write_download_fixture
     fakebin = File.join(@root, 'bin')
     executable(File.join(fakebin, 'curl'), <<~'ZSH')
       #!/bin/zsh
-      target='' url=''
+      target='' url='' headers=''
       [[ "$1" == --disable ]] || exit 17
       while (( $# )); do
         if [[ "$1" == --output ]]; then target="$2"; shift; fi
+        if [[ "$1" == --dump-header ]]; then headers="$2"; shift; fi
         if [[ "$1" == https://* ]]; then url="$1"; fi
         shift
       done
@@ -166,16 +182,53 @@ class CreateAndroidSimulatorTests < Minitest::Test
       print -r -- "stage-mode:$(/usr/bin/stat -f %Lp "${target:h}")" >> "$FIXTURE_EVENTS"
       if [[ "$url" == https://dl.google.com/android/repository/repository2-3.xml ]]; then
         /bin/cp "$FIXTURE_BOOTSTRAP_XML" "$target"
+      elif [[ "$url" == https://api.adoptium.net/* ]]; then
+        /bin/cp "$FIXTURE_JAVA_JSON" "$target"
+      elif [[ "$url" == https://github.com/* || "$url" == https://release-assets.githubusercontent.com/* ]]; then
+        [[ "${FIXTURE_JAVA_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
+        if [[ "${FIXTURE_JAVA_REDIRECT:-0}" == 1 && "$url" == https://github.com/* ]]; then
+          print -r -- $'HTTP/1.1 302 Found\r\nLocation: https://release-assets.githubusercontent.com/fixture/java.tar.gz?signature=private-token\r\n' > "$headers"
+          print -rn -- 302
+          exit 0
+        fi
+        /bin/cp "$FIXTURE_JAVA_TAR" "$target"
       else
         [[ "${FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
         /bin/cp "$FIXTURE_BOOTSTRAP_ZIP" "$target"
       fi
       print -rn -- 200
     ZSH
-    @env['PATH'] = "#{fakebin}:#{@env['PATH']}"
-    @env['FIXTURE_BOOTSTRAP_XML'] = xml
-    @env['FIXTURE_BOOTSTRAP_ZIP'] = archive
-    FileUtils.rm_rf(File.join(@sdk, 'cmdline-tools', 'latest'))
+    @env['PATH'] = "#{fakebin}:/usr/bin:/bin:/usr/sbin:/sbin"
+  end
+
+  def java_fixture(checksum: nil, unsafe_link: nil)
+    contents = File.join(@root, 'java archive', 'jdk-21.0.13+9', 'Contents', 'Home')
+    FileUtils.mkdir_p(File.join(contents, 'bin'))
+    FileUtils.cp(File.join(@jdk, 'bin', 'java'), File.join(contents, 'bin', 'java'))
+    File.symlink(unsafe_link, File.join(contents, 'unsafe')) if unsafe_link
+    archive = File.join(@root, 'official-java.tar.gz')
+    _output, result = Open3.capture2e('/usr/bin/tar', '-czf', archive, '-C', File.join(@root, 'java archive'), 'jdk-21.0.13+9')
+    assert result.success?
+    arch = PACKAGE.end_with?('arm64-v8a') ? 'aarch64' : 'x64'
+    json = File.join(@root, 'official-java.json')
+    File.write(json, JSON.generate([{ vendor: 'eclipse', version: { major: 21 }, release_name: 'jdk-21.0.13+9', binary: { os: 'mac', architecture: arch, image_type: 'jdk', jvm_impl: 'hotspot', package: { link: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_#{arch}_mac_hotspot_21.0.13_9.tar.gz", checksum: checksum || Digest::SHA256.file(archive).hexdigest, size: File.size(archive) } } }]))
+    @env['FIXTURE_JAVA_JSON'] = json
+    @env['FIXTURE_JAVA_TAR'] = archive
+    write_download_fixture
+  end
+
+  def java_bootstrap
+    command = <<~'ZSH'
+      source <(/usr/bin/sed '$d' "$1")
+      android_prepare_context
+      ANDROID_SIM_MODE=prepare
+      android_detect_architecture
+      android_find_java() {
+        [[ "${FIXTURE_JAVA_POSTFAIL:-0}" != 1 ]] && [[ "${JAVA_HOME:-}" == "$HOME/Library/Java/JavaVirtualMachines/temurin-21-"* ]] && [[ -x "$JAVA_HOME/bin/java" ]] && "$JAVA_HOME/bin/java" -version
+      }
+      android_ensure_java
+    ZSH
+    Open3.capture2e(@env, '/bin/zsh', '-c', command, 'test', SCRIPT)
   end
 
   def interactive(input, *args)
@@ -227,7 +280,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
     @env['ANDROID_HOME'] = File.join(@root, '不存在')
     output, result = check
     refute result.success?
-    assert_includes output, 'SDK 根目录不存在'
+    assert_includes output, 'SDK 根目录未就绪'
     assert_empty events
   end
 
@@ -318,29 +371,29 @@ class CreateAndroidSimulatorTests < Minitest::Test
     refute_includes events, 'create avd'
   end
 
-  def test_existing_avd_can_launch_without_sdk_tools_or_java_dependency
+  def test_existing_avd_launch_checks_entire_toolchain_without_installing
     File.write(File.join(@avd, 'list'), "Existing\n")
-    FileUtils.rm_rf(File.join(@sdk, 'cmdline-tools'))
     output, result = interactive("\n2\n")
     assert result.success?, output
     assert_includes events, 'launch:Existing'
-    refute_includes events, 'sdk:'
+    assert_includes events, '--version'
+    refute_includes events, '--install'
   end
 
   def test_emulator_missing_installs_once_and_rechecks
     FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
-    output, result = interactive("\ninstall\nq\n", '--create')
+    output, result = interactive("\nq\n", '--create')
     assert result.success?, output
     assert_equal 1, events.scan('--install emulator').length
     assert_includes output, '来源｜SDK 组件安装'
-    assert_operator output.index('来源｜SDK 组件安装'), :<, output.index('下载 / 安装所选组件')
+    assert_operator output.index('来源｜SDK 组件安装'), :<, output.index('自动安装本次必要组件')
     refute_includes events, 'create avd'
   end
 
   def test_emulator_install_failure_stops_downstream
     FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
     @env['FIXTURE_INSTALL_FAIL'] = '1'
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, '组件安装失败'
     assert_equal 1, events.scan('--install emulator').length
@@ -350,19 +403,19 @@ class CreateAndroidSimulatorTests < Minitest::Test
   def test_emulator_post_install_health_failure_stops
     FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
     @env['FIXTURE_INSTALL_BROKEN'] = '1'
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, '安装后复检仍失败'
     assert_equal 1, events.scan('--install emulator').length
     refute_includes events, 'create avd'
   end
 
-  def test_missing_image_skip_network_has_no_download
+  def test_missing_image_automatically_reads_remote_list_and_can_cancel_selection
     FileUtils.rm_rf(File.join(@sdk, 'system-images'))
-    output, result = interactive("\n\n\n", '--create')
+    output, result = interactive("\n\nq\n", '--create')
     assert result.success?, output
-    assert_includes output, '联网读取'
-    refute_includes events, '--list --channel'
+    assert_includes output, '查询稳定系统映像'
+    assert_includes events, '--list --channel'
     refute_includes events, '--install'
     refute_includes events, 'create avd'
   end
@@ -370,7 +423,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
   def test_remote_list_failure_does_not_create
     FileUtils.rm_rf(File.join(@sdk, 'system-images'))
     @env['FIXTURE_LIST_FAIL'] = '1'
-    output, result = interactive("\n\nquery\n", '--create')
+    output, result = interactive("\n\n", '--create')
     refute result.success?, output
     assert_includes output, '读取 Google SDK 清单失败'
     refute_includes events, '--install'
@@ -379,7 +432,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
 
   def test_image_download_and_creation
     FileUtils.rm_rf(File.join(@sdk, 'system-images'))
-    output, result = interactive("\n\nquery\n\ninstall\n\n\n", '--create')
+    output, result = interactive("\n\n\n\n\n", '--create')
     assert result.success?, output
     assert_includes events, "--install #{PACKAGE}"
     assert_includes events, 'create avd'
@@ -389,7 +442,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
   def test_image_post_install_failure_does_not_create
     FileUtils.rm_rf(File.join(@sdk, 'system-images'))
     @env['FIXTURE_INSTALL_BROKEN'] = '1'
-    output, result = interactive("\n\nquery\n\ninstall\n", '--create')
+    output, result = interactive("\n\n\n", '--create')
     refute result.success?, output
     assert_includes output, '映像安装后复检失败'
     refute_includes events, 'create avd'
@@ -430,18 +483,19 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert_includes output, 'fzf 缺失或不可用'
   end
 
-  def test_missing_command_tools_bootstrap_is_optional_and_stops_on_enter
+  def test_missing_command_tools_is_automatically_prepared_after_single_entry_confirmation
     bootstrap_fixture
-    output, result = interactive("\n\n", '--create')
-    refute result.success?, output
-    refute_includes events, 'curl:'
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes events, 'curl:'
     refute_includes events, 'create avd'
-    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    refute_includes output, '回车跳过'
   end
 
   def test_official_bootstrap_adds_a_version_and_rechecks
     bootstrap_fixture
-    output, result = interactive("\ninstall\nq\n", '--create')
+    output, result = interactive("\nq\n", '--create')
     assert result.success?, output
     assert_equal 1, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
     assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
@@ -456,7 +510,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
 
   def test_official_bootstrap_checksum_failure_leaves_sdk_untouched
     bootstrap_fixture(checksum: '0' * 40)
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, '工具归档校验失败'
     assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
@@ -466,7 +520,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
 
   def test_official_bootstrap_rejects_external_archive_url
     bootstrap_fixture(archive_name: 'https://example.invalid/tools.zip')
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, '元数据格式或归档地址不符合预期'
     assert_equal 1, events.scan('curl:').length
@@ -476,7 +530,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
   def test_official_bootstrap_download_failure_stops_without_retries
     bootstrap_fixture
     @env['FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL'] = '1'
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, 'Google 官方下载失败'
     assert_equal 2, events.scan('curl:').length
@@ -489,7 +543,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
     FileUtils.mkdir_p(File.dirname(preserved))
     File.write(preserved, 'keep original')
     @env['FIXTURE_TOOLS_BROKEN'] = '1'
-    output, result = interactive("\ninstall\n", '--create')
+    output, result = interactive("\n", '--create')
     refute result.success?, output
     assert_includes output, '命令行工具安装后复检失败'
     assert_equal 'keep original', File.read(preserved)
@@ -516,14 +570,16 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert_includes output, '系统映像：2 个'
   end
 
-  def test_registered_broken_emulator_stops_without_false_repair
+  def test_registered_broken_emulator_repairs_once_and_stops_if_recheck_still_fails
     File.write(File.join(@sdk, 'emulator', 'source.properties'), 'Pkg.Revision=36')
     @env['FIXTURE_EMULATOR_BROKEN'] = '1'
     output, result = interactive("\n", '--create')
     refute result.success?, output
-    assert_includes output, '可能跳过已登记包'
+    assert_includes output, '自动通过官方 sdkmanager 卸载'
     assert_includes output, '保留已有 AVD'
-    refute_includes events, '--install'
+    assert_equal 1, events.scan('--uninstall emulator').length
+    assert_equal 1, events.scan('--install emulator').length
+    assert_includes output, '安装后复检仍失败'
     refute_includes events, 'create avd'
   end
 
@@ -539,5 +595,146 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert File.directory?(source)
     assert_equal 'original', File.read(File.join(destination, 'keep.txt'))
     refute File.exist?(File.join(destination, 'cmdline-tools'))
+  end
+
+  def test_prepare_healthy_uses_only_the_entry_confirmation_and_never_queries_images
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '--prepare 已完成'
+    refute_includes events, '--install'
+    refute_includes events, '--list --channel'
+    refute_includes events, 'create avd'
+    refute_includes output, 'T//'
+  end
+
+  def test_prepare_recovers_missing_sdk_tools_and_emulator_without_extra_input
+    bootstrap_fixture
+    FileUtils.rm_rf(@sdk)
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '自动补齐 SDK 根目录'
+    assert_includes output, '--prepare 已完成'
+    assert_equal 1, events.scan('--install emulator').length
+    assert_equal 1, events.scan('repository2-3.xml').length
+    refute_includes events, '--list --channel'
+    refute_includes events, 'create avd'
+  end
+
+  def test_invalid_sdk_root_is_preserved_and_failure_shows_stage_and_log
+    FileUtils.rm_rf(@sdk)
+    File.write(@sdk, 'original data')
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_equal 'original data', File.read(@sdk)
+    assert_includes output, 'SDK 根目录补齐'
+    assert_includes output, '操作结束；日志'
+  end
+
+  def test_registered_damaged_emulator_is_reinstalled_once_and_preserves_avds
+    executable(File.join(@sdk, 'emulator', 'emulator'), "#!/bin/zsh\nprint -r -- 'broken emulator' >&2\nexit 8\n")
+    File.write(File.join(@sdk, 'emulator', 'source.properties'), 'Pkg.Revision=36')
+    File.write(File.join(@avd, 'keep.txt'), 'my device data')
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_equal 1, events.scan('--uninstall emulator').length
+    assert_equal 1, events.scan('--install emulator').length
+    assert_equal 'my device data', File.read(File.join(@avd, 'keep.txt'))
+    assert_includes output, '--prepare 已完成'
+  end
+
+  def test_damaged_emulator_uninstall_failure_prevents_install_and_creation
+    executable(File.join(@sdk, 'emulator', 'emulator'), "#!/bin/zsh\nexit 8\n")
+    @env['FIXTURE_UNINSTALL_FAIL'] = '1'
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_includes output, '官方卸载失败'
+    refute_includes events, '--install emulator'
+    assert_includes output, '操作结束；日志'
+  end
+
+  def test_installation_and_remote_query_have_no_secondary_read_gates
+    source = File.read(SCRIPT)
+    refute_includes source, 'android_ask_install'
+    refute_includes source, '回车跳过'
+    refute_includes source, '是否联网'
+    refute_includes source, '是否下载'
+    refute_match(/yes\s*\|/, source)
+  end
+
+  def test_temurin_java_is_downloaded_verified_and_published_in_user_directory
+    java_fixture
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, '已补齐官方 Temurin 21'
+    assert_equal 1, Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk')).length
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', '.jobs-staging.*'))
+    assert_includes events, 'stage-mode:700'
+  end
+
+  def test_temurin_checksum_mismatch_does_not_publish
+    java_fixture(checksum: '0' * 64)
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'SHA256 与官方元数据不符'
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_download_failure_is_not_retried_or_published
+    java_fixture
+    @env['FIXTURE_JAVA_DOWNLOAD_FAIL'] = '1'
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'Temurin 官方下载失败'
+    assert_equal 1, events.scan('curl:https://github.com/').length
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_official_redirect_is_checked_and_signed_query_is_not_logged
+    java_fixture
+    @env['FIXTURE_JAVA_REDIRECT'] = '1'
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, 'release-assets.githubusercontent.com'
+    refute_includes output, 'private-token'
+    assert_equal 1, events.scan('curl:https://release-assets.githubusercontent.com/').length
+  end
+
+  def test_temurin_dangling_external_symlink_is_rejected
+    java_fixture(unsafe_link: '/tmp/jobs-nonexistent-outside-jdk')
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, '悬空或绝对符号链接'
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_internal_existing_symlink_is_allowed
+    java_fixture(unsafe_link: 'bin/java')
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, '已补齐官方 Temurin 21'
+  end
+
+  def test_temurin_post_install_health_failure_stops_without_recursive_install
+    java_fixture
+    @env['FIXTURE_JAVA_POSTFAIL'] = '1'
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'Java 安装后复检仍失败'
+    assert_equal 1, events.scan('curl:https://github.com/').length
+  end
+
+  def test_new_command_tools_can_switch_java_after_first_post_install_class_error
+    fallback_java = File.join(@root, 'Applications', 'Android Studio.app', 'Contents', 'jbr', 'Contents', 'Home', 'bin', 'java')
+    executable(fallback_java, "#!/bin/zsh\nprint -r -- 'fake Java version 21' >&2\n")
+    executable(File.join(@jdk, 'bin', 'java'), "#!/bin/zsh\nprint -r -- 'fake Java version 17' >&2\n")
+    @env['FIXTURE_REQUIRE_JAVA21'] = '1'
+    @env['FIXTURE_OLD_JAVA'] = File.realpath(@jdk)
+    bootstrap_fixture
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '新命令行工具需要更高 Java'
+    assert_equal 1, events.scan('repository2-3.xml').length
+    refute_includes events, 'api.adoptium.net'
+    assert_includes output, '--prepare 已完成'
   end
 end
