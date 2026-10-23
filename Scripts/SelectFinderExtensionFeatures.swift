@@ -18,36 +18,81 @@ struct FeatureOption {
     let title: String
 
     static let independent: [FeatureOption] = [
+        FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
+        FeatureOption(identifier: "vscode_opener", title: "用 VSCode 打开项目"),
+        FeatureOption(identifier: "xcode_opener", title: "用 Xcode 打开项目"),
+        FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
         FeatureOption(identifier: "git_remote", title: "打开 Git 远程地址"),
         FeatureOption(identifier: "git_remote_copier", title: "复制 Git 远程地址"),
         FeatureOption(identifier: "path_copier", title: "复制绝对路径"),
         FeatureOption(identifier: "run-authorize", title: "运行授权"),
-        FeatureOption(identifier: "xcode_opener", title: "用 Xcode 打开项目"),
-        FeatureOption(identifier: "vscode_opener", title: "用 VSCode 打开项目"),
-        FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
-        FeatureOption(identifier: "flutter_version_manager", title: "安装/切换 Flutter SDK（FVM）"),
-        FeatureOption(identifier: "flutter_sdk_version", title: "查看当前 Flutter SDK 版本"),
-        FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
-        FeatureOption(identifier: "flutter-dependency-extract", title: "提取 Flutter 第三方依赖"),
-        FeatureOption(identifier: "flutter-run", title: "运行 Flutter 项目"),
-        FeatureOption(identifier: "flutter-package", title: "Flutter打包"),
-        FeatureOption(identifier: "flutter-doctor", title: "Flutter 项目体检"),
-        FeatureOption(identifier: "flutter-codegen", title: "Flutter 自动化生产代码"),
+        FeatureOption(identifier: "ipa-resign", title: "IPA 免编译重签"),
+        FeatureOption(identifier: "hidden-files-toggle", title: "显示 / 隐藏文件"),
+        FeatureOption(identifier: "flutter-tools", title: "Flutter开发相关辅助工具"),
         FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器"),
         FeatureOption(identifier: "android-simulator-create", title: "新建 Android 模拟器"),
-        FeatureOption(identifier: "harmony-simulator-create", title: "新建鸿蒙模拟器"),
+        FeatureOption(identifier: "android-simulator-repair", title: "Android 模拟器检测与修复"),
+        FeatureOption(identifier: "harmony-simulator-create", title: "新建 Harmony 模拟器"),
         FeatureOption(identifier: "git-proxy-configure", title: "配置 Git 动态代理")
     ]
 
     static let terminal: [FeatureOption] = [
         FeatureOption(identifier: "terminal_open", title: "用终端打开"),
-        FeatureOption(identifier: "pod_install", title: "pod install"),
-        FeatureOption(identifier: "flutter_pub_get", title: "在终端执行 flutter pub get"),
+        FeatureOption(identifier: "pod_install", title: "Pod Install"),
+        FeatureOption(identifier: "clean_build_artifacts", title: "清理构建产物（按工程类型显示）"),
         FeatureOption(identifier: "codegraph_bootstrap", title: "更新代码地图（.codegraph）"),
         FeatureOption(identifier: "git_empty_commit_push", title: "在终端创建空白 Commit 并 Push")
     ]
 
-    static let all: [FeatureOption] = independent + terminal
+    static let ios: [FeatureOption] = [
+        FeatureOption(identifier: "ios-clean-cache", title: "清理 iOS 缓存"),
+        FeatureOption(identifier: "ios-disable-sandbox", title: "禁用 CocoaPods 构建沙盒"),
+        FeatureOption(identifier: "ios-install-cocoapods", title: "安装 CocoaPods"),
+        FeatureOption(identifier: "ios-pods-source-github", title: "CocoaPods 源：CDN → GitHub"),
+        FeatureOption(identifier: "ios-extract-pods", title: "提取项目所有 Pod 相关文件"),
+        FeatureOption(identifier: "ios-pod-update", title: "Pod Update"),
+        FeatureOption(identifier: "ios-xcode-dependencies", title: "查询 Xcode 工程依赖关系"),
+        FeatureOption(identifier: "ios-pod-repo-update", title: "更新 CocoaPods 本地仓库"),
+        FeatureOption(identifier: "ios-pod-build-check", title: "检查本地 Pod 能否编译（仅 .podspec 目录）"),
+        FeatureOption(identifier: "ios-code-snippets", title: "安装 / 升级 JobsCodeSnippets")
+    ]
+
+    static let all: [FeatureOption] = independent + terminal + ios
+}
+
+/// 按用途组织选项；安装工程及输出标识的顺序仍由 FeatureOption.all 决定。
+struct FeatureGroup {
+    let identifier: String
+    let title: String
+    let identifiers: [String]
+
+    var options: [FeatureOption] {
+        identifiers.compactMap { identifier in
+            FeatureOption.all.first { $0.identifier == identifier }
+        }
+    }
+
+    static let all: [FeatureGroup] = [
+        FeatureGroup(identifier: "ide", title: "IDE 项目打开", identifiers: [
+            "android_studio_opener", "vscode_opener", "xcode_opener"
+        ]),
+        FeatureGroup(identifier: "git", title: "Git 工具", identifiers: [
+            "git-pull", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
+        ]),
+        FeatureGroup(identifier: "general", title: "文件与通用工具", identifiers: [
+            "path_copier", "run-authorize", "hidden-files-toggle", "terminal_open",
+            "clean_build_artifacts", "codegraph_bootstrap"
+        ]),
+        FeatureGroup(identifier: "flutter", title: "Flutter 工具", identifiers: ["flutter-tools"]),
+        FeatureGroup(identifier: "ios", title: "iOS / CocoaPods 工具", identifiers:
+            ["pod_install", "ios-pod-update", "ipa-resign"] + FeatureOption.ios
+                .map { $0.identifier }
+                .filter { $0 != "ios-pod-update" }
+        ),
+        FeatureGroup(identifier: "simulators", title: "模拟器工具", identifiers: [
+            "ios-simulator-create", "android-simulator-create", "android-simulator-repair", "harmony-simulator-create"
+        ])
+    ]
 }
 
 /// 总安装器的功能选择窗口：只返回逗号分隔的功能标识，构建、注册与启用交给安装器。
@@ -64,6 +109,7 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate {
     private var installButton: NSButton?
     private var selectAllButton: NSButton?
     private var clearButton: NSButton?
+    private var groupControls: [(group: FeatureGroup, select: NSButton, clear: NSButton, summary: NSTextField)] = []
 
     func runModal() -> String {
         let application = NSApplication.shared
@@ -95,74 +141,59 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate {
 }
 
 private extension FeatureSelectionController {
-    func buildWindow() {
-        let screenSize = NSScreen.main?.visibleFrame.size ?? NSSize(width: 800, height: 600)
-        let usesColumns = screenSize.height < 600
-        let header = NSStackView()
-        header.orientation = .vertical
-        header.alignment = .leading
-        header.spacing = 10
+    func buildWindow(screenSize: NSSize? = nil) {
+        let screenSize = screenSize ?? NSScreen.main?.visibleFrame.size ?? NSSize(width: 1280, height: 800)
+        let compact = screenSize.height < 700
+        let header = NSView()
 
         let titleLabel = NSTextField(labelWithString: "安装 Finder 右键功能")
         titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
 
-        let subtitleLabel = NSTextField(wrappingLabelWithString:
-            "勾选本次要安装的右键菜单功能；可使用全选或全不选，选好后点击安装。"
+        let subtitleLabel = NSTextField(labelWithString:
+            "组内全选 / 全不选只影响本组；底部按钮控制全部功能。"
         )
         subtitleLabel.font = .systemFont(ofSize: 12)
         subtitleLabel.textColor = .secondaryLabelColor
 
-        let summaryLabel = NSTextField(labelWithString: "")
+        let summaryLabel = NSTextField(labelWithString: "已选 \(FeatureOption.all.count) / \(FeatureOption.all.count) 项；什么都不选时不能安装。")
         summaryLabel.font = .systemFont(ofSize: 12, weight: .medium)
         summaryLabel.textColor = .secondaryLabelColor
         self.summaryLabel = summaryLabel
 
-        header.addArrangedSubview(titleLabel)
-        header.addArrangedSubview(subtitleLabel)
-        header.addArrangedSubview(summaryLabel)
+        var headerHeight: CGFloat = 0
+        var headerWidth: CGFloat = 0
+        for label in [summaryLabel, subtitleLabel, titleLabel] {
+            label.sizeToFit()
+            label.setFrameOrigin(NSPoint(x: 0, y: headerHeight))
+            header.addSubview(label)
+            headerHeight += label.frame.height + (compact ? 6 : 10)
+            headerWidth = max(headerWidth, label.frame.width)
+        }
+        header.setFrameSize(NSSize(width: headerWidth, height: headerHeight - (compact ? 6 : 10)))
 
-        let independentBox = makeGroupBox(title: "独立 Finder 扩展", options: FeatureOption.independent)
-        let terminalBox = makeGroupBox(title: "JobsTerminalOpener 内含功能", options: FeatureOption.terminal)
-        let featureList = NSStackView()
-        featureList.orientation = usesColumns ? .horizontal : .vertical
-        featureList.alignment = usesColumns ? .top : .leading
-        featureList.spacing = 14
-        featureList.addArrangedSubview(independentBox)
-        featureList.addArrangedSubview(terminalBox)
-
-        let buttonRow = makeButtonRow()
-
-        let container = NSView()
+        let boxes = FeatureGroup.all.map { makeGroupBox(group: $0, spacing: compact ? 4 : 6) }
+        let verticalPadding: CGFloat = compact ? 44 : 72
+        let featureList = makeFeatureList(
+            boxes: boxes,
+            screenSize: screenSize,
+            reservedHeight: header.frame.height + 32 + verticalPadding + 22
+        )
+        let contentWidth = max(featureList.frame.width, headerWidth)
+        let buttonRow = makeButtonRow(width: contentWidth)
+        let headerSize = header.frame.size
+        let buttonHeight = buttonRow.frame.height
+        let contentSize = NSSize(
+            width: contentWidth + 52,
+            height: headerSize.height + featureList.frame.height + buttonHeight + verticalPadding
+        )
+        let container = NSView(frame: NSRect(origin: .zero, size: contentSize))
         for view in [header, featureList, buttonRow] {
             container.addSubview(view)
-            view.translatesAutoresizingMaskIntoConstraints = false
         }
-
-        // 全部选项固定显示；较矮屏幕改用两列，避免裁掉底部按钮。
-        NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 26),
-            header.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -26),
-            header.topAnchor.constraint(equalTo: container.topAnchor, constant: 22),
-            subtitleLabel.widthAnchor.constraint(equalTo: header.widthAnchor),
-            featureList.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            featureList.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            featureList.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
-            featureList.bottomAnchor.constraint(equalTo: buttonRow.topAnchor, constant: -16),
-            independentBox.widthAnchor.constraint(
-                equalTo: featureList.widthAnchor,
-                multiplier: usesColumns ? 0.5 : 1,
-                constant: usesColumns ? -7 : 0
-            ),
-            terminalBox.widthAnchor.constraint(equalTo: independentBox.widthAnchor),
-            buttonRow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            buttonRow.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            buttonRow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20)
-        ])
-
-        let contentSize = NSSize(
-            width: min(usesColumns ? 900 : 560, screenSize.width - 40),
-            height: min(640, screenSize.height - 72)
-        )
+        // 安装窗口不缩放：按控件实际尺寸排列，避免压缩选项或裁掉安装按钮。
+        buttonRow.frame = NSRect(x: 26, y: compact ? 14 : 20, width: contentWidth, height: buttonHeight)
+        featureList.setFrameOrigin(NSPoint(x: 26, y: buttonRow.frame.maxY + (compact ? 8 : 16)))
+        header.frame = NSRect(x: 26, y: featureList.frame.maxY + (compact ? 8 : 14), width: contentWidth, height: headerSize.height)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.titled, .closable],
@@ -174,22 +205,91 @@ private extension FeatureSelectionController {
         window.delegate = self
         self.window = window
         container.layoutSubtreeIfNeeded()
-        window.setContentSize(NSSize(width: contentSize.width, height: container.fittingSize.height))
-        container.layoutSubtreeIfNeeded()
         window.center()
         refreshSelectionState()
     }
 
-    func makeGroupBox(title: String, options: [FeatureOption]) -> NSBox {
+    /// 测量连续分组的最佳分列，常规屏幕两列，矮屏在宽度允许时改成三列。
+    func makeFeatureList(boxes: [NSBox], screenSize: NSSize, reservedHeight: CGFloat) -> NSView {
+        let gap: CGFloat = 14
+        func dimensions(_ columns: [[NSBox]]) -> NSSize {
+            let widths = columns.map { $0.map { $0.frame.width }.max() ?? 0 }
+            let heights = columns.map { column in
+                column.reduce(CGFloat(0)) { $0 + $1.frame.height } + CGFloat(column.count - 1) * gap
+            }
+            return NSSize(width: widths.reduce(0, +) + CGFloat(columns.count - 1) * gap, height: heights.max() ?? 0)
+        }
+        func partitions(_ remaining: [NSBox], count: Int) -> [[[NSBox]]] {
+            if count == 1 {
+                return [[remaining]]
+            }
+            return (1...(remaining.count - count + 1)).flatMap { cut in
+                partitions(Array(remaining.dropFirst(cut)), count: count - 1).map {
+                    [Array(remaining.prefix(cut))] + $0
+                }
+            }
+        }
+        let layouts = [2, 3, 1].flatMap { count in
+            partitions(boxes, count: count).sorted { dimensions($0).height < dimensions($1).height }
+        }
+        let columns = layouts.first { columns in
+            let size = dimensions(columns)
+            return size.width + 52 <= screenSize.width - 40 && size.height + reservedHeight <= screenSize.height
+        } ?? layouts.filter { dimensions($0).width + 52 <= screenSize.width - 40 }.min {
+            dimensions($0).height < dimensions($1).height
+        } ?? layouts[0]
+        let size = dimensions(columns)
+        let list = NSView(frame: NSRect(origin: .zero, size: size))
+        var x: CGFloat = 0
+        for column in columns {
+            let width = column.map { $0.frame.width }.max() ?? 0
+            var y = size.height
+            for box in column {
+                let height = box.frame.height
+                y -= height
+                box.frame = NSRect(x: x, y: y, width: width, height: height)
+                list.addSubview(box)
+                y -= gap
+            }
+            x += width + gap
+        }
+        return list
+    }
+
+    func makeGroupBox(group: FeatureGroup, spacing: CGFloat) -> NSBox {
         let box = NSBox()
-        box.title = title
+        box.title = group.title
         box.titleFont = .systemFont(ofSize: 13, weight: .semibold)
 
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.alignment = .leading
-        column.spacing = 6
-        for option in options {
+        let column = NSView()
+        let controls = NSView()
+        let select = NSButton(title: "全选", target: self, action: #selector(selectGroupClicked(_:)))
+        let clear = NSButton(title: "全不选", target: self, action: #selector(clearGroupClicked(_:)))
+        var controlsWidth: CGFloat = 0
+        var controlsHeight: CGFloat = 0
+        for button in [select, clear] {
+            styleAuxiliaryButton(button)
+            button.identifier = NSUserInterfaceItemIdentifier(group.identifier)
+            button.setAccessibilityLabel("\(group.title)：\(button.title)")
+            button.sizeToFit()
+            button.setFrameOrigin(NSPoint(x: controlsWidth, y: 0))
+            controls.addSubview(button)
+            controlsWidth += button.frame.width + 8
+            controlsHeight = max(controlsHeight, button.frame.height)
+        }
+        let summary = NSTextField(labelWithString: "已选 \(group.options.count) / \(group.options.count)")
+        summary.font = .systemFont(ofSize: 11)
+        summary.textColor = .secondaryLabelColor
+        summary.sizeToFit()
+        summary.setFrameOrigin(NSPoint(x: controlsWidth, y: (controlsHeight - summary.frame.height) / 2))
+        controls.addSubview(summary)
+        controlsWidth += summary.frame.width
+        controls.setFrameSize(NSSize(width: controlsWidth, height: controlsHeight))
+        groupControls.append((group, select, clear, summary))
+        var optionButtons: [NSButton] = []
+        var contentWidth = controlsWidth
+        var contentHeight = controlsHeight + spacing
+        for option in group.options {
             let checkbox = NSButton(
                 title: option.title,
                 target: self,
@@ -199,17 +299,29 @@ private extension FeatureSelectionController {
             checkbox.font = .systemFont(ofSize: 13)
             checkbox.state = .on
             checkboxes.append((option, checkbox))
-            column.addArrangedSubview(checkbox)
+            checkbox.sizeToFit()
+            optionButtons.append(checkbox)
+            contentWidth = max(contentWidth, checkbox.frame.width)
+            contentHeight += checkbox.frame.height + spacing
+        }
+        contentHeight -= spacing
+        column.setFrameSize(NSSize(width: contentWidth, height: contentHeight))
+        controls.setFrameOrigin(NSPoint(x: 0, y: contentHeight - controlsHeight))
+        column.addSubview(controls)
+        var y = controls.frame.minY - spacing
+        for checkbox in optionButtons {
+            y -= checkbox.frame.height
+            checkbox.setFrameOrigin(NSPoint(x: 0, y: y))
+            column.addSubview(checkbox)
+            y -= spacing
         }
         box.contentView = column
+        box.setFrameFromContentFrame(NSRect(origin: .zero, size: NSSize(width: contentWidth, height: contentHeight)))
         return box
     }
 
-    func makeButtonRow() -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 10
+    func makeButtonRow(width: CGFloat) -> NSView {
+        let row = NSView()
 
         let selectAllButton = NSButton(title: "全选", target: self, action: #selector(selectAllClicked))
         styleAuxiliaryButton(selectAllButton)
@@ -224,13 +336,17 @@ private extension FeatureSelectionController {
         installButton.bezelStyle = .rounded
         installButton.keyEquivalent = "\r"
 
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        row.addArrangedSubview(selectAllButton)
-        row.addArrangedSubview(clearButton)
-        row.addArrangedSubview(spacer)
-        row.addArrangedSubview(cancelButton)
-        row.addArrangedSubview(installButton)
+        var height: CGFloat = 0
+        for button in [selectAllButton, clearButton, cancelButton, installButton] {
+            button.sizeToFit()
+            row.addSubview(button)
+            height = max(height, button.frame.height)
+        }
+        selectAllButton.setFrameOrigin(.zero)
+        clearButton.setFrameOrigin(NSPoint(x: selectAllButton.frame.maxX + 10, y: 0))
+        installButton.setFrameOrigin(NSPoint(x: width - installButton.frame.width, y: 0))
+        cancelButton.setFrameOrigin(NSPoint(x: installButton.frame.minX - cancelButton.frame.width - 10, y: 0))
+        row.setFrameSize(NSSize(width: width, height: height))
 
         self.selectAllButton = selectAllButton
         self.clearButton = clearButton
@@ -261,6 +377,25 @@ private extension FeatureSelectionController {
         refreshSelectionState()
     }
 
+    @objc func selectGroupClicked(_ sender: NSButton) {
+        setGroupSelection(sender, state: .on)
+    }
+
+    @objc func clearGroupClicked(_ sender: NSButton) {
+        setGroupSelection(sender, state: .off)
+    }
+
+    func setGroupSelection(_ sender: NSButton, state: NSControl.StateValue) {
+        guard let group = FeatureGroup.all.first(where: { $0.identifier == sender.identifier?.rawValue }) else {
+            return
+        }
+        let identifiers = Set(group.identifiers)
+        for checkbox in checkboxes where identifiers.contains(checkbox.option.identifier) {
+            checkbox.button.state = state
+        }
+        refreshSelectionState()
+    }
+
     @objc func installClicked() {
         let identifiers = checkedIdentifiers()
         guard !identifiers.isEmpty else {
@@ -276,9 +411,10 @@ private extension FeatureSelectionController {
     }
 
     func checkedIdentifiers() -> [String] {
-        checkboxes
+        let selected = Set(checkboxes
             .filter { $0.button.state == .on }
-            .map { $0.option.identifier }
+            .map { $0.option.identifier })
+        return FeatureOption.all.map { $0.identifier }.filter { selected.contains($0) }
     }
 
     func refreshSelectionState() {
@@ -287,5 +423,12 @@ private extension FeatureSelectionController {
         clearButton?.isEnabled = checkedCount > 0
         selectAllButton?.isEnabled = checkedCount < checkboxes.count
         summaryLabel?.stringValue = "已选 \(checkedCount) / \(checkboxes.count) 项；什么都不选时不能安装。"
+        for controls in groupControls {
+            let identifiers = Set(controls.group.identifiers)
+            let count = checkboxes.filter { identifiers.contains($0.option.identifier) && $0.button.state == .on }.count
+            controls.select.isEnabled = count < identifiers.count
+            controls.clear.isEnabled = count > 0
+            controls.summary.stringValue = "已选 \(count) / \(identifiers.count)"
+        }
     }
 }

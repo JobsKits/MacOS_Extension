@@ -1,3 +1,5 @@
+> 本功能的右键入口已迁入 [JobsFlutterTools](../JobsFlutterTools/README.md)。以下保留旧独立工程的实现说明；新安装使用统一菜单与项目 FVM。当前平台入口为 `Flutter开发相关辅助工具 → Flutter打包 → iOS / Android / 鸿蒙`，终端仅选择包型，不再选择平台。
+
 # JobsFlutterPackager · Flutter打包
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)

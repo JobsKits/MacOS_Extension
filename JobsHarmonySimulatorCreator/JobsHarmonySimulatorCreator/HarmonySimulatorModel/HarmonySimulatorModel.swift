@@ -38,7 +38,7 @@ final class HarmonySimulatorModel {
             var failureMessage: String?
             do {
                 try self.launcher.launch()
-                message = "已交给 Terminal；鸿蒙机型、本地镜像、创建结果与日志请查看终端。"
+                message = "已交给 Terminal；Harmony 机型、镜像下载、创建结果与日志请查看终端。"
             } catch {
                 message = "Terminal 派发失败：\(error.localizedDescription)"
                 failureMessage = message
@@ -57,7 +57,7 @@ final class HarmonySimulatorModel {
     private func showLaunchFailure(_ message: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "新建鸿蒙模拟器未启动"
+        alert.messageText = "新建 Harmony 模拟器未启动"
         alert.informativeText = "\(message)\n\n请检查系统设置 → 隐私与安全性 → 自动化，允许本 App 控制 Terminal。诊断日志：\(logPath)"
         alert.addButton(withTitle: "好")
         NSApp.activate(ignoringOtherApps: true)

@@ -38,8 +38,9 @@ FINAL_EXIT_STATUS=0
 SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
+IOS_FUNCTION_IDS=(ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets)
 
-FEATURE_KEYS=(git_remote path_copier run-authorize xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create harmony-simulator-create git-proxy-configure terminal_opener)
+FEATURE_KEYS=(flutter-tools git_remote git_remote_copier path_copier run-authorize ipa-resign hidden-files-toggle xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create git-proxy-configure terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -51,6 +52,24 @@ typeset -A FEATURE_AUTOMATOR_SERVICE_DIR
 typeset -A FEATURE_AUTOMATOR_HELPER_SCRIPT
 typeset -A FEATURE_KEY_BY_TITLE
 
+FEATURE_TITLE[flutter-tools]="Flutter开发相关辅助工具 / Flutter项目修复"
+FEATURE_PROJECT_DIR[flutter-tools]="JobsFlutterTools"
+FEATURE_APP_NAME[flutter-tools]="JobsFlutterTools"
+FEATURE_EXTENSION_PROCESS_NAME[flutter-tools]="JobsFlutterToolsFinderSync"
+FEATURE_EXTENSION_ID[flutter-tools]="com.jobs.JobsFlutterTools.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[flutter-tools]="/tmp/JobsFlutterToolsNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[flutter-tools]="/tmp/JobsFlutterTools.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-tools]}]="flutter-tools"
+
+FEATURE_TITLE[ios-tools]="iOS / CocoaPods 辅助工具（全部 10 项）"
+FEATURE_PROJECT_DIR[ios-tools]="JobsIOSTools"
+FEATURE_APP_NAME[ios-tools]="JobsIOSTools"
+FEATURE_EXTENSION_PROCESS_NAME[ios-tools]="JobsIOSToolsFinderSync"
+FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[ios-tools]="/tmp/JobsIOSToolsNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[ios-tools]="/tmp/JobsIOSTools.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[ios-tools]}]="ios-tools"
+
 FEATURE_TITLE[git_remote]="打开 Git 远程地址"
 FEATURE_PROJECT_DIR[git_remote]="JobsGitRemoteOpener"
 FEATURE_APP_NAME[git_remote]="JobsGitRemoteOpener"
@@ -61,6 +80,15 @@ FEATURE_RUNTIME_LOG[git_remote]="/tmp/JobsGitRemoteOpener.log"
 FEATURE_AUTOMATOR_SERVICE_DIR[git_remote]="${HOME}/Library/Services/打开Git远程地址.workflow"
 FEATURE_AUTOMATOR_HELPER_SCRIPT[git_remote]="${HOME}/Library/Scripts/Jobs/OpenGitRemoteInBrowser.zsh"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote]}]="git_remote"
+
+FEATURE_TITLE[git_remote_copier]="复制 Git 远程地址"
+FEATURE_PROJECT_DIR[git_remote_copier]="JobsGitRemoteCopier"
+FEATURE_APP_NAME[git_remote_copier]="JobsGitRemoteCopier"
+FEATURE_EXTENSION_PROCESS_NAME[git_remote_copier]="JobsGitRemoteCopyFinderSync"
+FEATURE_EXTENSION_ID[git_remote_copier]="com.jobs.JobsGitRemoteCopier.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[git_remote_copier]="/tmp/JobsGitRemoteCopierNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[git_remote_copier]="/tmp/JobsGitRemoteCopier.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_remote_copier]}]="git_remote_copier"
 
 FEATURE_TITLE[path_copier]="复制绝对路径"
 FEATURE_PROJECT_DIR[path_copier]="JobsPathCopier"
@@ -81,6 +109,15 @@ FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtens
 FEATURE_REFRESH_MARKER[run-authorize]="/tmp/JobsRunAuthorizerNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[run-authorize]="/tmp/JobsRunAuthorizer.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[run-authorize]}]="run-authorize"
+
+FEATURE_TITLE[ipa-resign]="IPA 免编译重签"
+FEATURE_PROJECT_DIR[ipa-resign]="JobsIPAResigner"
+FEATURE_APP_NAME[ipa-resign]="JobsIPAResigner"
+FEATURE_EXTENSION_PROCESS_NAME[ipa-resign]="JobsIPAResignerFinderSync"
+FEATURE_EXTENSION_ID[ipa-resign]="com.jobs.JobsIPAResigner.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[ipa-resign]="/tmp/JobsIPAResignerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[ipa-resign]="/tmp/JobsIPAResigner.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[ipa-resign]}]="ipa-resign"
 
 FEATURE_TITLE[xcode_opener]="用 Xcode 打开项目"
 FEATURE_PROJECT_DIR[xcode_opener]="JobsXcodeOpener"
@@ -190,7 +227,16 @@ FEATURE_REFRESH_MARKER[android-simulator-create]="/tmp/JobsAndroidSimulatorCreat
 FEATURE_RUNTIME_LOG[android-simulator-create]="/tmp/JobsAndroidSimulatorCreator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android-simulator-create]}]="android-simulator-create"
 
-FEATURE_TITLE[harmony-simulator-create]="新建鸿蒙模拟器"
+FEATURE_TITLE[android-simulator-repair]="Android 模拟器检测与修复"
+FEATURE_PROJECT_DIR[android-simulator-repair]="JobsAndroidSimulatorRepairer"
+FEATURE_APP_NAME[android-simulator-repair]="JobsAndroidSimulatorRepairer"
+FEATURE_EXTENSION_PROCESS_NAME[android-simulator-repair]="JobsAndroidSimulatorRepairFinderSync"
+FEATURE_EXTENSION_ID[android-simulator-repair]="com.jobs.androidsimulatorrepairer.findersync"
+FEATURE_REFRESH_MARKER[android-simulator-repair]="/tmp/JobsAndroidSimulatorRepairerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[android-simulator-repair]="/tmp/JobsAndroidSimulatorRepairer.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[android-simulator-repair]}]="android-simulator-repair"
+
+FEATURE_TITLE[harmony-simulator-create]="新建 Harmony 模拟器"
 FEATURE_PROJECT_DIR[harmony-simulator-create]="JobsHarmonySimulatorCreator"
 FEATURE_APP_NAME[harmony-simulator-create]="JobsHarmonySimulatorCreator"
 FEATURE_EXTENSION_PROCESS_NAME[harmony-simulator-create]="JobsHarmonySimulatorFinderSync"
@@ -216,6 +262,15 @@ FEATURE_EXTENSION_ID[git-proxy-configure]="com.jobs.gitproxyconfigurator.finders
 FEATURE_REFRESH_MARKER[git-proxy-configure]="/tmp/JobsGitProxyConfiguratorNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[git-proxy-configure]="/tmp/JobsGitProxyConfigurator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-proxy-configure]}]="git-proxy-configure"
+
+FEATURE_TITLE[hidden-files-toggle]="显示 / 隐藏文件"
+FEATURE_PROJECT_DIR[hidden-files-toggle]="JobsHiddenFilesToggler"
+FEATURE_APP_NAME[hidden-files-toggle]="JobsHiddenFilesToggler"
+FEATURE_EXTENSION_PROCESS_NAME[hidden-files-toggle]="JobsHiddenFilesFinderSync"
+FEATURE_EXTENSION_ID[hidden-files-toggle]="com.jobs.hiddenfilestoggler.findersync"
+FEATURE_REFRESH_MARKER[hidden-files-toggle]="/tmp/JobsHiddenFilesTogglerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[hidden-files-toggle]="/tmp/JobsHiddenFilesToggler.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[hidden-files-toggle]}]="hidden-files-toggle"
 
 FEATURE_TITLE[terminal_opener]="用终端打开"
 FEATURE_PROJECT_DIR[terminal_opener]="JobsTerminalOpener"
@@ -309,7 +364,7 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用 fzf 选择并卸载 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”“新建 Android 模拟器”和“新建鸿蒙模拟器”，可单独选择或全选。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#FEATURE_KEYS[@]} 个工程；包括“新建 iOS 模拟器”“新建 Android 模拟器”“Android 模拟器检测与修复”和“新建 Harmony 模拟器”，可单独选择或全选。" | jobs_intro_style body
   warn_echo "影响范围：会禁用并注销选中的 Finder Sync Extension。" | jobs_intro_style body
   warn_echo "影响范围：会停止对应宿主 App 和已运行的扩展进程。" | jobs_intro_style body
   warn_echo "影响范围：会删除 Xcode DerivedData 和本工作区 work 下的构建产物。" | jobs_intro_style body
@@ -597,9 +652,20 @@ remove_legacy_automator_service() {
 # 卸载单个 Finder 扩展功能。
 uninstall_feature() {
   local key="$1"
+
+  case "$key" in
+    android_studio_opener|vscode_opener|xcode_opener|git-pull|git_remote|git_remote_copier)
+      /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "$key" 2>&1 | tee -a "$LOG_FILE"
+      return ${pipestatus[1]}
+      ;;
+  esac
   local feature_status=0
 
   highlight_echo "============================== ${FEATURE_TITLE[$key]} =============================="
+  if [[ "$key" == ios-tools ]]; then
+    /bin/zsh "$WORKSPACE_DIR/JobsIOSTools/【MacOS】卸载iOS辅助工具Finder扩展.command" --features "${(j:,:)IOS_FUNCTION_IDS}" --non-interactive 2>&1 | tee -a "$LOG_FILE"
+    (( ${pipestatus[1]} == 0 )) || feature_status=1
+  fi
   print_current_extension_status "$key"
   disable_extension "$key"
   stop_host_application "$key"

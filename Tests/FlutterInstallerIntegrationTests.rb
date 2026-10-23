@@ -11,7 +11,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
   UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
-  INDEPENDENT_INSTALLERS = Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】安装*Finder扩展.command')).select { |path| File.file?(path) }.sort.freeze
+  INDEPENDENT_INSTALLERS = Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】安装*Finder扩展.command')).select { |path| File.file?(path) && File.read(path).include?('show_script_intro_and_wait()') }.sort.freeze
   INSTALL_PHASES = %w[initialize_runtime check_environment build_extension register_extension].freeze
 
   def test_every_independent_install_enter_runs_installation_in_order
@@ -20,10 +20,10 @@ class FlutterInstallerIntegrationTests < Minitest::Test
         print -r -- "${FEATURE_PROJECT_DIR[$key]}"
       done
     ZSH
-    independent_projects = INDEPENDENT_INSTALLERS.map { |path| File.basename(File.dirname(path)) }
+    independent_projects = Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】安装*Finder扩展.command')).map { |path| File.basename(File.dirname(path)) }
     assert_empty mapped_projects - independent_projects, '所有已登记工程必须有独立安装入口'
     assert_equal mapped_projects.uniq, mapped_projects, '工程映射不能重复'
-    %w[JobsFlutterDoctor JobsFlutterCodegen].each { |app| assert_includes independent_projects, app }
+    %w[JobsFlutterTools].each { |app| assert_includes independent_projects, app }
     INDEPENDENT_INSTALLERS.each do |path|
       output, result, phases = run_install_confirmation(path, "\n")
       assert result.success?, "#{path}\n#{output}"
@@ -64,9 +64,9 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     identifiers = selector.scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
     all = identifiers
     independent = selector[/static let independent:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
-    assert_match(/static let all: \[FeatureOption\] = independent \+ terminal/, selector)
+    assert_match(/static let all: \[FeatureOption\] = independent \+ terminal \+ ios/, selector)
     assert_equal identifiers.uniq, identifiers
-    assert_includes identifiers, 'flutter_version_manager'
+    assert_includes identifiers, 'flutter-tools'
     assert_includes independent, 'run-authorize'
     assert_includes independent, 'ios-simulator-create'
     output = run_definitions(INSTALLER, <<~'ZSH', all.join(','))
@@ -78,7 +78,9 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     lines = output.lines.map(&:strip)
     assert_equal all.join(','), lines[0]
     assert_equal all.join(','), lines[1]
-    assert_equal independent + ['terminal_opener'], lines[2].split(',')
+    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier]
+    projects = independent.map { |key| grouped.include?(key) ? 'project-tools' : key }.uniq
+    assert_equal projects + ['terminal_opener', 'ios-tools'], lines[2].split(',')
   end
 
   def test_flutter_selection_is_independent_and_terminal_actions_are_deduplicated
@@ -89,8 +91,17 @@ class FlutterInstallerIntegrationTests < Minitest::Test
       print -r -- "${FEATURE_SCHEME[flutter_version_manager]}"
       print -r -- "${FEATURE_EXTENSION_ID[flutter_version_manager]}"
     ZSH
-    assert_equal ['flutter_version_manager,terminal_opener', 'flutter-pub-get,open',
+    assert_equal ['flutter-tools,terminal_opener', 'open',
                   'JobsFlutterVersionMgr', 'com.jobs.JobsFlutterVersionMgr.FinderSyncExtension'], output.lines.map(&:strip)
+  end
+
+  def test_build_clean_selection_maps_to_terminal_without_enabling_other_actions
+    output = run_definitions(INSTALLER, <<~'ZSH')
+      parse_feature_selection "clean_build_artifacts,clean_build_artifacts" || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "$TERMINAL_OPENER_ENABLED_FEATURES"
+    ZSH
+    assert_equal ['terminal_opener', 'clean-build-artifacts'], output.lines.map(&:strip)
   end
 
   def test_unknown_selection_stops_and_flutter_uninstall_has_the_same_identity
@@ -119,7 +130,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
       print -r -- "${FEATURE_EXTENSION_ID[flutter-package]}"
       print -r -- "${FEATURE_EXTENSION_NAME[flutter-package]}"
     ZSH
-    assert_equal ['flutter-package', 'com.jobs.JobsFlutterPackager.findersync',
+    assert_equal ['flutter-tools', 'com.jobs.JobsFlutterPackager.findersync',
                   'JobsFlutterPackagerFinderSync.appex'], output.lines.map(&:strip)
     output = run_definitions(UNINSTALLER, <<~'ZSH')
       parse_fzf_selection "${FEATURE_TITLE[flutter-package]}" || exit 1
@@ -130,8 +141,8 @@ class FlutterInstallerIntegrationTests < Minitest::Test
   end
 
   def test_doctor_and_codegen_standalone_install_confirmation
-    maintenance = INDEPENDENT_INSTALLERS.select { |path| path.include?('/JobsFlutterDoctor/') || path.include?('/JobsFlutterCodegen/') }
-    assert_equal 2, maintenance.length
+    maintenance = INDEPENDENT_INSTALLERS.select { |path| path.include?('/JobsFlutterTools/') }
+    assert_equal 1, maintenance.length
     maintenance.each do |path|
       output, result, phases = run_install_confirmation(path, "\n")
       assert result.success?, output
@@ -156,7 +167,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
         print -r -- "${FEATURE_APP_NAME[$1]}"
         print -r -- "${FEATURE_EXTENSION_ID[$1]}"
       ZSH
-      assert_equal [key, app, "com.jobs.#{app}.FinderSyncExtension"], output.lines.map(&:strip)
+      assert_equal ['flutter-tools', app, "com.jobs.#{app}.FinderSyncExtension"], output.lines.map(&:strip)
       output = run_definitions(UNINSTALLER, <<~'ZSH', key)
         parse_fzf_selection "${FEATURE_TITLE[$1]}" || exit 1
         print -r -- "${(j:,:)SELECTED_KEYS}"
@@ -192,7 +203,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
         WORKSPACE_DIR="$1"
         for key in "${FEATURE_KEYS[@]}"; do
           /bin/mkdir -p "$(project_file_for_key "$key")"
-          [[ "$key" == flutter_version_manager ]] && continue
+          [[ "$key" == flutter-tools ]] && continue
           print -r -- '// fixture' > "$(project_file_for_key "$key")/project.pbxproj"
         done
         log() { print -r -- "$1"; }
@@ -202,7 +213,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
         fi
         print -r -- 'installation-stopped'
       ZSH
-      assert_includes output, 'JobsFlutterVersionMgr.xcodeproj/project.pbxproj'
+      assert_includes output, 'JobsFlutterTools.xcodeproj/project.pbxproj'
       assert_includes output, 'installation-stopped'
       refute_includes output, 'JobsGitPuller.xcodeproj'
     end
@@ -231,7 +242,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
       print -r -- "${FEATURE_SCHEME[git-pull]}"
       print -r -- "${FEATURE_EXTENSION_ID[git-pull]}"
     ZSH
-    assert_equal ['git-pull,terminal_opener', 'open', 'JobsGitPuller',
+    assert_equal ['project-tools,terminal_opener', 'open', 'JobsGitPuller',
                   'com.jobs.JobsGitPuller.FinderSyncExtension'], output.lines.map(&:strip)
     output = run_definitions(UNINSTALLER, <<~'ZSH')
       print -r -- "${FEATURE_APP_NAME[git-pull]}"
@@ -243,7 +254,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
   end
 
   def test_missing_git_pull_project_stops_with_complete_repository_guidance
-    assert_missing_project_stops('git-pull', 'JobsGitPuller')
+    assert_missing_project_stops('project-tools', 'JobsProjectTools')
   end
 
   def test_extraction_selection_and_uninstall_use_the_independent_project
@@ -254,7 +265,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
       print -r -- "${FEATURE_EXTENSION_NAME[flutter-dependency-extract]}"
       print -r -- "${FEATURE_EXTENSION_ID[flutter-dependency-extract]}"
     ZSH
-    assert_equal ['flutter-dependency-extract,terminal_opener', 'JobsFlutterDependencyExtractor',
+    assert_equal ['flutter-tools', 'JobsFlutterDependencyExtractor',
                   'JobsFlutterDependencyFinderSync.appex', 'com.jobs.JobsFlutterDependencyExtractor.FinderSync'], output.lines.map(&:strip)
     output = run_definitions(UNINSTALLER, <<~'ZSH')
       print -r -- "${FEATURE_APP_NAME[flutter-dependency-extract]}"
@@ -275,7 +286,7 @@ def test_flutter_run_is_independent_and_uninstall_has_matching_identity
     print -r -- "${FEATURE_EXTENSION_NAME[flutter-run]}"
     print -r -- "${FEATURE_EXTENSION_ID[flutter-run]}"
   ZSH
-  assert_equal ['flutter-run,terminal_opener', 'JobsFlutterRunner',
+  assert_equal ['flutter-tools', 'JobsFlutterRunner',
                 'JobsFlutterRunFinderSync.appex', 'com.jobs.JobsFlutterRunner.FinderSyncExtension'], output.lines.map(&:strip)
   output = run_definitions(UNINSTALLER, <<~'ZSH')
     print -r -- "${FEATURE_APP_NAME[flutter-run]}"
@@ -538,13 +549,19 @@ end
     main_body = source[/^main\(\) \{\n(.*?)^\}/m, 1]
     phases = main_body&.lines&.map { |line| line.sub(/\s*#.*$/, '').strip }&.reject(&:empty?)
     valid_intro = ['show_script_intro_and_wait', 'show_script_intro_and_wait "$@"'].include?(phases&.first)
-    raise "安装入口编排已改变，需重新隔离：#{path}" unless valid_intro && phases.drop(1) == INSTALL_PHASES
+    expected_phases = if File.basename(File.dirname(path)) == 'JobsIOSTools'
+                        %w[initialize_runtime check_environment build_extension persist_feature_selection register_extension]
+                      else
+                        INSTALL_PHASES
+                      end
+    raise "安装入口编排已改变，需重新隔离：#{path}" unless valid_intro && phases.drop(1) == expected_phases
 
     Dir.mktmpdir('jobs-finder-install-confirmation-') do |directory|
       fixture = File.join(directory, 'confirmation.zsh')
       trace = File.join(directory, 'phases')
       # 保留真实自述、read 和 main；所有确认后的业务阶段仅记录顺序。
       stubs = INSTALL_PHASES.map { |phase| "#{phase}() { print -r -- #{phase} >> \"$JOBS_TEST_PHASES\"; }" }.join("\n")
+      stubs += "\npersist_feature_selection() { :; }\n" if expected_phases.include?('persist_feature_selection')
       File.write(fixture, source + "\n" + stubs + "\nmain \"$@\"\n")
       environment = {'NO_COLOR' => '1', 'TMPDIR' => "#{directory}/", 'JOBS_TEST_PHASES' => trace}
       if interactive
@@ -585,6 +602,9 @@ end
   end
 
   def assert_missing_project_stops(missing_key, project_name)
+    if missing_key.start_with?('flutter')
+      missing_key, project_name = 'flutter-tools', 'JobsFlutterTools'
+    end
     Dir.mktmpdir('jobs-missing-repository-project-') do |workspace|
       output = run_definitions(INSTALLER, <<~'ZSH', workspace, missing_key)
         WORKSPACE_DIR="$1"

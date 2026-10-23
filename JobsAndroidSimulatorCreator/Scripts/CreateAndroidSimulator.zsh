@@ -30,6 +30,7 @@ android_prepare_context() {
     ANDROID_SIM_NEW_AVD=""
     ANDROID_SIM_BOOTSTRAP_STAGE=""
     ANDROID_SIM_JAVA_INCOMPATIBLE=0
+    typeset -ga ANDROID_SIM_CURL_PROXY=() ANDROID_SIM_SDK_PROXY=()
     ANDROID_SIM_STAGE='初始化'
     ANDROID_SIM_COLOR=0
     if [[ -t 1 && -n "${TERM:-}" && "$TERM" != dumb && -z "${NO_COLOR+x}" && "${PLAIN_OUTPUT:-0}" != 1 ]]; then
@@ -55,6 +56,8 @@ android_help() {
     android_log '--create：仅进入新建流程，仍逐步选择并最终确认。'
     android_log '--prepare：首屏回车后自动补齐、复检必要工具链，完成即退出；不查询系统映像、不创建设备。'
     android_log '--check：只读检查 SDK / Java / 工具 / 已装映像和已有 AVD；不联网、不安装、不新建设备、不写脚本日志。'
+    android_log '网络：优先使用 ANDROID_SIM_PROXY 或 HTTPS_PROXY / ALL_PROXY，其次读取 macOS 静态代理；仅影响本次下载。'
+    android_log '示例：ANDROID_SIM_PROXY=http://127.0.0.1:7890；也支持 socks5://主机:端口，direct 表示本次直连。PAC / 认证代理请使用已配置网络的 Android Studio SDK Manager。'
 }
 # 首屏写死用途、影响和取消方法，再按入口区分只读请求与交互确认。
 show_script_intro_and_wait() {
@@ -198,7 +201,7 @@ android_download_temurin() {
     local url="$1" target="$2" limit="$3" curl_bin="$(command -v curl 2>/dev/null)" http_code="" next_url="" hop=0
     while (( hop < 5 )); do
         android_temurin_url_allowed "$url" || { android_log '✖ Java 下载跳转到未授权来源，停止。' '1;31'; return 1; }
-        if ! http_code="$("$curl_bin" --disable --fail --show-error --progress-bar --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --dump-header "${target}.headers" --output "$target" --write-out '%{http_code}' "$url")"; then
+        if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" --fail --show-error --progress-bar --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --dump-header "${target}.headers" --output "$target" --write-out '%{http_code}' "$url")"; then
             android_log "✖ Temurin 官方下载失败（HTTP ${http_code:-未知}），未发布 Java。" '1;31'
             return 1
         fi
@@ -311,6 +314,11 @@ android_ensure_java() {
         return 1
     fi
 }
+# 新 sdkmanager 是 Android CLI 下载启动器，连 --version 都可能下载另一份程序。
+# 本流程依赖传统包 ID / 清单 / 许可交互契约；只读探测绝不运行该启动器。
+android_is_cli_launcher() {
+    /usr/bin/grep -Eq 'ANDROID_CLI_BIN|run_android_cli' "$1"
+}
 # 只从选定 SDK 中发现成对的 sdkmanager / avdmanager，并实际验证二者可运行。
 android_find_command_tools() {
     local bin_dir output="" last_error="" candidate
@@ -321,8 +329,13 @@ android_find_command_tools() {
         bins+=("${candidate:h}")
     done < <(/usr/bin/find "$ANDROID_SIM_SDK/cmdline-tools" -type f -name sdkmanager -print0 2>/dev/null)
     bins+=("$ANDROID_SIM_SDK/tools/bin")
+    bins=("${(@u)bins}")
     for bin_dir in "${bins[@]}"; do
         [[ -x "$bin_dir/sdkmanager" && -x "$bin_dir/avdmanager" ]] || continue
+        if android_is_cli_launcher "$bin_dir/sdkmanager"; then
+            android_log "➤ 跳过 Android CLI 下载启动器：${bin_dir}；保留已安装版本，使用可离线自检的兼容工具。"
+            continue
+        fi
         if ! output="$(android_timed 20 "$bin_dir/sdkmanager" --sdk_root="$ANDROID_SIM_SDK" --version 2>&1)"; then
             last_error="${bin_dir}/sdkmanager --version：${output}"
             [[ "$output" != *UnsupportedClassVersionError* && "$output" != *'class file version'* ]] || ANDROID_SIM_JAVA_INCOMPATIBLE=1
@@ -343,20 +356,77 @@ android_find_command_tools() {
     [[ -z "$last_error" ]] || android_log "➤ 失败命令：${last_error}"
     return 1
 }
+# curl 与 Java SDK Manager 使用相同的本次代理，不写系统设置或 Shell 配置。
+android_configure_network() {
+    local proxy="${ANDROID_SIM_PROXY:-${https_proxy:-${HTTPS_PROXY:-${all_proxy:-${ALL_PROXY:-}}}}}" settings="" host="" port="" scheme="" key="" excluded="" exclusions="${no_proxy:-${NO_PROXY:-}}"
+    ANDROID_SIM_CURL_PROXY=()
+    ANDROID_SIM_SDK_PROXY=()
+    if [[ -z "$proxy" ]]; then
+        settings="$(/usr/sbin/scutil --proxy 2>/dev/null)"
+        for key in HTTPS HTTP SOCKS; do
+            [[ "$(print -r -- "$settings" | /usr/bin/awk -v k="${key}Enable" '$1 == k {print $3; exit}')" == 1 ]] || continue
+            host="$(print -r -- "$settings" | /usr/bin/awk -v k="${key}Proxy" '$1 == k {print $3; exit}')"
+            port="$(print -r -- "$settings" | /usr/bin/awk -v k="${key}Port" '$1 == k {print $3; exit}')"
+            scheme=http
+            [[ "$key" != SOCKS ]] || scheme=socks5
+            proxy="${scheme}://${host}:${port}"
+            break
+        done
+        if [[ -z "$proxy" && "$(print -r -- "$settings" | /usr/bin/awk '$1 == "ProxyAutoConfigEnable" {print $3; exit}')" == 1 ]]; then
+            android_log '⚠ 检测到 PAC 自动代理；命令行不解析 PAC，请通过 ANDROID_SIM_PROXY 指定本次代理，或在 Android Studio SDK Manager 准备依赖。' '1;33'
+        fi
+    fi
+    if [[ -z "$proxy" ]]; then
+        android_log '➤ 未发现可复用的静态代理；按当前网络访问 Google 官方源。'
+        return 0
+    fi
+    if [[ "$proxy" == direct ]]; then
+        ANDROID_SIM_CURL_PROXY=(--proxy '' --noproxy '*')
+        android_log '➤ 本次下载使用直连。'
+        return 0
+    fi
+    if [[ ! "$proxy" =~ '^(http|socks5|socks5h)://([A-Za-z0-9._-]+|\[[0-9A-Fa-f:]+\]):([0-9]{1,5})/?$' ]]; then
+        android_log '✖ 本次代理格式不受支持：请指定不含账号密码的 http://主机:端口 或 socks5://主机:端口；未输出代理原文。' '1;31'
+        return 1
+    fi
+    scheme="$match[1]" host="$match[2]" port="$match[3]"
+    (( 10#$port >= 1 && 10#$port <= 65535 )) || { android_log '✖ 代理端口须为 1–65535。' '1;31'; return 1; }
+    ANDROID_SIM_CURL_PROXY=(--proxy "$proxy")
+    [[ "$scheme" == http ]] || scheme=socks
+    ANDROID_SIM_SDK_PROXY=(--proxy="$scheme" --proxy_host="${${host#\[}%\]}" --proxy_port="$port")
+    # Google SDK 仓库走 dl.google.com；保留已有 NO_PROXY 对此主机的直连约定。
+    for excluded in "${(@s:,:)exclusions}"; do
+        excluded="${${excluded//[[:space:]]/}:l}"
+        excluded="${excluded%.}"
+        excluded="${excluded#\*.}"
+        excluded="${excluded#.}"
+        if [[ "$excluded" == '*' || "$excluded" == dl.google.com || "$excluded" == google.com || "$excluded" == com ]]; then
+            ANDROID_SIM_SDK_PROXY=()
+            android_log '➤ NO_PROXY 将 dl.google.com 排除在代理之外，SDK Manager 对该仓库使用直连。'
+            break
+        fi
+    done
+    android_log "➤ 本次官方下载复用代理：${host}:${port}（${scheme}）；系统配置保持不变。"
+}
+android_network_failure_hint() {
+    android_log '➤ 请检查本次代理能否访问 dl.google.com/android/repository/；浏览器能下载不代表 Java SDK Manager 使用了相同代理。'
+    android_log '➤ 可用 ANDROID_SIM_PROXY=http://主机:端口 指定本次代理；或在 Android Studio SDK Manager 安装 Command-line Tools 21.0、Android Emulator 和所需映像后重试。'
+}
 # 下载固定官方 HTTPS 地址，不跟随重定向，失败时保留明确诊断。
 android_download_official() {
     local url="$1" target="$2" limit="$3" http_code="" curl_bin="$(command -v curl 2>/dev/null)"
     [[ "$url" == https://dl.google.com/android/repository/* && -n "$curl_bin" ]] || return 1
-    if ! http_code="$("$curl_bin" --disable --fail --show-error --progress-bar --proto '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --output "$target" --write-out '%{http_code}' "$url")" || [[ "$http_code" != 200 ]]; then
+    if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" --fail --show-error --progress-bar --proto '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --output "$target" --write-out '%{http_code}' "$url")" || [[ "$http_code" != 200 ]]; then
         android_log "✖ Google 官方下载失败：${url}；${http_code}" '1;31'
+        android_network_failure_hint
         return 1
     fi
 }
-# 解析官方稳定版 macOS 归档，按真实硬件选择架构；旧通用归档仍兼容。
+# 固定已验证的传统 CLI 21.0 契约；从官方元数据取得归档与摘要，不追随 CLI 启动器版 latest。
 android_read_tools_archive() {
     local xml="$1" package_path="" archive_path="" host_arch=x64 field=""
     [[ "$ANDROID_SIM_ABI" != arm64-v8a ]] || host_arch=aarch64
-    package_path="(//*[local-name()='remotePackage' and @path='cmdline-tools;latest'][*[local-name()='channelRef' and @ref='channel-0']])[1]"
+    package_path="(//*[local-name()='remotePackage' and @path='cmdline-tools;21.0'][*[local-name()='channelRef' and @ref='channel-0']][not(*[local-name()='revision']/*[local-name()='preview'])])[1]"
     archive_path="(${package_path}/*[local-name()='archives']/*[local-name()='archive'][*[local-name()='host-os' and .='macosx']][*[local-name()='host-arch' and .='${host_arch}'] or not(*[local-name()='host-arch'])]/*[local-name()='complete'])[1]"
     ANDROID_SIM_TOOLS_ARCHIVE="$(/usr/bin/xmllint --nonet --xpath "string(${archive_path}/*[local-name()='url'])" "$xml" 2>/dev/null)" || return 1
     ANDROID_SIM_TOOLS_SIZE="$(/usr/bin/xmllint --nonet --xpath "string(${archive_path}/*[local-name()='size'])" "$xml" 2>/dev/null)" || return 1
@@ -365,6 +435,7 @@ android_read_tools_archive() {
     ANDROID_SIM_TOOLS_VERSION="$(/usr/bin/xmllint --nonet --xpath "string(${package_path}/*[local-name()='revision']/*[local-name()='major'])" "$xml" 2>/dev/null)"
     field="$(/usr/bin/xmllint --nonet --xpath "string(${package_path}/*[local-name()='revision']/*[local-name()='minor'])" "$xml" 2>/dev/null)"
     [[ -z "$field" ]] || ANDROID_SIM_TOOLS_VERSION+=".${field}"
+    [[ "$ANDROID_SIM_TOOLS_VERSION" == 21.0 ]] || { android_log '✖ 官方清单缺少兼容版 Command-line Tools 21.0；停止，不自动改用 Android CLI 下载启动器。' '1;31'; return 1; }
     if [[ ! "$ANDROID_SIM_TOOLS_ARCHIVE" =~ '^commandlinetools-mac(_arm64|_x86_64)?-[0-9]+_latest\.zip$' || ! "$ANDROID_SIM_TOOLS_SIZE" == <-> || ${#ANDROID_SIM_TOOLS_SIZE} -gt 10 || "$ANDROID_SIM_TOOLS_SIZE" -le 0 || "$ANDROID_SIM_TOOLS_SIZE" -gt 1073741824 || ! "$ANDROID_SIM_TOOLS_VERSION" =~ '^[0-9]+(\.[0-9]+)?$' ]]; then
         android_log '✖ 官方工具元数据格式或归档地址不符合预期，未下载工具归档。' '1;31'
         return 1
@@ -427,6 +498,10 @@ android_perform_tools_bootstrap() {
         android_log '✖ 官方工具归档内容不完整，未写入 SDK。' '1;31'
         return 1
     fi
+    if android_is_cli_launcher "$stage/extract/cmdline-tools/bin/sdkmanager"; then
+        android_log '✖ 兼容归档意外包含 Android CLI 下载启动器，停止发布；请检查官方工具版本。' '1;31'
+        return 1
+    fi
     if [[ -L "$ANDROID_SIM_SDK/cmdline-tools" ]]; then
         android_log '✖ cmdline-tools 是符号链接，请在 SDK Manager 人工处理，未写入该路径。' '1;31'
         return 1
@@ -474,7 +549,7 @@ android_ensure_command_tools() {
     android_log '━━━━━━━━━━ 来源｜补充 SDK Command-line Tools ━━━━━━━━━━' '1;36'
     android_log '📥 官方元数据：https://dl.google.com/android/repository/repository2-3.xml'
     android_log "📂 目标：${ANDROID_SIM_SDK}/cmdline-tools/ 下新建独立版本目录；不会覆盖 latest 或既有版本。"
-    android_log '➤ 自动补齐官方稳定命令行工具，下载约 150 MB；不会自动接受 SDK 许可证。'
+    android_log '➤ 自动补齐官方稳定兼容版 Command-line Tools 21.0，下载约 150 MB；避免 Android CLI 首次联网下载，保留所有既有版本。SDK 许可证仍须本人接受。'
     for tool in curl; do
         command -v "$tool" >/dev/null 2>&1 || { android_log "✖ 缺少 ${tool}，请使用 Android Studio 的 SDK Manager。" '1;31'; return 1; }
     done
@@ -533,10 +608,11 @@ android_install_package() {
     local package="$1" result=0
     android_show_install_source "$package"
     android_log "➤ 自动安装本次必要组件：${package}；SDK 许可证由你阅读并选择。"
-    NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --install "$package" --channel=0 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+    NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --install "$package" --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
     result=${pipestatus[1]}
     if (( result != 0 )); then
         android_log "✖ 组件安装失败（退出码 ${result}）：${package}；来源：Google 官方 Android SDK Repository。" '1;31'
+        android_network_failure_hint
         return "$result"
     fi
 }
@@ -550,7 +626,7 @@ android_ensure_emulator() {
     fi
     if [[ -e "$ANDROID_SIM_SDK/emulator/emulator" || -e "$ANDROID_SIM_SDK/emulator/source.properties" || -e "$ANDROID_SIM_SDK/emulator/package.xml" ]]; then
         android_log '➤ emulator 已登记但损坏，自动通过官方 sdkmanager 卸载、重装一次，仅处理 emulator 工具包；保留已有 AVD 和系统映像。'
-        NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --uninstall emulator 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+        NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --uninstall emulator "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
         (( pipestatus[1] == 0 )) || { android_log '✖ 损坏 emulator 官方卸载失败，停止下游操作。' '1;31'; return 1; }
     fi
     android_install_package emulator || return 1
@@ -659,8 +735,9 @@ android_image_rows() {
 android_remote_images() {
     local output="" result=0
     android_log '➤ 将从 Google 官方 Android SDK Repository 查询稳定系统映像；不会修改系统代理。'
-    if ! output="$(android_timed 60 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 2>&1)"; then
+    if ! output="$(android_timed 60 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1)"; then
         android_log "✖ 读取 Google SDK 清单失败：${output}" '1;31'
+        android_network_failure_hint
         return 1
     fi
     ANDROID_SIM_IMAGES="$(print -r -- "$output" | /usr/bin/awk -F '|' -v abi="$ANDROID_SIM_ABI" '
@@ -668,7 +745,9 @@ android_remote_images() {
           if (package ~ ("^system-images;android-[0-9]+(\\.[0-9]+)?(-ext[0-9]+)?;(google_apis|google_apis_playstore|default);" abi "$")) print package }
     ' | /usr/bin/sort -t ';' -k2,2Vr -k3,3 -u)"
     if [[ -z "$ANDROID_SIM_IMAGES" ]]; then
+        android_log "➤ SDK Manager 输出：${output}"
         android_log "✖ 官方清单没有可用的 ${ANDROID_SIM_ABI} 手机 / 平板映像。请在 SDK Manager 中检查。" '1;31'
+        android_network_failure_hint
         return 1
     fi
 }
@@ -827,6 +906,8 @@ android_check() {
 }
 # 完整工具链逐层体检与条件修复，供准备入口与正常业务共同使用。
 android_prepare_toolchain() {
+    ANDROID_SIM_STAGE='本次网络配置检查'
+    android_configure_network || return $?
     ANDROID_SIM_STAGE='主机架构体检'
     android_detect_architecture || return $?
     ANDROID_SIM_STAGE='SDK 根目录补齐'

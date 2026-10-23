@@ -1,3 +1,5 @@
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，同一 Finder 扩展固定 IDE / Git 菜单顺序。此目录的安装、卸载入口仅启停对应单项；请保留完整仓库。下文说明本目录保留的源码工程与构建方式；常规菜单安装使用统一包。
+
 # `JobsGitRemoteCopier`
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)

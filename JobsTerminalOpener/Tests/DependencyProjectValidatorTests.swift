@@ -15,6 +15,11 @@ enum DependencyProjectValidatorTests {
     private static var assertionCount = 0
 
     static func main() throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--build-artifact-kind" {
+            let target = URL(fileURLWithPath: CommandLine.arguments[2])
+            print(validator.buildArtifactProjectKind(at: target)?.rawValue ?? "unknown")
+            return
+        }
         let root = fileManager.temporaryDirectory
             .appendingPathComponent("JobsPodValidator-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
@@ -128,6 +133,31 @@ enum DependencyProjectValidatorTests {
         try Data("name: fixture\ndependencies:\n  flutter:\n    sdk: flutter\n".utf8)
             .write(to: flutter.appendingPathComponent("pubspec.yaml"))
         try expect(validator.isFlutterProject(at: flutter), "Pod 门禁变更不能影响合法 Flutter 工程")
+        try expect(validator.buildArtifactProjectKind(at: flutter)?.menuTitle == "清理Flutter构建产物", "Flutter 工程标题应明确")
+        let flutterManifests = [
+            "dependencies: { flutter: { sdk: flutter } }\n",
+            "dependencies:\n  flutter: { sdk: 'flutter' }\n",
+            "\"dependencies\":\n  'flutter':\n    \"sdk\": \"flutter\" # SDK declaration\n"
+        ]
+        for (index, manifest) in flutterManifests.enumerated() {
+            let candidate = root.appendingPathComponent("Flutter清单\(index)", isDirectory: true)
+            try fileManager.createDirectory(at: candidate.appendingPathComponent("lib"), withIntermediateDirectories: true)
+            try Data(manifest.utf8).write(to: candidate.appendingPathComponent("pubspec.yaml"))
+            let nativeProject = candidate.appendingPathComponent("Demo.xcodeproj", isDirectory: true)
+            try fileManager.createDirectory(at: nativeProject, withIntermediateDirectories: true)
+            try Data("SDKROOT = iphoneos;".utf8).write(to: nativeProject.appendingPathComponent("project.pbxproj"))
+            try Data("plugins { id 'com.android.application' }".utf8).write(to: candidate.appendingPathComponent("build.gradle"))
+            try expect(validator.isFlutterProject(at: candidate), "flow 和引号清单必须识别为 Flutter 工程")
+            try expect(validator.buildArtifactProjectKind(at: candidate) == .flutter, "合法 Flutter 清单不能回退为同层原生工程")
+            try fileManager.removeItem(at: candidate.appendingPathComponent("lib"))
+            try expect(!validator.isFlutterProject(at: candidate), "Flutter 工程识别仍要求同层 lib 目录")
+            try expect(validator.isFlutterToolsProject(at: candidate), "统一 Flutter 菜单的识别不要求 lib 目录")
+            try expect(validator.buildArtifactProjectKind(at: candidate) == .flutter, "无 lib 的合法 Flutter 根目录同样不能回退原生类型")
+        }
+        try expect(!validator.isBuildArtifactTargetFolder(at: child), "未知目录不能出现清理入口")
+        for (kind, title) in [(BuildArtifactProjectKind.ios, "清理iOS/Xcode构建产物"), (.android, "清理Android构建产物"), (.harmony, "清理鸿蒙构建产物")] {
+            try expect(kind.menuTitle == title, "清理标题必须明确工程类型")
+        }
         try expect(validator.isCodeGraphTargetFolder(at: child), "普通文件夹仍允许代码地图入口")
         try expect(validator.isGitEmptyCommitPushTargetFolder(at: child), "普通文件夹仍允许 Git 入口")
         try expect(!fileManager.fileExists(atPath: project.appendingPathComponent("SHOULD_NOT_EXIST").path), "特殊路径不得被解释成命令")

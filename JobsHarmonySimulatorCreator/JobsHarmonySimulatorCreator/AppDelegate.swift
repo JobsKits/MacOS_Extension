@@ -60,12 +60,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         guard !didAcceptCreateRequest else {
-            model.record("忽略重复的新建鸿蒙模拟器请求：本次宿主已接收过创建动作。")
+            model.record("忽略重复的新建 Harmony 模拟器请求：本次宿主已接收过创建动作。")
             return
         }
         // 派发完成后宿主即将退出，期间收到的重复事件也不能再次打开终端。
         didAcceptCreateRequest = true
-        model.record("收到 Finder 新建鸿蒙模拟器请求。")
+        model.record("收到 Finder 新建 Harmony 模拟器请求。")
         beginOperation()
         model.createSimulator { [weak self] in
             self?.finishOperation()

@@ -148,6 +148,8 @@ private extension AppDelegate {
         /// 在目标文件夹执行 flutter pub get 请求失败
         case .flutterPubGet:
             alert.messageText = "执行 flutter pub get 失败"
+        case .cleanBuildArtifacts:
+            alert.messageText = "清理构建产物失败"
         /// 更新目标文件夹代码地图请求失败
         case .codeGraphBootstrap:
             alert.messageText = "更新代码地图失败"

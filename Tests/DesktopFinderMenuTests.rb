@@ -50,6 +50,101 @@ class DesktopFinderMenuTests < Minitest::Test
     end
   end
 
+  def test_build_artifact_menu_identifies_the_selected_project_before_display
+    Dir.mktmpdir('jobs-build-menu-tests-') do |directory|
+      source = isolated_source('JobsTerminalOpener/JobsTerminalFinderSync/FinderSync.swift', 950)
+      source = source.sub('FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory',
+                          'URL(fileURLWithPath: CommandLine.arguments[1])')
+      validator = File.read(File.join(ROOT, 'JobsTerminalOpener/JobsTerminalShared/DependencyProjectValidator.swift'))
+      features = File.read(File.join(ROOT, 'JobsTerminalOpener/JobsTerminalShared/FinderMenuFeatureConfiguration.swift')).split('struct FinderMenuFeatureConfiguration').first
+      configuration = <<~'SWIFT'
+        struct FinderMenuFeatureConfiguration {
+            static var enabled: Set<FinderMenuFeature> = [.cleanBuildArtifacts]
+            static func enabledFeatures(fallbackBundle: Bundle) -> Set<FinderMenuFeature> { enabled }
+        }
+      SWIFT
+      checks = <<~'SWIFT'
+        let manager = FileManager.default
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+            if !condition() { fatalError(message) }
+        }
+        func file(_ relative: String, _ text: String = "") throws {
+            let url = root.appendingPathComponent(relative)
+            try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: url)
+        }
+        try file("flutter/pubspec.yaml", "dependencies:\n  flutter:\n    sdk: flutter\n")
+        try file("flutter/lib/main.dart")
+        let flutterManifests = [
+            "flutter-flow": "dependencies: { flutter: { sdk: flutter } }\n",
+            "flutter-inline": "dependencies:\n  flutter: { sdk: 'flutter' }\n",
+            "flutter-quoted": "\"dependencies\":\n  'flutter':\n    \"sdk\": \"flutter\" # SDK declaration\n"
+        ]
+        for (prefix, manifest) in flutterManifests {
+            try file("\(prefix)/pubspec.yaml", manifest)
+            try file("\(prefix)/lib/main.dart")
+            try file("\(prefix)-no-lib/pubspec.yaml", manifest)
+        }
+        let flutterPaths = ["flutter"] + flutterManifests.keys.sorted().flatMap { [$0, "\($0)-no-lib"] }
+        try file("android/settings.gradle.kts")
+        try file("android/app/build.gradle.kts", "plugins { alias(libs.plugins.android.application) }")
+        try file("android/app/src/main/AndroidManifest.xml")
+        try file("ios/Demo.xcodeproj/project.pbxproj", "SDKROOT = iphoneos;")
+        for prefix in ["harmony", "flutter/ohos"] {
+            try file("\(prefix)/hvigorfile.ts")
+            try file("\(prefix)/build-profile.json5")
+            try file("\(prefix)/oh-package.json5")
+            try file("\(prefix)/AppScope/app.json5")
+        }
+        try file("unknown/build/keep")
+        try file("macos/Demo.xcodeproj/project.pbxproj", "SDKROOT = macosx;")
+        let controller = FIFinderSyncController.default()
+        let finder = FinderSync950()
+        // Flutter 根目录即使混有原生工程标记，也不能回退为原生清理入口。
+        for prefix in flutterPaths {
+            try file("\(prefix)/Demo.xcodeproj/project.pbxproj", "SDKROOT = iphoneos;")
+            try file("\(prefix)/build.gradle", "plugins { id 'com.android.application' }")
+        }
+        for (path, title) in [("android", "清理Android构建产物"), ("ios", "清理iOS/Xcode构建产物"), ("harmony", "清理鸿蒙构建产物"), ("flutter/ohos", "清理鸿蒙构建产物")] {
+            let selected = root.appendingPathComponent(path)
+            controller.selected = [selected]
+            let menu = finder.menu(for: .contextualMenuForItems)
+            expect(menu?.items.map(\.title) == [title], "wrong title for \(path)")
+            let item = menu!.items[0]
+            _ = (item.target as! NSObject).perform(item.action!, with: item)
+            let components = URLComponents(url: TestActions.lastURL!, resolvingAgainstBaseURL: false)!
+            expect(components.queryItems?.first(where: { $0.name == "path" })?.value == selected.path, "wrong cleanup target")
+            expect(components.queryItems?.first(where: { $0.name == "action" })?.value == "clean-build-artifacts", "stable action identifier")
+        }
+        for path in ["unknown", "macos", "flutter/lib", "ios/Demo.xcodeproj", "flutter/pubspec.yaml"] + flutterPaths {
+            controller.selected = [root.appendingPathComponent(path)]
+            expect(finder.menu(for: .contextualMenuForItems) == nil, "unsupported folder/file must hide cleanup")
+        }
+        controller.selected = [root.appendingPathComponent("flutter"), root.appendingPathComponent("android")]
+        expect(finder.menu(for: .contextualMenuForItems) == nil, "multiple selection must hide cleanup")
+        controller.selected = []
+        expect(finder.menu(for: .contextualMenuForContainer) == nil, "background must hide cleanup")
+        FinderMenuFeatureConfiguration.enabled = [.open, .cleanBuildArtifacts]
+        for path in flutterPaths {
+            controller.selected = [root.appendingPathComponent(path)]
+            expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["用终端打开"], "\(path) keeps generic actions without an outer cleanup entry")
+        }
+        FinderMenuFeatureConfiguration.enabled = []
+        expect(finder.menu(for: .contextualMenuForItems) == nil, "disabled feature must stay hidden")
+        print("PASS: build artifact menu titles, targets and visibility")
+      SWIFT
+      source_path = File.join(directory, 'main.swift')
+      binary = File.join(directory, 'menu-test')
+      File.write(source_path, [swift_stubs, validator, features, configuration, source, checks].join("\n"))
+      output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary)
+      assert status.success?, output
+      output, status = Open3.capture2e(binary, directory)
+      assert status.success?, output
+      assert_includes output, 'PASS: build artifact menu'
+    end
+  end
+
   def test_actual_menus_click_callbacks_and_injected_desktop_paths
     Dir.mktmpdir('jobs-desktop-menu-tests-') do |directory|
       source_path = File.join(directory, 'main.swift')
@@ -109,7 +204,7 @@ def test_harmony_simulator_menu_only_uses_the_real_desktop_background
       controller.targeted = desktop
       controller.selected = nil
       let menu = extensionMenu.menu(for: .contextualMenuForContainer)
-      expect(menu?.items.map(\.title) == ["新建鸿蒙模拟器"], "Only desktop background may show Harmony action")
+      expect(menu?.items.map(\.title) == ["新建 Harmony 模拟器"], "Only desktop background may show Harmony action")
       TestActions.count = 0
         click(menu)
       expect(TestActions.count == 1, "Desktop click dispatches once")
@@ -139,6 +234,69 @@ def test_harmony_simulator_menu_only_uses_the_real_desktop_background
     output, status = Open3.capture2e(binary_path)
     assert status.success?, output
     assert_includes output, 'Harmony desktop menu assertions'
+    puts output.lines.grep(/^PASS:/)
+  end
+end
+
+def test_android_repair_menu_only_uses_the_real_desktop_background
+  Dir.mktmpdir('jobs-android-repair-desktop-tests-') do |directory|
+    source_path = File.join(directory, 'main.swift')
+    binary_path = File.join(directory, 'android-repair-menu-tests')
+    sources = [isolated_source('JobsAndroidSimulatorRepairer/JobsAndroidSimulatorRepairFinderSync/FinderSync.swift', 901)]
+    %w[AndroidSimulatorRepairMenuContext AndroidSimulatorRepairRequest].each do |type|
+      source = File.read(File.join(ROOT, "JobsAndroidSimulatorRepairer/JobsAndroidSimulatorRepairShared/#{type}/#{type}.swift"))
+      source = source.gsub('FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)', 'TestSandboxEnvironment.desktopURLs')
+      sources << source
+    end
+    checks = <<~'SWIFT'
+      var assertionCount = 0
+      func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+          assertionCount += 1
+          guard condition() else { fatalError(message) }
+      }
+        func click(_ menu: NSMenu?) {
+            guard let item = menu?.items.first, let target = item.target as? NSObject,
+                  let action = item.action else { expect(false, "missing menu action"); return }
+            _ = target.perform(action, with: item)
+        }
+      let controller = FIFinderSyncController.default()
+      let desktop = URL(fileURLWithPath: String(cString: getpwuid(getuid())!.pointee.pw_dir), isDirectory: true).appendingPathComponent("Desktop", isDirectory: true)
+      let folder = URL(fileURLWithPath: "/fixture/ordinary", isDirectory: true)
+      let extensionMenu = FinderSync901()
+      expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)), "Android repair must observe root for real Finder desktop dispatch")
+      controller.targeted = desktop
+      controller.selected = nil
+      let menu = extensionMenu.menu(for: .contextualMenuForContainer)
+      expect(menu?.items.map(\.title) == ["Android 模拟器检测与修复"], "Only desktop background may show Android repair action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 1, "Desktop click dispatches once")
+        controller.selected = [folder]
+        expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Container callback stays eligible despite stale selection metadata")
+      controller.targeted = folder
+      expect(extensionMenu.menu(for: .contextualMenuForContainer) == nil, "Ordinary folder must hide Android repair action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 0, "Stale desktop menu must not dispatch from a folder")
+      controller.targeted = desktop
+      for selected in [[], [desktop], [folder], [desktop, folder]] {
+          controller.selected = selected
+          expect(extensionMenu.menu(for: .contextualMenuForItems) == nil, "All item selections must hide Android repair action")
+      }
+      expect(extensionMenu.menu(for: .toolbarItemMenu) == nil, "Toolbar must not add Android repair action")
+      controller.targeted = nil
+      controller.selected = nil
+      expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Known desktop fallback remains available")
+      expect(AndroidSimulatorRepairRequest.isRepairRequest(AndroidSimulatorRepairRequest.canonicalURL), "Fixed request must pass")
+      expect(!AndroidSimulatorRepairRequest.isRepairRequest(URL(string: "jobsandroidsimulatorrepairer://simulator/repair?command=bad")!), "Extra URL parameters must be rejected")
+      print("PASS: \(assertionCount) Android repair desktop menu assertions")
+    SWIFT
+    File.write(source_path, swift_stubs + "\n" + sources.join("\n") + "\n" + checks)
+    output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
+    assert status.success?, output
+    output, status = Open3.capture2e(binary_path)
+    assert status.success?, output
+    assert_includes output, 'Android repair desktop menu assertions'
     puts output.lines.grep(/^PASS:/)
   end
 end
@@ -272,6 +430,7 @@ end
       }
       final class NSMenuItem: NSObject {
           let title: String
+          var isEnabled = true
           let action: Selector?
           var target: AnyObject?
           var representedObject: Any?

@@ -1,0 +1,41 @@
+# `JobsProjectTools Scripts`
+
+![Jobs出品，必属精品](https://picsum.photos/1500/400)
+
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#%E5%89%8D%E8%A8%80)
+- [一、输入与调用](#jobs-toc-heading-2)
+- [二、功能与输出](#jobs-toc-heading-3)
+- [三、依赖、副作用与验证](#jobs-toc-heading-4)
+
+</details>
+<!-- jobs-toc:end -->
+
+---
+
+## 🔥 <span id="前言">前言</span>
+
+[ManageProjectTools.zsh](./ManageProjectTools.zsh) 由上级成对安装 / 卸载入口调用，负责六项 IDE / Git 菜单的统一构建、注册与逐项状态管理；不是 Finder 点击后的任意命令执行器。
+
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、输入与调用 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+
+第一个参数必须为 `install` 或 `uninstall`，后面至少一个功能 ID：`android_studio_opener`、`vscode_opener`、`xcode_opener`、`git-pull`、`git_remote`、`git_remote_copier`；未知 ID 停止。用户使用[功能 README 中的上级入口](../README.md)完成阅读与回车确认，内部脚本不再重复询问。
+
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、功能与输出 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+
+- 安装读取已有功能状态；首次无配置时也保留已启用的对应单项，合并指定选择。
+- 使用完整 Xcode 构建到上级 `./work/DerivedData/`，注册并等待当前精确扩展路径启用成功，再原子保存 `EnabledFeatures.txt`，停用对应独立扩展。
+- 卸载只删选择的功能配置与启用状态；最后一项关闭后注销统一扩展，保留源码和构建缓存。
+- 配置在当前用户 Application Support 的 JobsProjectTools 目录中；两种模式最后刷新 Finder。终端显示状态与错误，没有单独业务日志文件。
+
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、依赖、副作用与验证 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+
+需要 macOS、系统 zsh、完整 Xcode / macOS SDK、PlugInKit、LaunchServices 与可用签名；不安装这些依赖。安装和卸载会停止本功能宿主 / 扩展，写用户配置和系统登记并刷新 Finder。构建或启用验证失败时停止，不先关闭仍可用的独立菜单；不执行 Git 拉取或打开 IDE。
+
+本目录属于 [JobsProjectTools](../README.md) 的普通源码目录，无独立 Git。文档仅做静态对账，没有运行安装、卸载、构建或 Finder 刷新。
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

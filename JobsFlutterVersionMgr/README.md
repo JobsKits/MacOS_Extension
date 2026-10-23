@@ -1,3 +1,5 @@
+> 本功能的右键入口已迁入 [JobsFlutterTools](../JobsFlutterTools/README.md)。以下保留旧独立工程的实现说明；新安装使用统一菜单与项目 FVM。原“Flutter项目体检”在新菜单中称为“原生Flutter项目体检”。
+
 # JobsFlutterVersionMgr
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)

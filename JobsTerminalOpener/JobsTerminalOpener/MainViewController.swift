@@ -36,7 +36,7 @@ final class MainViewController: NSViewController {
         return label
     }()
     private lazy var detailLabel: NSTextField = {
-        let label = NSTextField(wrappingLabelWithString: "这里管理 JobsTerminalOpener 内的 5 项功能；另外 3 个独立扩展仍由总安装器选择。勾选后点击“保存功能选择”。")
+        let label = NSTextField(wrappingLabelWithString: "这里管理 JobsTerminalOpener 内的 6 项功能；其它独立扩展由总安装器选择。勾选后点击“保存功能选择”。")
         label.font = .systemFont(ofSize: 15)
         label.textColor = .secondaryLabelColor
         return label
@@ -50,6 +50,7 @@ final class MainViewController: NSViewController {
     private lazy var openFeatureCheckbox = makeFeatureCheckbox(for: .open)
     private lazy var podInstallFeatureCheckbox = makeFeatureCheckbox(for: .podInstall)
     private lazy var flutterPubGetFeatureCheckbox = makeFeatureCheckbox(for: .flutterPubGet)
+    private lazy var cleanBuildFeatureCheckbox = makeFeatureCheckbox(for: .cleanBuildArtifacts)
     private lazy var codeGraphFeatureCheckbox = makeFeatureCheckbox(for: .codeGraphBootstrap)
     private lazy var gitEmptyCommitPushFeatureCheckbox = makeFeatureCheckbox(for: .gitEmptyCommitPush)
     private lazy var saveSelectionButton: NSButton = {
@@ -132,7 +133,7 @@ final class MainViewController: NSViewController {
         [
             (.open, openFeatureCheckbox),
             (.podInstall, podInstallFeatureCheckbox),
-            (.flutterPubGet, flutterPubGetFeatureCheckbox),
+            (.cleanBuildArtifacts, cleanBuildFeatureCheckbox),
             (.codeGraphBootstrap, codeGraphFeatureCheckbox),
             (.gitEmptyCommitPush, gitEmptyCommitPushFeatureCheckbox)
         ]

@@ -40,18 +40,20 @@ final class FinderSync: FIFinderSync {
         let directoryURL = urls[0]
         if enabledFeatures.contains(.podInstall),
            dependencyProjectValidator.isCocoaPodsProject(at: directoryURL) {
-            let podInstallItem = NSMenuItem(title: "pod install", action: #selector(runPodInstallInTerminal(_:)), keyEquivalent: "")
+            let podInstallItem = NSMenuItem(title: "Pod Install", action: #selector(runPodInstallInTerminal(_:)), keyEquivalent: "")
             podInstallItem.target = self
             podInstallItem.isEnabled = true
             menu.addItem(podInstallItem)
         }
 
-        if enabledFeatures.contains(.flutterPubGet),
-           dependencyProjectValidator.isFlutterProject(at: directoryURL) {
-            let flutterPubGetItem = NSMenuItem(title: "在终端执行 flutter pub get", action: #selector(runFlutterPubGetInTerminal(_:)), keyEquivalent: "")
-            flutterPubGetItem.target = self
-            flutterPubGetItem.isEnabled = true
-            menu.addItem(flutterPubGetItem)
+        // Flutter 操作统一由 JobsFlutterTools 提供，通用清理仅保留原生工程入口。
+        if enabledFeatures.contains(.cleanBuildArtifacts),
+           !dependencyProjectValidator.isFlutterToolsProject(at: directoryURL),
+           let projectKind = dependencyProjectValidator.buildArtifactProjectKind(at: directoryURL),
+           projectKind != .flutter {
+            let cleanItem = NSMenuItem(title: projectKind.menuTitle, action: #selector(cleanBuildArtifacts(_:)), keyEquivalent: "")
+            cleanItem.target = self
+            menu.addItem(cleanItem)
         }
 
         if enabledFeatures.contains(.codeGraphBootstrap),
@@ -68,7 +70,8 @@ final class FinderSync: FIFinderSync {
             gitEmptyCommitPushItem.target = self
             gitEmptyCommitPushItem.isEnabled = true
             menu.addItem(gitEmptyCommitPushItem)
-        };return menu.items.isEmpty ? nil : menu
+        }
+        return menu.items.isEmpty ? nil : menu
     }
 }
 
@@ -93,6 +96,10 @@ private extension FinderSync {
 
     @objc func runFlutterPubGetInTerminal(_ sender: Any?) {
         performTerminalAction(.flutterPubGet)
+    }
+
+    @objc func cleanBuildArtifacts(_ sender: Any?) {
+        performTerminalAction(.cleanBuildArtifacts)
     }
 
     @objc func updateCodeGraph(_ sender: Any?) {
@@ -184,6 +191,7 @@ private enum TerminalAction: String {
     case open
     case podInstall = "pod-install"
     case flutterPubGet = "flutter-pub-get"
+    case cleanBuildArtifacts = "clean-build-artifacts"
     case codeGraphBootstrap = "codegraph-bootstrap"
     case gitEmptyCommitPush = "git-empty-commit-push"
 
@@ -198,6 +206,9 @@ private enum TerminalAction: String {
         /// 在目标文件夹执行 flutter pub get 请求失败
         case .flutterPubGet:
             return "执行 flutter pub get 失败"
+        /// 清理当前工程构建产物请求失败
+        case .cleanBuildArtifacts:
+            return "清理构建产物失败"
         /// 更新目标文件夹代码地图请求失败
         case .codeGraphBootstrap:
             return "更新代码地图失败"

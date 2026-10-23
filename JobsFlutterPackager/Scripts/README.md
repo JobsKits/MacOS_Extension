@@ -28,7 +28,9 @@
 | [PackageFlutter.zsh](./PackageFlutter.zsh) | [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 私有载体或手动终端 | 当前 Flutter 根目录重验；自述与回车确认；[**fzf**](https://github.com/junegunn/fzf) 选择 Android / iOS / 鸿蒙；Android 再选 APK / AAB，鸿蒙再选 HAP / APP；pub get、构建、核验产物 |
 | [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode) Build Phase | 注册本 App 中的固定扩展，确认当前精确路径启用后刷新 Finder；不运行 Flutter |
 
-打包默认 `release`，支持 `--mode release|debug|profile`、`--flavor NAME` 和 Android `--target apk|appbundle|all`。项目 [**FVM**](https://fvm.app/) 固定存在时不静默回退系统 SDK。Android 要求 JDK 17；[**iOS**](https://developer.apple.com/ios/) 要求完整 Xcode、项目签名，含 Podfile 时要求 [**CocoaPods**](https://cocoapods.org/)。fzf 不可用时提示 `brew install fzf` 并停止，不采用编号回退或自动安装。
+`--platform ios|android|ohos` 可直接指定平台并跳过平台选择；省略时兼容旧 CLI 的 fzf 选择。统一 Finder 菜单会传入此参数。iOS 或平台和产物都已指定时不需要 fzf。
+
+打包默认 `release`，支持 `--mode release|debug|profile`、`--flavor NAME` 和 Android `--target apk|appbundle|all`。项目 [**FVM**](https://fvm.app/) 固定存在时不静默回退系统 SDK。Android 要求 JDK 17；[**iOS**](https://developer.apple.com/ios/) 要求完整 Xcode、项目签名，含 Podfile 时要求 [**CocoaPods**](https://cocoapods.org/)。需要交互选择且 fzf 不可用时提示 `brew install fzf` 并停止，不采用编号回退或自动安装。
 
 Android 根据模式 / flavor 匹配非空 APK / AAB，可接受本轮构建命中 [**Gradle**](https://gradle.org/) 缓存；iOS 要求此次新导出的 IPA，只有 xcarchive 或旧 IPA 会报告失败。可用 `OPEN_AFTER_BUILD=0` 禁止构建后打开产物目录。
 

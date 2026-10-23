@@ -31,7 +31,7 @@
 | Terminal 输入 C / R | C 只读检查；R 确认后按快照恢复。 |
 | 卸载本 Finder 扩展 | 移除菜单与核验过的 App，保留已安装的 Git 配置及其恢复快照。 |
 
-业务规范源是[独立双击脚本](../../../JobsCommand@Gits/【MacOS】🌐双击配置Git动态代理.command/README.md)。完整自包含副本位于 [Scripts/ConfigureGitDynamicProxy.command](./Scripts/ConfigureGitDynamicProxy.command)，随 App 资源打包；回归在规范源可用时通过 `cmp` 对账整文件。复制本模块到其它目录后仍可独立构建和运行。
+业务规范源是[独立双击脚本](../../../JobsCommand@Gits/MacOS/【MacOS】🌐双击配置Git动态代理.command/README.md)。完整自包含副本位于 [Scripts/ConfigureGitDynamicProxy.command](./Scripts/ConfigureGitDynamicProxy.command)，随 App 资源打包；回归在规范源可用时通过 `cmp` 对账整文件。复制本模块到其它目录后仍可独立构建和运行。
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

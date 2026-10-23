@@ -168,7 +168,7 @@ fp_intro_line() {
 fp_show_intro() {
     [[ "${1:-}" != --help && "${1:-}" != --check ]] || return 0
     fp_intro_line title '━━━━━━━━━━ Flutter打包 ━━━━━━━━━━'
-    fp_intro_line body '1、只处理指定文件夹自身的 Flutter 项目；用 fzf 选择 Android、iOS 或 HarmonyOS（鸿蒙）。'
+    fp_intro_line body '1、只处理指定文件夹自身的 Flutter 项目；Finder 子菜单指定 iOS、Android 或鸿蒙；直接运行未指定平台时用 fzf 选择。'
     fp_intro_line body '2、Android 支持 APK / AAB；iOS 构建 IPA；鸿蒙支持 HAP / APP，要求已适配的 ohos 工程与鸿蒙 Flutter SDK。'
     fp_intro_line body '3、将联网执行 flutter pub get、构建并写入项目 build 产物；不清理工程、不安装升级工具、不提交代码。'
     fp_intro_line body '4、优先使用项目已配置的 FVM SDK；模式默认 release，可使用 --mode / --flavor 指定。'
@@ -176,9 +176,9 @@ fp_show_intro() {
 }
 
 fp_help() {
-    print -r -- 'Flutter打包：/bin/zsh PackageFlutter.zsh --project <Flutter根目录> [--mode release|debug|profile] [--flavor NAME] [--target apk|appbundle|all] [--ohos-target hap|app|all] [--flutter-sdk 鸿蒙SDK根目录]'
+    print -r -- 'Flutter打包：/bin/zsh PackageFlutter.zsh --project <Flutter根目录> [--platform ios|android|ohos] [--mode release|debug|profile] [--flavor NAME] [--target apk|appbundle|all] [--ohos-target hap|app|all] [--flutter-sdk 鸿蒙SDK根目录]'
     print -r -- '--check --project <目录>：只校验项目与参数，不等待、不创建日志、不调用 Flutter。'
-    print -r -- '--help：显示帮助。正常打包始终通过 fzf 选择平台；--target 只预设 Android 产物类型。'
+    print -r -- '--help：显示帮助。--platform 指定后不再选择平台；省略时兼容 fzf 选择。--target 预设 Android 产物类型。'
     print -r -- '鸿蒙可用 OHOS_BUILD_TARGET、FLUTTER_OHOS_SDK；需要 DEVECO_SDK_HOME 和 Node/npm/ohpm/Hvigor/Java，不接受 --flavor。'
     print -r -- '也可使用 BUILD_MODE、FLAVOR、BUILD_TARGET、OPEN_AFTER_BUILD=0。缺 fzf 时请先执行 brew install fzf。'
 }
@@ -203,12 +203,16 @@ fp_parse() {
     FP_OHOS_FLUTTER_SDK="${FLUTTER_OHOS_SDK:-}"
     while (( $# > 0 )); do
         case "$1" in
-            --project|--mode|--flavor|--target|--ohos-target|--flutter-sdk)
+            --project|--platform|--mode|--flavor|--target|--ohos-target|--flutter-sdk)
                 (( $# >= 2 )) && [[ -n "$2" && "$2" != --* ]] || { fp_error "$1 缺少值"; return 2; }
                 case "$1" in
                     --project)
                         [[ -z "$FP_PROJECT" ]] || { fp_error '只能传入一个项目目录'; return 2; }
                         FP_PROJECT="$2"
+                        ;;
+                    --platform)
+                        [[ -z "$FP_PLATFORM" ]] || { fp_error '只能传入一个打包平台'; return 2; }
+                        FP_PLATFORM="$2"
                         ;;
                     --mode) FP_MODE="$2" ;;
                     --flavor) FP_FLAVOR="$2" ;;
@@ -221,6 +225,7 @@ fp_parse() {
             *) fp_error "未知参数：$1"; return 2 ;;
         esac
     done
+    case "$FP_PLATFORM" in ''|ios|android|ohos) ;; *) fp_error "无效打包平台：$FP_PLATFORM"; return 2 ;; esac
     case "$FP_MODE" in release|debug|profile) ;; *) fp_error "无效模式：$FP_MODE"; return 2 ;; esac
     case "$FP_ANDROID_TARGET" in ''|apk|appbundle|all) ;; *) fp_error "无效 Android 产物：$FP_ANDROID_TARGET"; return 2 ;; esac
     case "$FP_OHOS_TARGET" in ''|hap|app|all) ;; *) fp_error "无效鸿蒙产物：$FP_OHOS_TARGET"; return 2 ;; esac
@@ -274,20 +279,22 @@ fp_initialize() {
 fp_select() {
     local prompt="$1"
     shift
+    FP_FZF="$(command -v fzf)"
+    [[ -n "$FP_FZF" && -x "$FP_FZF" ]] && "$FP_FZF" --version >/dev/null 2>&1 || {
+        fp_error 'fzf 不可用；请先在终端执行 brew install fzf，再重新右键。未运行依赖解析或构建。'
+        return 2
+    }
     print -rl -- "$@" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE -u FZF_DEFAULT_COMMAND \
         "$FP_FZF" --no-multi --layout=reverse --height=10 --border --prompt="$prompt > " --header='回车选择；Esc / Ctrl+C 取消'
 }
 
 fp_select_platform() {
     local selection="" selection_ec=0
-    FP_FZF="$(command -v fzf)"
-    [[ -n "$FP_FZF" && -x "$FP_FZF" ]] && "$FP_FZF" --version >/dev/null 2>&1 || {
-        fp_error 'fzf 不可用；请先在终端执行 brew install fzf，再重新右键。未运行依赖解析或构建。'
-        return 2
-    }
-    selection="$(fp_select '打包平台' 'Android' 'iOS' 'HarmonyOS（鸿蒙）')" || selection_ec=$?
-    (( selection_ec == 0 )) || return "$selection_ec"
-    case "$selection" in Android) FP_PLATFORM=android ;; iOS) FP_PLATFORM=ios ;; 'HarmonyOS（鸿蒙）') FP_PLATFORM=ohos ;; *) fp_error 'fzf 返回了无效平台'; return 2 ;; esac
+    if [[ -z "$FP_PLATFORM" ]]; then
+        selection="$(fp_select '打包平台' 'Android' 'iOS' 'HarmonyOS（鸿蒙）')" || selection_ec=$?
+        (( selection_ec == 0 )) || return "$selection_ec"
+        case "$selection" in Android) FP_PLATFORM=android ;; iOS) FP_PLATFORM=ios ;; 'HarmonyOS（鸿蒙）') FP_PLATFORM=ohos ;; *) fp_error 'fzf 返回了无效平台'; return 2 ;; esac
+    fi
     if [[ "$FP_PLATFORM" == android && -z "$FP_ANDROID_TARGET" ]]; then
         selection="$(fp_select 'Android 产物' 'APK' 'AAB' 'APK + AAB')" || return $?
         case "$selection" in APK) FP_ANDROID_TARGET=apk ;; AAB) FP_ANDROID_TARGET=appbundle ;; 'APK + AAB') FP_ANDROID_TARGET=all ;; *) fp_error 'fzf 返回了无效产物'; return 2 ;; esac
@@ -563,7 +570,7 @@ fp_dispatch() {
     fp_confirm || return $? # 确认前不创建日志或执行项目命令。
     fp_initialize || return $? # 建立私有日志，仅修改当前进程环境。
     local selection_ec=0
-    fp_select_platform || selection_ec=$? # fzf 统一选择平台及对应包型。
+    fp_select_platform || selection_ec=$? # 已指定平台时只选择尚未指定的包型；iOS 无需 fzf。
     if (( selection_ec == 1 || selection_ec == 130 )); then
         fp_log 'ℹ 已取消平台 / 产物选择，未执行依赖解析或构建。'
         return 0

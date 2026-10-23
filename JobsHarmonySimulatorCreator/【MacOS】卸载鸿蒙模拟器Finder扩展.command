@@ -2,7 +2,7 @@
 # 脚本自述：
 # - 脚本名称：【MacOS】卸载鸿蒙模拟器Finder扩展.command
 # - 核心用途：禁用并注销 JobsHarmonySimulatorCreator 的 Finder 扩展，移除已登记的本应用构建产物。
-# - 影响范围：仅处理固定 Bundle ID，保留项目源码和所有现有 鸿蒙模拟器、SDK 与系统映像；确认后重启 Finder。
+# - 影响范围：仅处理固定 Bundle ID，保留项目源码和所有现有 Harmony 模拟器、SDK 与系统映像；确认后重启 Finder。
 # - 运行提示：先阅读内置自述并按回车，再核对路径并输入 YES；其它输入取消。
 
 SCRIPT_DIR=""
@@ -38,8 +38,8 @@ intro_line() {
 show_script_intro_and_wait() {
   prepare_display_context
   intro_line title "================ 【MacOS】卸载鸿蒙模拟器Finder扩展.command ================"
-  intro_line body "1、核心用途：禁用、注销‘新建鸿蒙模拟器’右键菜单。"
-  intro_line body "2、影响范围：只删除 Bundle ID 为 ${APP_ID} 的已登记 App；保留源码与所有现有 鸿蒙模拟器、SDK 与系统映像。"
+  intro_line body "1、核心用途：禁用、注销‘新建 Harmony 模拟器’右键菜单。"
+  intro_line body "2、影响范围：只删除 Bundle ID 为 ${APP_ID} 的已登记 App；保留源码与所有现有 Harmony 模拟器、SDK 与系统映像。"
   intro_line body "3、执行策略：回车后先显示待处理路径；输入 YES 才卸载并重启 Finder，其它输入取消。"
   intro_line body "4、取消方式：按 Ctrl+C；非交互输入会退出。"
   intro_line body "5、日志位置：${LOG_FILE}"

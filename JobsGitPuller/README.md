@@ -1,3 +1,5 @@
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，同一 Finder 扩展固定 IDE / Git 菜单顺序。此目录的安装、卸载入口仅启停对应单项；请保留完整仓库。下文说明本目录保留的源码工程与构建方式；常规菜单安装使用统一包。
+
 # `JobsGitPuller`
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
@@ -11,10 +13,10 @@
 - [一、安装与卸载](#install)
   - [【MacOS】安装Git拉取Finder扩展.command](#jobs-toc-heading-3)
   - [【MacOS】卸载Git拉取Finder扩展.command](#jobs-toc-heading-4)
-- [二、运行与恢复边界](#jobs-toc-heading-5)
+- [二、运行与恢复边界](#safety)
   - [PullGitRepository.zsh](#jobs-toc-heading-6)
-- [二、工作区与恢复边界](#jobs-toc-heading-7)
-- [三、目录与验证](#files-tests)
+- [三、工作区与恢复边界](#workspace-safety)
+- [四、目录与验证](#files-tests)
 
 </details>
 <!-- jobs-toc:end -->
@@ -61,7 +63,7 @@
 - 注销并清理构建产物，刷新 Finder；不删除源码、目标项目或目标仓库的恢复快照。
 - 展示真实注册路径后必须输入 `YES` 才继续；日志为系统临时目录中的 `【MacOS】卸载Git拉取Finder扩展.log`。
 
-## <span id="jobs-toc-heading-5" data-jobs-toc="v2">二、<span id="safety">运行与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## 二、<span id="safety">运行与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 要求 macOS 12+、[**Xcode**](https://developer.apple.com/xcode/) 和健康 Git。已有 Git 直接复用，不安装依赖，不改变网络代理、全局 Git 配置或分支 upstream。分支没有 upstream、游离 HEAD、尚无提交、稀疏检出、特殊索引、已有 merge / rebase 等事务时停止。
 
@@ -78,10 +80,10 @@
 
 ```shell
 /bin/zsh ./Scripts/PullGitRepository.zsh \
-  '/实际/项目目录'
+  '../../目标项目'
 ```
 
-## <span id="jobs-toc-heading-7" data-jobs-toc="v2">二、<span id="safety">工作区与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## 三、<span id="workspace-safety">工作区与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 仅当前工作树，当前分支配置的单个远端 upstream；子目录会显示所属仓库根。保留本地提交，不强制对齐远端，不 push、不自动选择其他 remote。
 - 不递归更新子模块。存在子模块脏状态或检出变化时先停止；远端修改 gitlink 后，子模块实际检出仍保持原样，需要单独同步。
@@ -95,7 +97,7 @@
 
 Git 官方说明提醒：带未提交改动直接 merge 后，abort 未必能恢复，因此这里先创建 stash 再合并；恢复使用 `apply --index`，不 pop / drop 既有 stash。参见 [merge 文档](https://git-scm.com/docs/git-merge)、[stash 文档](https://git-scm.com/docs/git-stash)。
 
-## 三、<span id="files-tests">目录与验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 四、<span id="files-tests">目录与验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 路径 | 职责 |
 | --- | --- |

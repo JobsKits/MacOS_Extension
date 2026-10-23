@@ -1,7 +1,7 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：【MacOS】安装鸿蒙模拟器Finder扩展.command
-# - 核心用途：独立构建、注册并启用“新建鸿蒙模拟器”桌面右键扩展。
+# - 核心用途：独立构建、注册并启用“新建 Harmony 模拟器”桌面右键扩展。
 # - 影响范围：只构建本工程、启用固定扩展并刷新 Finder；不创建模拟器或下载运行时。
 # - 运行提示：阅读自述后，直接回车安装；输入任意字符后回车跳过，Ctrl+C 取消。
 
@@ -38,10 +38,10 @@ intro_line() {
 # 先说明安装范围，再等待回车安装或非空输入跳过。
 show_script_intro_and_wait() {
   prepare_display_context
-  intro_line title '━━━━━━━━━━ 安装 鸿蒙模拟器 Finder 扩展 ━━━━━━━━━━'
+  intro_line title '━━━━━━━━━━ 安装 Harmony 模拟器 Finder 扩展 ━━━━━━━━━━'
   intro_line body "1、来源：本地源码 ${PROJECT_ROOT}。"
   intro_line body "2、目标：${APP_PATH}；系统从此处启动扩展，请保留产物。"
-  intro_line body '3、影响：构建并启用“新建鸿蒙模拟器”，刷新 Finder；不创建、删除模拟器，不下载运行时。'
+  intro_line body '3、影响：构建并启用“新建 Harmony 模拟器”，刷新 Finder；不创建、删除模拟器，不下载运行时。'
   intro_line body '4、运行策略：直接回车安装；输入任意字符后回车跳过。Ctrl+C 取消。'
   intro_line body "5、日志：${LOG_FILE}。"
   if [[ ! -t 0 ]]; then
@@ -139,7 +139,7 @@ register_extension() {
   /usr/bin/pluginkit -e use -i "${EXTENSION_ID}" 2>&1 | /usr/bin/tee -a "${LOG_FILE}" || exit 1
   /usr/bin/open -n "${APP_PATH}" --args --initialize-finder-extension || { log '✖ 无法初始化宿主。'; exit 1; }
   /usr/bin/killall Finder 2>&1 | /usr/bin/tee -a "${LOG_FILE}" || log 'ℹ Finder 当前未运行。'
-  log '✔ 已请求启用扩展。在桌面空白处右键，选择“新建鸿蒙模拟器”。'
+  log '✔ 已请求启用扩展。在桌面空白处右键，选择“新建 Harmony 模拟器”。'
   log 'ℹ 菜单未出现时，在系统设置的 Finder 扩展中启用 JobsHarmonySimulatorCreator；首次操作允许控制 Terminal。'
 }
 # 编排确认、自检、构建与扩展注册。

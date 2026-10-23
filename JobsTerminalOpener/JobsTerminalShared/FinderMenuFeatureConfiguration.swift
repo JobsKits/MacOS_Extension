@@ -12,6 +12,7 @@ enum FinderMenuFeature: String, CaseIterable {
     case open
     case podInstall = "pod-install"
     case flutterPubGet = "flutter-pub-get"
+    case cleanBuildArtifacts = "clean-build-artifacts"
     case codeGraphBootstrap = "codegraph-bootstrap"
     case gitEmptyCommitPush = "git-empty-commit-push"
 
@@ -22,10 +23,13 @@ enum FinderMenuFeature: String, CaseIterable {
             return "用终端打开 —— 任意单个本地文件或文件夹"
         /// 同层存在工程包和 Podfile 时提供原生安装命令
         case .podInstall:
-            return "pod install —— 同层含 *.xcodeproj 和 Podfile"
+            return "Pod Install —— 同层含 *.xcodeproj 和 Podfile"
         /// 仅对合法 Flutter 工程提供依赖拉取入口
         case .flutterPubGet:
             return "在终端执行 flutter pub get —— 合法 Flutter 工程"
+        /// 先识别工程，Finder 菜单显示具体工程类型。
+        case .cleanBuildArtifacts:
+            return "清理构建产物 —— iOS/Xcode、Android、鸿蒙原生工程；Flutter 使用开发辅助子菜单"
         /// 仅对普通文件夹更新代码地图，缺失工具时在终端确认安装
         case .codeGraphBootstrap:
             return "更新代码地图（.codegraph） —— 普通文件夹，缺失组件时确认安装"

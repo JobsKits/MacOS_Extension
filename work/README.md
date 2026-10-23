@@ -30,7 +30,7 @@
 | --- | --- |
 | [统一安装脚本](../【MacOS】🧩安装Finder扩展.command) | 按选中的功能创建 `./<项目名>DerivedData/`，将其传给 `xcodebuild -derivedDataPath`；默认构建 `Debug` 配置，再注册其中的 App 和内嵌扩展。 |
 | [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 20 个工程中覆盖除复制远程地址外的 19 个宿主（按 2026-10-23 当前卸载映射），包含 Flutter 版本管理、依赖提取、Git 拉取、Flutter 运行与 iOS / Android / 鸿蒙模拟器创建，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
-| [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于工程内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
+| [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于工程内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
 | [源码与使用说明](../README.md) | 本仓说明安装、卸载和各工程的用途；工程中的源码与工程文件可重新生成构建产物。 |
 
 安装脚本当前使用的路径规则为：
@@ -92,7 +92,7 @@
 
 - 继续使用已安装的 Finder 扩展时，保留对应 DerivedData，尤其是 `Build/Products/Debug/` 内已注册的 App 和扩展。
 - 不再使用功能时，除 `JobsGitRemoteCopier` 外，运行[统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command)。脚本先展示影响范围，选择功能后还需回车确认；它会停用、注销所选功能并清理对应构建目录，同时重启 Finder。
-- `JobsGitRemoteCopier` 使用[专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command/【MacOS】卸载复制Git远程地址Finder扩展.command)。按回车确认后会停用、注销扩展并重启 Finder；该脚本的本地构建清理目标实际为 `../JobsGitRemoteCopier/work/JobsGitRemoteCopierDerivedData/`，因此本仓中的 `./JobsGitRemoteCopierDerivedData/` 仍会保留。需要回收这部分空间时，先确认扩展已成功注销，再另行清理对应目录。
+- `JobsGitRemoteCopier` 使用[专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command)。按回车确认后会停用、注销扩展并重启 Finder；该脚本的本地构建清理目标实际为 `../JobsGitRemoteCopier/work/JobsGitRemoteCopierDerivedData/`，因此本仓中的 `./JobsGitRemoteCopierDerivedData/` 仍会保留。需要回收这部分空间时，先确认扩展已成功注销，再另行清理对应目录。
 - 需要恢复时，重新运行[统一安装脚本](../【MacOS】🧩安装Finder扩展.command)，选择相应功能。脚本会重新构建并注册扩展；重新构建需要完整源码及可用的 Xcode 环境。
 - 手工误删后菜单失效时，同样重新安装受影响的功能。构建目录可再生，源码应始终保存在工程中，不要把手工修改或需要长期保留的文件放入这里。
 

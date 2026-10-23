@@ -24,7 +24,7 @@ enum HarmonySimulatorTransportTests {
         }
         try testMenuContexts(root: root)
         try testPrivateTransport(root: root)
-        print("✔ 鸿蒙模拟器固定 URL、仅桌面空白菜单、Shell 转义与私有载体回归通过（\(assertionCount) 条断言）。")
+        print("✔ Harmony 模拟器固定 URL、仅桌面空白菜单、Shell 转义与私有载体回归通过（\(assertionCount) 条断言）。")
     }
 
     private static func testRequests() throws {

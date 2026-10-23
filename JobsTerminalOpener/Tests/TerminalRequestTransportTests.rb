@@ -25,6 +25,7 @@ class TerminalRequestTransportTests < Minitest::Test
     )
     raise "Swift 传输夹具编译失败：#{output}" unless status.success?
 
+    FileUtils.cp(File.join(project, 'Scripts/CleanBuildArtifacts.zsh'), @fixture_build)
     Minitest.after_run { FileUtils.remove_entry(@fixture_build) if File.directory?(@fixture_build) }
     @fixture_executable
   end
@@ -69,7 +70,7 @@ class TerminalRequestTransportTests < Minitest::Test
   end
 
   def test_every_action_produces_one_terminal_line_even_with_quotes_and_newlines_in_target
-    %w[open pod-install flutter-pub-get codegraph-bootstrap git-empty-commit-push].each do |action|
+    %w[open pod-install flutter-pub-get clean-build-artifacts codegraph-bootstrap git-empty-commit-push].each do |action|
       request = fixture('prepare', action: action)
       refute_match(/[\r\n]/, request.fetch('commandLine'), action)
       assert_operator request.fetch('commandLine').bytesize, :<, 2048, action
@@ -93,8 +94,22 @@ class TerminalRequestTransportTests < Minitest::Test
     assert_equal request.fetch('commandLine'), result.fetch('commandLine')
   end
 
+  def test_build_clean_payload_identifies_target_and_cleans_its_own_carrier
+    FileUtils.mkdir_p(File.join(@project, 'build'))
+    File.write(File.join(@project, 'build/artifact'), 'generated')
+    request = fixture('prepare', action: 'clean-build-artifacts')
+    output, status = Open3.capture2e(@environment, '/bin/zsh', request.fetch('scriptPath'), stdin_data: "CLEAN\n")
+    assert status.success?, output
+    assert_includes output, '工程类型：Flutter'
+    refute File.exist?(File.join(@project, 'build'))
+    assert File.file?(File.join(@project, 'pubspec.yaml'))
+    refute File.exist?(request.fetch('scriptPath'))
+    refute File.exist?(request.fetch('runtimeDirectory'))
+    refute File.exist?(File.join(@project, 'SHOULD_NOT_EXIST'))
+  end
+
   def test_complex_actions_keep_private_unique_payloads_and_target_out_of_terminal_input
-    %w[codegraph-bootstrap git-empty-commit-push].each do |action|
+    %w[clean-build-artifacts codegraph-bootstrap git-empty-commit-push].each do |action|
       first = fixture('prepare', action: action)
       second = fixture('prepare', action: action)
       refute_equal first.fetch('runtimeDirectory'), second.fetch('runtimeDirectory')

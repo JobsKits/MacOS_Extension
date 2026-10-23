@@ -1,0 +1,72 @@
+[
+  {
+    "feature": "ios-clean-cache",
+    "file": "【MacOS】🧹双击清理iOS缓存.command",
+    "source": "其他/【MacOS】🧹双击清理iOS缓存.command/【MacOS】🧹双击清理iOS缓存.command",
+    "sourceSHA256": "1d478afb871bf8b89a8aa8f059ea126cbaaf4737495c85f82bd3367e69bd30a4",
+    "bundledSHA256": "c301bd90500c3be2adb72e1124c957ea0d02ce66ed6950537c4c9a7dec2286e6"
+  },
+  {
+    "feature": "ios-disable-sandbox",
+    "file": "【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command",
+    "source": "Cocoapods/【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command/【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command",
+    "sourceSHA256": "c82e3d299397ae9d868b7378d588c760b2ec2f20589b1a1feabfe20315a77f95",
+    "bundledSHA256": "8dfce18beeff94d9c33e78663cf43fb44746d5c107171ce9119fc9353c4ec425"
+  },
+  {
+    "feature": "ios-install-cocoapods",
+    "file": "【MacOS】⚙️双击安装Cocoapods.command",
+    "source": "Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command",
+    "sourceSHA256": "47e1a7f39e60b1fa03ffc2566a2b09d60544286a97556b34de10fab50bb9b769",
+    "bundledSHA256": "47e1a7f39e60b1fa03ffc2566a2b09d60544286a97556b34de10fab50bb9b769"
+  },
+  {
+    "feature": "ios-pods-source-github",
+    "file": "【MacOS】⚙️双击更换Cocoapods源[-]CDN[+]Github.command",
+    "source": "Cocoapods/【MacOS】⚙️双击更换Cocoapods源[-]CDN[+]Github.command/【MacOS】⚙️双击更换Cocoapods源[-]CDN[+]Github.command",
+    "sourceSHA256": "624bd65d646ec6d9e4e02bb4c056b85b6bfa4978f3edffcab08e8eef5049c32d",
+    "bundledSHA256": "624bd65d646ec6d9e4e02bb4c056b85b6bfa4978f3edffcab08e8eef5049c32d"
+  },
+  {
+    "feature": "ios-extract-pods",
+    "file": "【MacOS】⏳提取项目中所有的pod相关文件.command",
+    "source": "Cocoapods/【MacOS】⏳提取项目中所有的pod相关文件.command/【MacOS】⏳提取项目中所有的pod相关文件.command",
+    "sourceSHA256": "897012f41fc3ff67a1acb0aa9c86ffae313a4d2ff9d77c5ae60f55ab08d64f3b",
+    "bundledSHA256": "a0636d83564741a5c72030aeb7a09a1844ce011a5648d009d9d239daecf5a7aa"
+  },
+  {
+    "feature": "ios-pod-update",
+    "file": "【MacOS】⬆️Pod_Update.command",
+    "source": "Cocoapods/【MacOS】⬆️Pod_Update.command/【MacOS】⬆️Pod_Update.command",
+    "sourceSHA256": "13e9ec09615341ff145e2d9b0e3a748732d284f23a7a8a493d38d70116d0258d",
+    "bundledSHA256": "d90a72fb52df21012c911b73ec99c0b08cd7de4bbf968b5ce1ca7a8a93468154"
+  },
+  {
+    "feature": "ios-xcode-dependencies",
+    "file": "【MacOS】🔍查询Xcode工程依赖关系.command",
+    "source": "其他/【MacOS】🔍查询Xcode工程依赖关系.command/【MacOS】🔍查询Xcode工程依赖关系.command",
+    "sourceSHA256": "3bd70db84fe3d12d093656334c94aeaff6d17dd3e599a0e3b130c595a02851dc",
+    "bundledSHA256": "98d94810550ffc913f128372a8920723bea00bf98e765073575b0568bbf88ad2"
+  },
+  {
+    "feature": "ios-pod-repo-update",
+    "file": "【MacOS】⬆️双击更新Cocoapods本地仓库.command",
+    "source": "Cocoapods/【MacOS】⬆️双击更新Cocoapods本地仓库.command/【MacOS】⬆️双击更新Cocoapods本地仓库.command",
+    "sourceSHA256": "72b012036a6aae9488f4414e8869384cc7bbdbf28484f1aa207604c2d4f9ebb9",
+    "bundledSHA256": "731402d1152fa1559e975cbc5358ef0959fc005f10cfa42ce6d7f31f31bb8ffc"
+  },
+  {
+    "feature": "ios-pod-build-check",
+    "file": "【MacOS】自检具体的某个本地pod是否能编译通过.command",
+    "source": "Cocoapods/【MacOS】自检具体的某个本地pod是否能编译通过.command/【MacOS】自检具体的某个本地pod是否能编译通过.command",
+    "sourceSHA256": "a31bca96fa4545526dec969e8a6465ccab88daa655730335d71e51093fe93021",
+    "bundledSHA256": "067dbac1913b4dd3651249f4ee303289a6ed30386ee197c0a08c7e99eaf42b73"
+  },
+  {
+    "feature": "ios-code-snippets",
+    "file": "【MacOS】⚙️双击安装JobsCodeSnippets.command",
+    "source": "配置相关/【MacOS】⚙️双击安装JobsCodeSnippets.command/【MacOS】⚙️双击安装JobsCodeSnippets.command",
+    "sourceSHA256": "c5c7c33db3d2e870d53f2f8ae7f57f7113ebadadc2461a3a62494e5c312da92b",
+    "bundledSHA256": "c5c7c33db3d2e870d53f2f8ae7f57f7113ebadadc2461a3a62494e5c312da92b"
+  }
+]

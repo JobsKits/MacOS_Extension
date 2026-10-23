@@ -42,6 +42,6 @@
 		</dict>
 	</array>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>在 Terminal 中检查 DevEco Emulator、选择系统映像和机型，经确认创建并启动 鸿蒙模拟器。</string>
+	<string>在 Terminal 中检查 DevEco Emulator、选择系统映像和机型，经确认创建并启动 Harmony 模拟器。</string>
 </dict>
 </plist>

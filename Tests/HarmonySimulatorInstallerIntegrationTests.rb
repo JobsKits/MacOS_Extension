@@ -17,7 +17,7 @@ class HarmonySimulatorInstallerIntegrationTests < Minitest::Test
   def test_selector_contains_harmony_once_next_to_ios
     selector = File.read(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
     options = selector.scan(/FeatureOption\(identifier: "([^"]+)", title: "([^"]+)"\)/)
-    assert_equal [[KEY, '新建鸿蒙模拟器']], options.select { |identifier, _| identifier == KEY }
+    assert_equal [[KEY, '新建 Harmony 模拟器']], options.select { |identifier, _| identifier == KEY }
     identifiers = options.map(&:first)
     assert_operator identifiers.index(KEY), :>, identifiers.index('ios-simulator-create')
     assert_operator identifiers.index(KEY), :<, identifiers.index('terminal_open')
@@ -45,7 +45,7 @@ class HarmonySimulatorInstallerIntegrationTests < Minitest::Test
       project_file_for_key harmony-simulator-create
       derived_data_dir_for_key harmony-simulator-create
     ZSH
-    assert_equal [KEY, '新建鸿蒙模拟器', APP, APP, 'JobsHarmonySimulatorFinderSync.appex',
+    assert_equal [KEY, '新建 Harmony 模拟器', APP, APP, 'JobsHarmonySimulatorFinderSync.appex',
                   APP_ID, "#{APP_ID}.findersync", 'terminal:', File.join(PROJECT, "#{APP}.xcodeproj"),
                   File.join(ROOT, "work/#{APP}DerivedData")], output.lines.map(&:strip)
   end

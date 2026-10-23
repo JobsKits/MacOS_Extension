@@ -8,6 +8,7 @@ require 'pty'
 require 'timeout'
 require 'digest'
 require 'json'
+require 'shellwords'
 
 class CreateAndroidSimulatorTests < Minitest::Test
   SCRIPT = File.expand_path('../Scripts/CreateAndroidSimulator.zsh', __dir__)
@@ -108,6 +109,8 @@ class CreateAndroidSimulatorTests < Minitest::Test
       'ANDROID_SDK_ROOT' => @sdk, 'ANDROID_AVD_HOME' => @avd,
       'ANDROID_USER_HOME' => File.join(@root, '.android'), 'TMPDIR' => File.join(@root, 'logs'),
       'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'NO_COLOR' => '1', 'TERM' => 'dumb',
+      'ANDROID_SIM_PROXY' => 'direct', 'https_proxy' => nil, 'HTTPS_PROXY' => nil,
+      'all_proxy' => nil, 'ALL_PROXY' => nil, 'no_proxy' => nil, 'NO_PROXY' => nil,
       'FIXTURE_EVENTS' => @events, 'FIXTURE_PACKAGE' => PACKAGE,
       'FIXTURE_EMULATOR_TEMPLATE' => @emulator_template
     }
@@ -145,7 +148,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
     FileUtils.mkdir_p(package_root)
     FileUtils.cp_r(File.join(@sdk, 'cmdline-tools', 'latest'), File.join(package_root, 'cmdline-tools'))
     FileUtils.mkdir_p(File.join(package_root, 'cmdline-tools', 'lib'))
-    File.write(File.join(package_root, 'cmdline-tools', 'source.properties'), 'Pkg.Revision=23.0')
+    File.write(File.join(package_root, 'cmdline-tools', 'source.properties'), 'Pkg.Revision=21.0')
     archive = File.join(@root, 'official-tools.zip')
     _out, zip_status = Open3.capture2e('/usr/bin/zip', '-qr', archive, 'cmdline-tools', chdir: package_root)
     assert zip_status.success?
@@ -154,7 +157,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
     host_arch = PACKAGE.end_with?('arm64-v8a') ? 'aarch64' : 'x64'
     archive_name ||= PACKAGE.end_with?('arm64-v8a') ? 'commandlinetools-mac_arm64-123_latest.zip' : 'commandlinetools-mac_x86_64-123_latest.zip'
     File.write(xml, <<~XML)
-      <repository><remotePackage path="cmdline-tools;latest"><revision><major>23</major><minor>0</minor></revision>
+      <repository><remotePackage path="cmdline-tools;21.0"><revision><major>21</major><minor>0</minor></revision>
       <channelRef ref="channel-0"/><archives><archive><host-os>macosx</host-os><host-arch>#{host_arch}</host-arch>
       <complete><size>#{File.size(archive)}</size><checksum type="sha1">#{checksum}</checksum><url>#{archive_name}</url></complete>
       </archive></archives></remotePackage></repository>
@@ -265,6 +268,117 @@ class CreateAndroidSimulatorTests < Minitest::Test
     refute_match(/--install|create avd|--list --channel/, events)
     assert_empty Dir.children(File.join(@root, 'logs'))
     assert_empty File.read(File.join(@avd, 'list'))
+  end
+
+  def launcher_fixture
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'), <<~'ZSH')
+      #!/bin/zsh
+      # Official v23 wrapper dispatches using ANDROID_CLI_BIN / run_android_cli.
+      print -r -- 'UNEXPECTED_CLI_DOWNLOAD' >> "$FIXTURE_EVENTS"
+      exit 1
+    ZSH
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'avdmanager'), "#!/bin/zsh\nexit 99\n")
+  end
+
+  def test_check_never_executes_the_new_cli_download_launcher
+    launcher_fixture
+    output, result = check
+    refute result.success?, output
+    assert_includes output, '跳过 Android CLI 下载启动器'
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+    refute_includes events, 'curl:'
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_cli_launcher_does_not_hide_a_working_legacy_installation
+    FileUtils.cp_r(File.join(@sdk, 'cmdline-tools', 'latest'), File.join(@sdk, 'cmdline-tools', '21.0'))
+    launcher_fixture
+    output, result = check
+    assert result.success?, output
+    assert_includes output, '21.0/bin'
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+  end
+
+  def test_cli_launcher_is_preserved_and_compatible_tools_are_added_once
+    bootstrap_fixture
+    launcher_fixture
+    2.times do
+      output, result = interactive("\n", '--prepare')
+      assert result.success?, output
+    end
+    assert File.executable?(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'))
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    assert_equal 1, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+  end
+
+  def test_metadata_without_the_compatible_package_stops_before_archive_download
+    bootstrap_fixture
+    xml = @env.fetch('FIXTURE_BOOTSTRAP_XML')
+    File.write(xml, File.read(xml).sub('cmdline-tools;21.0', 'cmdline-tools;latest').sub('<major>21', '<major>23'))
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_includes output, '缺少兼容版'
+    refute_match(/curl:.*\.zip/, events)
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+  end
+
+  def network_probe(source_transform: nil)
+    source = File.read(SCRIPT).sub(/^main "\$@"\s*\z/, '')
+    source = source_transform.call(source) if source_transform
+    library = File.join(@root, 'network.zsh')
+    File.write(library, source + <<~'ZSH')
+      android_prepare_context
+      android_configure_network || exit $?
+      print -rl -- "${ANDROID_SIM_CURL_PROXY[@]}" "${ANDROID_SIM_SDK_PROXY[@]}"
+    ZSH
+    Open3.capture2e(@env, '/bin/zsh', '-f', library)
+  end
+
+  def test_explicit_proxy_reaches_sdk_list_and_install
+    @env['ANDROID_SIM_PROXY'] = 'http://127.0.0.1:7990'
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    output, result = interactive("\n\n\n\n\n", '--create')
+    assert result.success?, output
+    operations = events.lines.select { |line| line.start_with?('sdk:') && line.match?(/--list |--install /) }
+    assert_equal 2, operations.length
+    operations.each { |line| assert_includes line, '--proxy=http --proxy_host=127.0.0.1 --proxy_port=7990' }
+    refute_match(/sdk:.*--version.*--proxy/, events)
+  end
+
+  def test_network_uses_environment_and_system_static_proxy_without_writing_settings
+    @env['ANDROID_SIM_PROXY'] = nil
+    @env['HTTPS_PROXY'] = 'socks5://localhost:1080'
+    output, result = network_probe
+    assert result.success?, output
+    assert_includes output, '--proxy=socks'
+    assert_includes output, '--proxy_host=localhost'
+    @env['HTTPS_PROXY'] = nil
+    scutil = File.join(@root, 'scutil')
+    executable(scutil, "#!/bin/zsh\nprint -r -- $'HTTPSEnable : 1\nHTTPSProxy : 127.0.0.1\nHTTPSPort : 7990'\n")
+    output, result = network_probe(source_transform: ->(source) { source.gsub('/usr/sbin/scutil', scutil.shellescape) })
+    assert result.success?, output
+    assert_includes output, '--proxy=http'
+    assert_includes output, '--proxy_port=7990'
+  end
+
+  def test_proxy_errors_do_not_leak_credentials_or_start_repairs
+    ['http://user:private-password@localhost:7890', 'http://localhost:65536', 'http://localhost:0'].each do |proxy|
+      @env['ANDROID_SIM_PROXY'] = proxy
+      output, result = interactive("\n", '--prepare')
+      refute result.success?, output
+      refute_includes output, 'private-password'
+      assert_empty events
+    end
+  end
+
+  def test_no_proxy_is_respected_for_sdk_repository
+    @env['ANDROID_SIM_PROXY'] = 'http://localhost:7990'
+    @env['NO_PROXY'] = '.google.com'
+    output, result = network_probe
+    assert result.success?, output
+    refute_includes output, '--proxy_host='
+    assert_includes output, '使用直连'
   end
 
   def test_check_does_not_install_missing_emulator

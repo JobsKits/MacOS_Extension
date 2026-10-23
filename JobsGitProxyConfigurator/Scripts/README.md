@@ -25,7 +25,7 @@
 | [ConfigureGitDynamicProxy.command](./ConfigureGitDynamicProxy.command) | 完整自包含的规范源副本，随 App 打包；无参数保留回车安装、C 检查、R 恢复，`--check` 只读。菜单不会传入 `--install` 绕过确认。 |
 | [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode/) 构建后可注册、启用本扩展并刷新 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)；外层安装器或隔离构建通过 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过。该开关只控制本脚本，Xcode 仍可能通过自带步骤登记宿主 URL。 |
 
-业务副本与[独立入口](../../../../JobsCommand@Gits/【MacOS】🌐双击配置Git动态代理.command/README.md)保持整文件字节一致。宿主把资源复制到独立私有临时目录，再通过安全单行命令交给 Terminal；不从源仓库路径运行，不接受外部脚本或路径参数。临时副本完成后清理，用户安装生成的 Git 入口和快照保留。
+业务副本与[独立入口](../../../../JobsCommand@Gits/MacOS/【MacOS】🌐双击配置Git动态代理.command/README.md)保持整文件字节一致。宿主把资源复制到独立私有临时目录，再通过安全单行命令交给 Terminal；不从源仓库路径运行，不接受外部脚本或路径参数。临时副本完成后清理，用户安装生成的 Git 入口和快照保留。
 
 ## 一、<span id="run">运行与验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

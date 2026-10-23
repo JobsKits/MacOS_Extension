@@ -23,6 +23,10 @@
   - [【MacOS】卸载用终端打开Finder扩展.command](#jobs-toc-heading-14)
 - [七、本仓目录与脚本入口](#repository-layout-and-entrypoints)
   - [EnableFinderExtension.zsh](#jobs-toc-heading-16)
+  - [清理构建产物](#jobs-toc-heading-17)
+    - [菜单标题与工程识别](#jobs-toc-heading-18)
+    - [清理范围](#jobs-toc-heading-19)
+    - [为未来工程类型保留的扩展接口](#jobs-toc-heading-20)
 
 </details>
 <!-- jobs-toc:end -->
@@ -31,11 +35,11 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
-> **本工程内含 5 个可独立勾选的 Finder 右键功能：`用终端打开`｜`pod install`｜`flutter pub get`｜`更新代码地图（.codegraph）`｜`空白 Commit 并 Push`。**
+> **本工程提供 5 个 Finder 菜单功能：`用终端打开`｜`Pod Install`｜`清理原生工程构建产物`｜`更新代码地图（.codegraph）`｜`空白 Commit 并 Push`。** Flutter 依赖和清理入口统一由 [JobsFlutterTools](../JobsFlutterTools/README.md) 子菜单提供；宿主保留旧 Flutter 动作标识及配置兼容。
 
 ![image-20260628203344107](./assets/image-20260628203344107.png)
 
-`JobsTerminalOpener` 是一个 [**Swift**](https://www.swift.org/) macOS App + Finder Sync Extension 工程。五项功能共用一个扩展，首次安装时可以逐项勾选；安装完成后也能直接在 App 内查看和修改五项功能，不需要重新编译。
+`JobsTerminalOpener` 是一个 [**Swift**](https://www.swift.org/) macOS App + Finder Sync Extension 工程。五个现行菜单共用一个扩展，首次安装时可以逐项勾选；App 保留六项配置供旧版本兼容，修改后不需要重新编译。
 
 本工程源码、文档与版本由 [MacOS@Extension](../README.md) 统一管理，工程目录随总仓一起取得，保留独立构建、安装与卸载能力。
 
@@ -45,8 +49,9 @@
 - 点击一级右键菜单里的 `用终端打开`。
 - 如果选中项是普通文件夹，会让系统 `Terminal.app` 新开窗口并 `cd` 到该文件夹。
 - 如果选中项是文件或包文件，会让系统 `Terminal.app` 新开窗口并 `cd` 到它所在的父目录。
-- 当前文件夹同层同时包含普通文件 `Podfile` 和至少一个 `*.xcodeproj` 目录包时，显示 `pod install`；点击后直接打开 `Terminal.app`，进入该目录并执行 `pod install`。无需已有 `*.xcworkspace`。
-- 当前文件夹直接包含 `pubspec.yaml`、`lib/`，且清单声明 `sdk: flutter` 时，显示 `在终端执行 flutter pub get`，让 `Terminal.app` 新开窗口并在该目录执行 `flutter pub get`。
+- 当前文件夹同层同时包含普通文件 `Podfile` 和至少一个 `*.xcodeproj` 目录包时，显示 `Pod Install`；点击后直接打开 `Terminal.app`，进入该目录并执行 `pod install`。无需已有 `*.xcworkspace`。
+- Flutter 根目录的依赖和清理操作进入 `Flutter开发相关辅助工具`；本扩展不再添加 Flutter 专属顶层项。
+- 右键原生工程文件夹时，先识别当前层工程，再显示 `清理iOS/Xcode构建产物`、`清理Android构建产物` 或 `清理鸿蒙构建产物`；Flutter 根目录和未知工程不显示外层清理入口。点击后预览，输入 `CLEAN` 才删除对应产物。
 - 右键普通文件夹时，显示 `更新代码地图（.codegraph）`，让 `Terminal.app` 新开窗口，检查 CodeGraph 后更新目标文件夹的地图；缺失组件时，终端等待回车确认后补齐安装链。
 - 右键普通文件夹时，显示 `在终端创建空白 Commit 并 Push`；Terminal 会校验 Git、工作树、当前分支、暂存区和推送远程，通过后创建 `chore: empty commit` 空白提交并 Push。
 - 依赖操作不会向父目录或子目录递归查找工程；右键位置不是对应工程的标准根目录时，不显示相关入口。
@@ -89,13 +94,13 @@ git --version
 
 2、阅读脚本自述并按回车，随后在 macOS 原生复选框窗口中逐项选择右键菜单功能，或点击“全部安装”。
 
-3、`JobsTerminalOpener` 的五项功能会归并为一次工程构建；安装器同时保存这五项的初始选择。
+3、`JobsTerminalOpener` 的六项功能会归并为一次工程构建；安装器同时保存这六项的初始选择。
 
 4、需要更换功能组合时，可以重新运行安装脚本，也可以直接在已安装 App 内修改。
 
 ### <span id="jobs-toc-heading-6" data-jobs-toc="v2">3.2、App 内查看和修改功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-1、打开 `JobsTerminalOpener` App，窗口中的“可选功能”区域会把五项功能各列一行。
+1、打开 `JobsTerminalOpener` App，窗口中的“可选功能”区域会把六项功能各列一行。
 
 2、复选框会显示当前生效状态；可以逐项勾选，也可以点击“全部选择”或“全部取消”。
 
@@ -111,17 +116,17 @@ git --version
 
 3、Xcode 构建阶段会自动注册宿主 App 的 `jobsterminalopener://` URL Scheme，停止旧的宿主 App / Finder Sync 扩展进程，注册并启用 `com.jobs.JobsTerminalOpener.FinderSyncExtension`，成功后会重启 Finder 刷新右键菜单缓存。
 
-4、如果本机还没有保存过功能选择，手动构建默认启用全部五项功能；已有保存记录时继续沿用 App 中的选择。回到 Finder，右键任意文件或文件夹即可使用符合当前目录条件的菜单入口。
+4、如果本机还没有保存过功能选择，手动构建默认启用全部六项功能；已有保存记录时继续沿用 App 中的选择。回到 Finder，右键任意文件或文件夹即可使用符合当前目录条件的菜单入口。
 
 5、首次重新安装后，构建阶段可能会等待几十秒，用来等 `pluginkit` 从空状态异步登记到可启用状态。
 
 ## <span id="jobs-toc-heading-8" data-jobs-toc="v2">四、实现边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - Finder Sync Extension 可以进入 Finder 右键一级菜单区域，但最终位置由 macOS 决定，不能保证排在系统菜单项前面。
-- 五项 Terminal 功能当前共用一个宿主 App 和一个 Finder Sync Extension；安装 UI 与宿主 App 都把它们作为五个独立菜单功能选择。
+- 六项 Terminal 功能当前共用一个宿主 App 和一个 Finder Sync Extension；安装 UI 与宿主 App 都把它们作为六个独立菜单功能选择。
 - `JobsTerminalEnabledFeatures` 提供首次运行的构建默认值；安装器或 App 保存过选择后，Finder 扩展每次生成右键菜单都会优先读取本机配置，因此后续修改不需要重新构建。
 - 扩展默认监控 `/`，用于覆盖 Finder 中任意位置的文件和文件夹右键菜单。
-- 扩展不读取文件内容，只读取 Finder 传入的本地 `file://` URL，并通过 `jobsterminalopener://open` 把路径和动作类型交给宿主 App 处理。
+- 扩展读取 Finder 传入的本地 `file://` URL 和工程标记文件，以确定菜单资格及工程类型；不执行工程脚本。点击后通过 `jobsterminalopener://open` 把路径和动作类型交给宿主 App 处理。
 - Finder 扩展和宿主 App 对 CocoaPods、Flutter 和 CodeGraph 共用目标类型校验；Git 管理状态、暂存区和远程信息则按“所有走终端”的边界，在 Terminal 内执行前现场校验。
 - CocoaPods iOS 工程只认当前目录同层的普通文件 `Podfile` 和 `*.xcodeproj` 目录包；不递归补齐，不要求已有 `*.xcworkspace`。Flutter 工程只认当前目录直接存在的 `pubspec.yaml`、`lib/` 和清单中的 `sdk: flutter` 声明。
 - CodeGraph 入口只对普通文件夹显示并执行；文件、Finder 包文件和其它非目录目标不显示入口，宿主 App 执行前也会再次拒绝。
@@ -139,7 +144,7 @@ git --version
 
 ### <span id="jobs-toc-heading-9" data-jobs-toc="v2">4.1、直接执行 `pod install` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-菜单和功能复选框统一显示 `pod install`，保留 URL 动作 `pod-install` 与功能配置 ID `pod_install`，已有勾选记录继续有效。
+菜单和功能复选框统一显示 `Pod Install`，总安装面板中与 `Pod Update` 相邻。保留 URL 动作 `pod-install` 与功能配置 ID `pod_install`，实际终端命令仍为 `pod install`，已有勾选记录继续有效。
 
 Finder 和宿主 App 只校验目标同层同时存在普通文件 `Podfile` 与至少一个 `*.xcodeproj` 目录包。点击后，在 Terminal 的交互 Shell 中直接执行一条命令；实际目标路径由宿主安全引用：
 
@@ -271,11 +276,11 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 
 ### <span id="jobs-toc-heading-13" data-jobs-toc="v2">[【MacOS】安装用终端打开Finder扩展.command](./【MacOS】安装用终端打开Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 独立构建、注册并启用本工程的“用终端打开”等五项功能Finder 扩展。
+> **目的：** 独立构建、注册并启用本工程的“用终端打开”等六项功能Finder 扩展。
 
 - 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止，不自动改 `xcode-select`。
 - 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
-- 五项功能的勾选默认值由宿主 App 提供，可在其主窗口调整后即时生效。日志为系统临时目录中的 `JobsTerminalOpenerInstall.log`。
+- 六项功能的勾选默认值由宿主 App 提供，可在其主窗口调整后即时生效。日志为系统临时目录中的 `JobsTerminalOpenerInstall.log`。
 
 ### <span id="jobs-toc-heading-14" data-jobs-toc="v2">[【MacOS】卸载用终端打开Finder扩展.command](./【MacOS】卸载用终端打开Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
@@ -322,7 +327,7 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 ```
 
 * `JobsTerminalOpener/` 保存宿主 APP；`JobsTerminalFinderSync/` 保存 Finder 扩展与菜单逻辑；`JobsTerminalOpener.xcodeproj/` 保存工程和构建阶段配置。
-* `JobsTerminalShared/` 保存五项功能选择与依赖项目识别的共享实现。
+* `JobsTerminalShared/` 保存六项功能选择与依赖项目识别的共享实现。
 * `Scripts/` 保存构建后自动注册入口；工程根的裸露双击脚本提供独立安装与卸载入口。
 
 ### <span id="jobs-toc-heading-16" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
@@ -337,3 +342,46 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
   * 未确认启用：保留标记和日志；该构建阶段入口最终返回成功，不把它视作菜单已生效的证明。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+
+<a id="build-artifacts"></a>
+### <span id="jobs-toc-heading-17" data-jobs-toc="v2">清理构建产物</span><!-- jobs-toc:heading-end -->
+
+总安装器中勾选“清理构建产物（按工程类型显示）”；已安装用户需重新构建 / 安装本工程，再在宿主中启用该功能。沿用 `clean_build_artifacts` 安装标识与 `clean-build-artifacts` 功能 / URL 动作标识，不改动已有勾选记录。Finder 仅在选中单个、已识别的原生工程文件夹时显示对应标题；Flutter 根目录、未知目录、文件、目录包、多选及空白处都不显示清理入口。Flutter 使用 `Flutter开发相关辅助工具 → Flutter清理维护工具 → 清理当前项目构建产物`，无需 Flutter/FVM 即可按原白名单清理。安装和菜单识别本身不会清理工程。
+
+#### <span id="jobs-toc-heading-18" data-jobs-toc="v2">菜单标题与工程识别</span><!-- jobs-toc:heading-end -->
+
+Finder 与宿主使用共享的 `buildArtifactProjectKind(at:)` 识别，终端脚本执行时再次检测。只以所选目录为根，不向父目录借用工程标记，也不会把包含多个项目的普通父目录当成批量清理入口。识别优先级为 **Flutter → 鸿蒙 → Android → iOS/Xcode**；Finder 遇到 Flutter 类型即隐藏通用清理，不回退到原生类型：
+
+| Finder 标题 | 当前目录的识别依据 |
+| --- | --- |
+| 隐藏外层清理，转入 Flutter 子菜单 | 当前层普通 `pubspec.yaml` 的 `dependencies.flutter.sdk` 声明 Flutter；支持常见块映射、单行 flow 与引号，不要求已经创建 `lib/`。即使同层存在原生工程标记，也由 Flutter 子菜单负责整个工程的已识别平台产物。 |
+| `清理鸿蒙构建产物` | Hvigor 工程或模块：同时有 `hvigorfile.ts` / `hvigorfile.js`、`build-profile.json5`、`oh-package.json5`，以及 `AppScope/app.json5` 或 `src/main/module.json5`。覆盖鸿蒙原生工程，以及单独选中的 Flutter `ohos/` 平台工程。仅文件夹名叫 `ohos` 不算识别成功。 |
+| `清理Android构建产物` | 当前层有 Gradle 构建或 settings 文件，且本构建内有 Android 插件声明或带 Gradle 配置的模块 `src/main/AndroidManifest.xml`。 |
+| `清理iOS/Xcode构建产物` | 同层 `*.xcodeproj/project.pbxproj` 中有 iOS SDK、iOS 部署目标或 iPhone 平台配置。当前仅支持 iOS Xcode 工程，不代表所有 Xcode 平台。 |
+
+#### <span id="jobs-toc-heading-19" data-jobs-toc="v2">清理范围</span><!-- jobs-toc:heading-end -->
+
+| 工程 | 清理白名单 |
+| --- | --- |
+| Flutter | `build/`（包含 `build/ohos/`）、`.dart_tool/`；经单独识别的 `android/`、`ios/`、`ohos/` 平台构建产物；桌面平台 Flutter ephemeral 目录。 |
+| 鸿蒙 | 当前根目录 `build/`、`.hvigor/`；本工程内同时有 `build-profile.json5` 和 `src/main/module.json5` 的模块，其 `build/`、`.hvigor/`。包括默认构建目录内的 HAP / APP / HAR 等产物，不按扩展名扫描删除其它位置的包。 |
+| Android | 当前 Gradle 根目录 `build/`、`.gradle/`、`.kotlin/`；本构建内有 Gradle 配置的模块 `build/`、`.cxx/`、`.externalNativeBuild/`。 |
+| iOS/Xcode | 当前工程 `build/`、`DerivedData/`；Xcode 默认 DerivedData 中，只有 `info.plist` 的 `WorkspacePath` 精确指向当前层工程 / 工作区的 `Build/` 才会清理；Flutter iOS 还清理 `Flutter/ephemeral/`。 |
+
+选中 Flutter 根目录时，统一子菜单的 `清理当前项目构建产物` 包含已识别的鸿蒙平台产物；只选中 `ohos/` 时，`清理鸿蒙构建产物` 的范围限于该目录，不向上删除 Flutter 根目录的 `build/`、`.dart_tool/`。若要完整清理 Flutter 鸿蒙构建结果，应选中 Flutter 根目录。
+
+执行前列出识别类型、工程路径和实际存在的产物，输入 `CLEAN` 才删除；其它输入取消。请先停止构建。保留源码、锁文件、Pods、`oh_modules`、`node_modules`、`entry/libs/flutter.har` 等依赖包、Gradle / Hvigor 工具配置、FVM SDK、签名、其它工程的 DerivedData 和全局共享缓存。自定义输出路径不推断、不删除；扫描模块时不进入依赖目录及嵌套独立 Gradle / Git / Flutter / 鸿蒙应用工程。清理目标或父路径是链接时停止，产物内部的符号链接只移除链接本身。
+
+可单独运行 `zsh Scripts/CleanBuildArtifacts.zsh /工程路径 --detect` 获取工程类型（未知类型返回非零退出码）；`--dry-run` 只预览；省略选项进入确认；`--yes` 供明确授权的无人值守调用。无需安装 Flutter / Gradle / CocoaPods / DevEco Studio，不执行项目提供的脚本。
+
+鸿蒙工程标记参考华为的[工程级 build-profile.json5](https://developer.huawei.com/consumer/cn/doc/doccenter-deveco-studio/ide-hmos-hvigor-build-profile-app)，构建命令与目录边界参考 [Hvigor 命令行](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-hvigor-commandline)。本功能使用保守目录白名单，不调用 Hvigor。
+
+#### <span id="jobs-toc-heading-20" data-jobs-toc="v2">为未来工程类型保留的扩展接口</span><!-- jobs-toc:heading-end -->
+
+当前只支持上面四类；普通 Dart、Java Gradle、纯 macOS Xcode、旧式鸿蒙 Gradle 或无法识别的目录均不显示入口，也不做通用 `build/` 删除。新增工程支持应按以下接口接入，不能只新增一个菜单标题：
+
+1. 在 `JobsTerminalShared/DependencyProjectValidator.swift` 的 `BuildArtifactProjectKind` 增加类型和 `menuTitle`，在 `buildArtifactProjectKind(at:)` 增加只读识别规则，明确当前层标记和识别优先级。该接口返回 `nil` 即隐藏入口，同时让宿主拒绝执行。
+2. 在 `Scripts/CleanBuildArtifacts.zsh` 增加对应 `jobs_clean_<类型>` 检测与候选目录收集函数，接入 `jobs_clean_main` 的类型分支和删除前复检。候选路径统一进入 `candidates`，继续使用 `jobs_clean_validate`、预览和 `CLEAN` 确认；禁止未知类型兜底和猜测全局缓存归属。`--detect` 返回值必须与 Swift 类型的 `rawValue` 一致。
+3. 补充菜单标题、检测一致性、清理范围、依赖保留、嵌套工程和符号链接测试，再更新此处识别依据及白名单。若新增 Flutter 平台，还需说明“Flutter 根目录整体清理”和“平台目录单独清理”的区别。
+
+回归：`ruby Tests/BuildArtifactCleanerTests.rb`（包含真实 Swift 检测器与脚本的一致性检查）、`ruby Tests/TerminalRequestTransportTests.rb`，以及仓库根目录的 `ruby Tests/DesktopFinderMenuTests.rb`。测试只操作临时夹具，覆盖三类原生工程标题、Flutter 根目录隐藏外层清理、鸿蒙原生 / Flutter 鸿蒙、多模块、类型优先级、未知工程隐藏、iOS 归属、取消、特殊路径、链接保护和重复执行。清理脚本仍支持四类工程，Flutter 副本打包到统一工具内。

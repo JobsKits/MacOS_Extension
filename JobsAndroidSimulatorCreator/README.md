@@ -32,7 +32,15 @@
 
 安装依赖 macOS 12.0+、完整 [**Xcode**](https://developer.apple.com/xcode/) 及 macOS SDK；创建 Android 模拟器使用 [**Android SDK Command-line Tools**](https://developer.android.com/tools)、可用 Java、`sdkmanager`、`avdmanager`、`emulator` 与匹配主机架构的系统映像。SDK 位置由当前环境和标准安装位置发现，不写死本机路径。
 
-首屏明确说明影响后，回车即授权本次自动体检并补齐必要工具链，健康组件复用，不再逐层询问是否安装。SDK 根目录不存在时自动建立；Java 优先复用配置项、[**Android Studio**](https://developer.android.com/studio) 内置 JBR 或现有安装，均不可用才从 Adoptium 官方源安装可校验的用户级 [**Temurin 21**](https://adoptium.net/installation/archives/)，仅对本次进程设置 `JAVA_HOME`。Command-line Tools 缺失或损坏时自动从 Google 官方元数据选择匹配主机架构的稳定归档，校验长度、摘要和 ZIP 内容，在 SDK 同卷 `0700` 私有目录解压并排他发布独立版本，保留原有工具；缺失 emulator 自动补装，损坏时仅通过官方管理器重装 emulator 工具包，保留 AVD 与系统映像。每层修复后立即复检，失败显示阶段与日志并停止，不循环下载。
+首屏明确说明影响后，回车即授权本次自动体检并补齐必要工具链，健康组件复用，不再逐层询问是否安装。SDK 根目录不存在时自动建立；Java 优先复用配置项、[**Android Studio**](https://developer.android.com/studio) 内置 JBR 或现有安装，均不可用才从 Adoptium 官方源安装可校验的用户级 [**Temurin 21**](https://adoptium.net/installation/archives/)，仅对本次进程设置 `JAVA_HOME`。Command-line Tools 缺失、损坏或仅有 Android CLI 下载启动器时，从 Google 官方元数据选择已验证传统 CLI 契约的稳定兼容版 21.0 归档（匹配主机架构或官方通用 macOS 包），校验长度、摘要和 ZIP 内容，在 SDK 同卷 `0700` 私有目录解压并排他发布独立版本，保留原有工具；缺失 emulator 自动补装，损坏时仅通过官方管理器重装 emulator 工具包，保留 AVD 与系统映像。每层修复后立即复检，失败显示阶段与日志并停止，不循环下载。
+
+Command-line Tools 23.0 的 `sdkmanager` 会转调 Android CLI 下载启动器，即使 `--version` 也可能联网下载额外程序；不能据此认定工具包损坏，也不能把它用于承诺离线的 `--check`。本入口静态识别并跳过该包装器，保留 23.0，优先复用本地传统工具；缺失才新增 21.0，不覆盖 `latest`。21.0 的归档地址、字节长度和摘要始终读取官方清单；官方不再提供该版本时明确停止，不静默转用不同命令契约。
+
+受限网络下，curl 下载与 Java `sdkmanager` 查询 / 安装共用本次代理。顺序为 `ANDROID_SIM_PROXY`、`https_proxy` / `HTTPS_PROXY`、`all_proxy` / `ALL_PROXY`，最后读取 macOS 已启用的 HTTPS / HTTP / SOCKS 静态代理；不修改任何持久设置。支持 `http://主机:端口`、`socks5://主机:端口`（不含认证信息），`direct` 强制本次直连；保留 `NO_PROXY` 对 Google 仓库的直连排除。PAC 和认证代理需使用 Android Studio SDK Manager，或提供可用的本地静态代理。例如：
+
+```shell
+ANDROID_SIM_PROXY=http://127.0.0.1:7890 /bin/zsh ./Scripts/CreateAndroidSimulator.zsh --prepare
+```
 
 没有完整本地映像时自动读取官方稳定清单，用户选择系统映像后直接安装；SDK 许可证交由官方工具交互，本人阅读接受，不自动同意。创建前仍确认型号、系统与名称，绝不覆盖已有同名 AVD，不删除已有设备，不改系统代理、Shell 配置或开发目录。
 
@@ -102,6 +110,6 @@ flowchart TD
 
 桌面挂载验证基线（2026-10-22）：宿主和传输隔离回归、macOS 两 target Debug 构建、深度签名、打包脚本字节核对及本机注册通过，真实 Desktop 目录空白菜单已显示 iOS / Android 两项。当时本机尚缺命令行工具与完整 ARM 系统映像，未下载安装归档或创建真实 AVD。
 
-自动补齐验证（2026-10-23）：50 组 / 356 断言通过。已真实运行 `--prepare`，首屏回车后自动下载约 155 MB 的 Google 官方 ARM Command-line Tools 23.0，完成长度与摘要校验、同卷暂存、独立版本安装及健康复检；SDK、Java 21 与 emulator 直接复用。已重新构建安装本机扩展，打包脚本与独立双击脚本逐字节一致，深度签名与精确注册路径核对通过。未下载系统映像、接受 SDK 许可证或创建真实 AVD；设备创建仍单独验收。
+受限网络兼容验证基线（2026-10-23）：Android 隔离测试 58 组 / 425 断言覆盖 CLI 启动器、兼容工具并存、官方清单、代理传递、NO_PROXY、凭据脱敏及现有创建保护。本机官方 21.0 归档的长度 / 摘要、独立安装、`--check`、`--prepare` 和通过现有系统代理查询映像均已验证；这不代表系统映像下载、许可证接受或真实 AVD 创建已验收。扩展产物已做签名和资源字节核对，真实模拟器创建仍需交互验收。
 
 <a id="🔚" href="#前言">回到首页</a>

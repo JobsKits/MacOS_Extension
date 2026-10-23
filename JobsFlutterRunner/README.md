@@ -1,3 +1,5 @@
+> 本功能的右键入口已迁入 [JobsFlutterTools](../JobsFlutterTools/README.md)。以下保留旧独立工程的实现说明；新安装使用统一菜单与项目 FVM。原“Flutter项目体检”在新菜单中称为“原生Flutter项目体检”。
+
 # JobsFlutterRunner：右键运行 [**Flutter**](https://flutter.dev/) 项目
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
@@ -86,7 +88,7 @@
 
 终端将 machine 协议转换为 `[依赖]`、`[进行]`、`[完成]`、`[警告]`、`[错误]`、`[成功]` 等中文日志。依赖版本列表与已知系统索引噪声折叠；快捷指令 / Spotlight 的 `WF*` 参数转换与缺失扩展诊断合并为一条 `[提示]`，不再仅因含 `Failed` 就标成 Flutter 错误。停维依赖名称、SPM 不兼容插件名、应用输出、错误堆栈、非零索引错误计数与未知事件保留；machine 协议中的应用错误不会被系统诊断规则折叠。仅收到 `app.started` 才显示“应用已启动”；提交后台任务或开始编译均不表示启动成功。原始 `run.log` 不做过滤，热重载 / 停止仍读取完整协议。重新连接会重放本次会话日志，便于查看完整构建过程；输入控制命令后回车，不再让提示符与异步日志挤在同一行。
 
-真实运行回归还发现并修复了 macOS Dart 对读写模式 FIFO 不响应的问题：保活 fd 仍用读写模式，Flutter stdin 改为单独只读打开。真实 Flutter 已返回热重载成功（code 0），不再只依靠假 Flutter 进程验收控制通道。
+FIFO 控制通道使用读写模式的保活 fd，Flutter stdin 单独以只读模式打开。真实 Flutter 热重载回归返回成功（code 0）；此证据只覆盖控制通道，设备与工程仍按实际运行验收。
 
 日志回归：`ruby Tests/FlutterRunnerLogTests.rb`，覆盖成功与警告分级、失败堆栈、未知 / 损坏协议、SPM 插件名、分段 UTF-8、末尾半行及非零退出码。Shell 测试在临时工作目录运行，夹具不写入源码目录。
 

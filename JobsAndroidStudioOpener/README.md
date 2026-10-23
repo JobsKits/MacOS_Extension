@@ -1,3 +1,5 @@
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，同一 Finder 扩展固定 IDE / Git 菜单顺序。此目录的安装、卸载入口仅启停对应单项；请保留完整仓库。下文说明本目录保留的源码工程与构建方式；常规菜单安装使用统一包。
+
 # `JobsAndroidStudioOpener`
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
@@ -104,7 +106,7 @@
 
 - 已验证无签名完整构建、ad-hoc 签名完整构建与上述行为测试；真实用户签名、Finder 加载和 IDE 启动仍需在安装后验收。构建验证产生的临时 App LaunchServices 记录已按对应精确路径注销。
 - 扩展保留 App Sandbox，沿用本机自用模板的 `/` 只读例外，用于读取项目和已安装应用；不修改所选项目。面向商店分发前需重新设计文件授权。
-- 路径以 `URL` 直接传给 [**NSWorkspace**](https://developer.apple.com/documentation/appkit/nsworkspace/open(_:withapplicationat:configuration:completionhandler:))，不拼接 Shell、AppleScript 或 IDE 命令行。
+- 路径以 `URL` 直接传给 [**NSWorkspace**](<https://developer.apple.com/documentation/appkit/nsworkspace/open(_:withapplicationat:configuration:completionhandler:)>)，不拼接 Shell、AppleScript 或 IDE 命令行。
 
 ## <span id="jobs-toc-heading-7" data-jobs-toc="v2">四、目录与维护入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -144,7 +146,7 @@
 - 菜单未出现：Xcode 项目会按规则隐藏；其它目录先在宿主 App 打开扩展设置，确认“用 Android Studio 打开项目”已启用，再重新打开 Finder 窗口。
 - IDE 明明存在却进入下载页：先手动运行一次 IDE 让系统登记，确认应用包里的可执行文件完整，再重新点击菜单。
 - 查看扩展日志：使用系统“控制台”应用，过滤进程 `JobsAndroidStudioFinderSync`。宿主与构建日志位于系统临时目录，分别为 `JobsAndroidStudioOpener.log` 和 `JobsAndroidStudioOpenerBuildPhase.log`。
-- 应用发现 API：[Apple NSWorkspace.urlsForApplications](https://developer.apple.com/documentation/appkit/nsworkspace/urlsforapplications(withbundleidentifier:))；打开项目 API：[Apple NSWorkspace.open](https://developer.apple.com/documentation/appkit/nsworkspace/open(_:withapplicationat:configuration:completionhandler:))。
+- 应用发现 API：[Apple NSWorkspace.urlsForApplications](<https://developer.apple.com/documentation/appkit/nsworkspace/urlsforapplications(withbundleidentifier:)>)；打开项目 API：[Apple NSWorkspace.open](<https://developer.apple.com/documentation/appkit/nsworkspace/open(_:withapplicationat:configuration:completionhandler:)>)。
 - 下载页：[Android Studio 官方页面](https://developer.android.com/studio)；地址以官方入口为准，浏览器页面可按芯片和系统版本选择安装包。
 - 源码基于同仓的 `JobsGitRemoteOpener` 自维护模板，使用独立 Bundle ID、Scheme 与源文件；没有复制旧 Git 元数据、截图或构建缓存。
 

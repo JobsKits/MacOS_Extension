@@ -22,7 +22,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu(title: "")
-        let item = NSMenuItem(title: "新建鸿蒙模拟器", action: #selector(createFromContainer(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "新建 Harmony 模拟器", action: #selector(createFromContainer(_:)), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu
@@ -43,7 +43,7 @@ final class FinderSync: FIFinderSync {
             showFailure("当前菜单不再属于桌面空白处，请关闭菜单后在桌面重新右键。")
             return
         }
-        NSLog("JobsHarmonySimulatorFinderSync: 请求宿主新建鸿蒙模拟器。")
+        NSLog("JobsHarmonySimulatorFinderSync: 请求宿主新建 Harmony 模拟器。")
         if !NSWorkspace.shared.open(HarmonySimulatorRequest.canonicalURL) {
             showFailure("无法打开后台宿主，请重新安装 JobsHarmonySimulatorCreator 扩展。")
         }
@@ -53,7 +53,7 @@ final class FinderSync: FIFinderSync {
         NSLog("JobsHarmonySimulatorFinderSync: %@", message)
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "新建鸿蒙模拟器未启动"
+        alert.messageText = "新建 Harmony 模拟器未启动"
         alert.informativeText = message
         alert.addButton(withTitle: "好")
         alert.runModal()
