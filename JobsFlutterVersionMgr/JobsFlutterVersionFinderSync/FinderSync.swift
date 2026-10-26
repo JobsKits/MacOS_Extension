@@ -24,7 +24,7 @@ final class FinderSync: FIFinderSync {
         }
         let menu = NSMenu(title: "")
         let action = menuKind == .contextualMenuForItems ? #selector(manageSelectedProject(_:)) : #selector(manageContainerProject(_:))
-        let item = NSMenuItem(title: "安装/切换 Flutter SDK（FVM）", action: action, keyEquivalent: "")
+        let item = NSMenuItem(title: "🔀 安装/切换 Flutter SDK（FVM）", action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

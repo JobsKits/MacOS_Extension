@@ -12,7 +12,7 @@ enum RunAuthorizationRequest {
     static let scheme = "jobsrunauthorizer"
 
     static func url(for fileURL: URL) -> URL? {
-        guard RunAuthorizationValidator().isRegularFile(at: fileURL) else {
+        guard RunAuthorizationValidator().isExecutableFormat(at: fileURL) else {
             return nil
         }
         var components = URLComponents()

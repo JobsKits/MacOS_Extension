@@ -29,7 +29,7 @@ final class FinderSync: FIFinderSync {
         guard menuKind == .contextualMenuForItems, urls.count == 1 else { return nil }
 
         let menu = NSMenu(title: "")
-        let copyItem = NSMenuItem(title: "复制 Git 远程地址", action: #selector(copyGitRemoteURL(_:)), keyEquivalent: "")
+        let copyItem = NSMenuItem(title: "🔗 复制 Git 远程地址", action: #selector(copyGitRemoteURL(_:)), keyEquivalent: "")
         copyItem.target = self
         copyItem.isEnabled = true
         menu.addItem(copyItem)

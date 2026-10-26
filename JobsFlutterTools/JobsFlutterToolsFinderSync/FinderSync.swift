@@ -28,7 +28,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu(title: "")
-        let development = NSMenu(title: "Flutter开发相关辅助工具")
+        let development = NSMenu(title: "🦋 Flutter开发相关辅助工具")
         for action in FlutterToolsAction.development {
             if action == .package {
                 addGroup(title: action.title, actions: FlutterToolsAction.packaging, enabled: enabled, kind: menuKind, to: development)
@@ -36,9 +36,9 @@ final class FinderSync: FIFinderSync {
                 development.addItem(makeItem(action, menuKind))
             }
         }
-        addGroup(title: "Flutter项目体检", actions: FlutterToolsAction.doctors, enabled: enabled, kind: menuKind, to: development)
-        addGroup(title: "Flutter项目修复", actions: FlutterToolsAction.repairs, enabled: enabled, kind: menuKind, to: development)
-        addGroup(title: "Flutter清理维护工具", actions: FlutterToolsAction.cleaning, enabled: enabled, kind: menuKind, to: development)
+        addGroup(title: "🏥 Flutter项目体检", actions: FlutterToolsAction.doctors, enabled: enabled, kind: menuKind, to: development)
+        addGroup(title: "🔧 Flutter项目修复", actions: FlutterToolsAction.repairs, enabled: enabled, kind: menuKind, to: development)
+        addGroup(title: "🧹 Flutter清理维护工具", actions: FlutterToolsAction.cleaning, enabled: enabled, kind: menuKind, to: development)
         let parent = NSMenuItem(title: development.title, action: nil, keyEquivalent: "")
         parent.submenu = development
         menu.addItem(parent)

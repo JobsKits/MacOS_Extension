@@ -23,28 +23,28 @@ enum IOSToolsAction: String, CaseIterable {
     var title: String {
         switch self {
         case .disableSandbox:
-            return "禁用 Xcode 脚本沙盒"
+            return "🚫 禁用 Xcode 脚本沙盒"
         case .installCocoapods:
-            return "安装 CocoaPods"
+            return "🍫 安装 CocoaPods"
         case .sourceGithub:
-            return "CocoaPods 源：CDN → GitHub"
+            return "🛰️ CocoaPods 源：CDN → GitHub"
         case .extractPods:
-            return "提取项目中所有 Pod 相关文件"
+            return "🗂️ 提取项目中所有 Pod 相关文件"
         case .podInstall:
-            return "Pod Install"
+            return "➕ Pod Install"
         case .podUpdate:
-            return "Pod Update"
+            return "⬆️ Pod Update"
         case .dependencies:
-            return "查询 Xcode 工程依赖关系"
+            return "🕸️ 查询 Xcode 工程依赖关系"
         case .repoUpdate:
-            return "更新 CocoaPods 本地仓库"
+            return "🔄 更新 CocoaPods 本地仓库"
         case .podBuildCheck:
-            return "自检当前本地 Pod 能否编译"
+            return "✅ 自检当前本地 Pod 能否编译"
         /// 安装或升级当前用户 Xcode 的 Jobs 代码片段。
         case .codeSnippets:
-            return "安装 / 升级 JobsCodeSnippets"
+            return "✂️ 安装 / 升级 JobsCodeSnippets"
         case .cleanBuildArtifacts:
-            return "清理 iOS/Xcode 构建产物"
+            return "🧽 清理 iOS/Xcode 构建产物"
         }
     }
 

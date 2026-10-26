@@ -30,6 +30,45 @@ enum RunAuthorizationTransportTests {
         for urls: [URL]? in [nil, [], [file, file], [directory], [link], [root.appendingPathComponent("missing")], [URL(string: "https://example.com/file")!]] {
             try check(validator.selectedFile(from: urls) == nil, "非单普通文件应拒绝")
         }
+        for suffix in ["SH", "command", "zsh", "py", "rb", "pl", "swift", "js", "mjs", "lua", "scpt"] {
+            let script = root.appendingPathComponent("format.\(suffix)")
+            try Data("script fixture".utf8).write(to: script)
+            try check(validator.isExecutableFormat(at: script), "脚本格式 \(suffix) 应显示权限菜单")
+        }
+        for suffix in ["md", "txt", "png", "zip"] {
+            let document = root.appendingPathComponent("document.\(suffix)")
+            try Data("ordinary document".utf8).write(to: document)
+            try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: document.path)
+            try check(!validator.isExecutableFormat(at: document), "普通文档即使 +x 也不显示权限菜单")
+        }
+        let noExtension = root.appendingPathComponent("script-without-extension")
+        try Data("#!/bin/zsh\nexit 0\n".utf8).write(to: noExtension)
+        try check(validator.isExecutableFormat(at: noExtension), "无扩展 shebang 脚本应显示")
+        let native = root.appendingPathComponent("native.bin")
+        var header = [UInt8](repeating: 0, count: 32)
+        header.replaceSubrange(0..<4, with: [0xcf, 0xfa, 0xed, 0xfe])
+        header[12] = 2
+        try Data(header).write(to: native)
+        try check(validator.isExecutableFormat(at: native), "Mach-O MH_EXECUTE 应显示")
+        header[12] = 6
+        try Data(header).write(to: native)
+        try check(!validator.isExecutableFormat(at: native), "Mach-O 动态库不能视为原生可执行")
+        header[12] = 2
+        var fat = [UInt8](repeating: 0, count: 64)
+        fat.replaceSubrange(0..<8, with: [0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 1])
+        fat[19] = 32
+        fat.replaceSubrange(32..<64, with: header)
+        try Data(fat).write(to: native)
+        try check(validator.isExecutableFormat(at: native), "Universal Mach-O 应检查真实 slice 类型")
+        fat[44] = 6
+        try Data(fat).write(to: native)
+        try check(!validator.isExecutableFormat(at: native), "Universal 动态库不能显示")
+        try Data([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]).write(to: native)
+        try check(!validator.isExecutableFormat(at: native), "Java 类或损坏 FAT 不能误显示")
+        for mode in [0o644, 0o755, 0o610, 0o601] {
+            try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path)
+            try check(validator.hasExecutionPermission(at: file) == (mode & 0o111 != 0), "执行位状态包括组和其他用户")
+        }
         guard let request = RunAuthorizationRequest.url(for: file) else {
             throw failure("无法生成有效请求")
         }

@@ -61,14 +61,14 @@ for kind in [FIMenuKind.contextualMenuForItems, .contextualMenuForContainer] {
  controller.selected = kind == .contextualMenuForItems ? [project] : nil
  controller.targeted = kind == .contextualMenuForContainer ? project : nil
  let menu = provider.menu(for: kind)!
- expect(menu.items.map(\.title) == ["Flutter开发相关辅助工具"], "one root menu")
+ expect(menu.items.map(\.title) == ["🦋 Flutter开发相关辅助工具"], "one root menu")
  let development = menu.items[0].submenu!
- expect(development.items.map(\.title) == ["从终端运行 Flutter 项目","拉取Flutter第三方依赖","提取Flutter第三方依赖","查看当前Flutter项目的SDK版本","安装/切换Flutter SDK版本","安装/切换 Flutter@OpenHarmony SDK","安装/切换Java环境","Flutter打包","Flutter自动化生产代码","Flutter项目体检","Flutter项目修复","Flutter清理维护工具"], "development fixed order")
- expect(development.items[7].submenu!.items.map(\.title) == ["iOS", "Android", "OpenHarmony"], "packaging platforms")
+ expect(development.items.map(\.title) == ["▶️ 从终端运行 Flutter 项目","📥 拉取Flutter第三方依赖","🧩 提取Flutter第三方依赖","🔎 查看当前Flutter项目的SDK版本","🔀 安装/切换Flutter SDK版本","🕊️ 安装/切换 Flutter@OpenHarmony SDK","☕ 安装/切换Java环境","📦 Flutter打包","⚙️ Flutter自动化生产代码","🏥 Flutter项目体检","🔧 Flutter项目修复","🧹 Flutter清理维护工具"], "development fixed order")
+ expect(development.items[7].submenu!.items.map(\.title) == ["🍏 iOS", "🤖 Android", "🌸 OpenHarmony"], "packaging platforms")
  expect(!(development.items[7].target is FinderSync), "packaging parent does not launch a terminal")
- expect(development.items[9].submenu!.items.map(\.title) == ["原生Flutter项目体检", "OpenHarmony Flutter 环境体检"], "doctors")
- expect(development.items[10].submenu!.items.map(\.title) == ["修复 Android SDK / platforms 缺失","修复 Flutter 项目中文路径","修复 Flutter 插件 namespace","修复 Dart 相对 import 为 package 引用"], "nested repairs")
- expect(development.items[11].submenu!.items.map(\.title) == ["清理当前 Flutter 项目构建产物", "依赖与缓存维护"], "nested project cleaning and SDK maintenance")
+ expect(development.items[9].submenu!.items.map(\.title) == ["🧑‍⚕️ 原生Flutter项目体检", "💓 OpenHarmony Flutter 环境体检"], "doctors")
+ expect(development.items[10].submenu!.items.map(\.title) == ["🩹 修复 Android SDK / platforms 缺失","🈶 修复 Flutter 项目中文路径","🏷️ 修复 Flutter 插件 namespace","🔤 修复 Dart 相对 import 为 package 引用"], "nested repairs")
+ expect(development.items[11].submenu!.items.map(\.title) == ["🗑️ 清理当前 Flutter 项目构建产物", "♻️ 依赖与缓存维护"], "nested project cleaning and SDK maintenance")
  expect(!(development.items[11].target is FinderSync), "cleaning parent does not launch a terminal")
  let leaves = leafItems(menu)
  expect(leaves.count == actions.count, "all actions remain available")
@@ -131,8 +131,8 @@ let staleMenu = provider.menu(for: .contextualMenuForItems)!
 let staleRun = leafItems(staleMenu).first!
 try "package-android,repair-package-imports".write(to: config, atomically: true, encoding: .utf8)
 let partial = provider.menu(for: .contextualMenuForItems)!.items[0].submenu!
-expect(partial.items.map(\.title) == ["Flutter打包", "Flutter项目修复"], "empty action groups are hidden")
-expect(leafItems(partial).map(\.title) == ["Android", "修复 Dart 相对 import 为 package 引用"], "selected leaves only")
+expect(partial.items.map(\.title) == ["📦 Flutter打包", "🔧 Flutter项目修复"], "empty action groups are hidden")
+expect(leafItems(partial).map(\.title) == ["🤖 Android", "🔤 修复 Dart 相对 import 为 package 引用"], "selected leaves only")
 let previousRequestCount = TestWorkspace.requests.count
 _ = (staleRun.target as! NSObject).perform(staleRun.action!, with: staleRun)
 expect(TestWorkspace.requests.count == previousRequestCount, "stale menu cannot launch disabled action")

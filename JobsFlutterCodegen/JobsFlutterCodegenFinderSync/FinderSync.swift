@@ -25,7 +25,7 @@ final class FinderSync: FIFinderSync {
         }
         let menu = NSMenu(title: "")
         let action = menuKind == .contextualMenuForItems ? #selector(generateSelectedProject(_:)) : #selector(generateContainerProject(_:))
-        let item = NSMenuItem(title: "Flutter 自动化生产代码", action: action, keyEquivalent: "")
+        let item = NSMenuItem(title: "⚙️ Flutter 自动化生产代码", action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

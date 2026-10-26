@@ -12,7 +12,7 @@ enum RunRevocationRequest {
     static let scheme = "jobsrunrevoker"
 
     static func url(for fileURL: URL) -> URL? {
-        guard RunRevocationValidator().isRegularFile(at: fileURL) else {
+        guard RunRevocationValidator().isExecutableFormat(at: fileURL) else {
             return nil
         }
         var components = URLComponents()

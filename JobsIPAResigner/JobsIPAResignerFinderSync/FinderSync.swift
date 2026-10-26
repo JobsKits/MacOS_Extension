@@ -23,7 +23,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu.make(title: "")
-        let item = NSMenuItem.make(title: "IPA 免编译重签", action: #selector(resignSelectedFile(_:)), keyEquivalent: "") {
+        let item = NSMenuItem.make(title: "🖋️ IPA 免编译重签", action: #selector(resignSelectedFile(_:)), keyEquivalent: "") {
             $0.byTarget(self)
         }
         menu.addItem(item)

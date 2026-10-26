@@ -32,45 +32,45 @@ enum FlutterToolsAction: String, CaseIterable {
     var title: String {
         switch self {
         case .run:
-            return "从终端运行 Flutter 项目"
+            return "▶️ 从终端运行 Flutter 项目"
         case .pubGet:
-            return "拉取Flutter第三方依赖"
+            return "📥 拉取Flutter第三方依赖"
         case .extract:
-            return "提取Flutter第三方依赖"
+            return "🧩 提取Flutter第三方依赖"
         case .sdkVersion:
-            return "查看当前Flutter项目的SDK版本"
+            return "🔎 查看当前Flutter项目的SDK版本"
         case .sdkManage:
-            return "安装/切换Flutter SDK版本"
+            return "🔀 安装/切换Flutter SDK版本"
         case .harmonySdkManage:
-            return "安装/切换 Flutter@OpenHarmony SDK"
+            return "🕊️ 安装/切换 Flutter@OpenHarmony SDK"
         case .javaManage:
-            return "安装/切换Java环境"
+            return "☕ 安装/切换Java环境"
         case .package:
-            return "Flutter打包"
+            return "📦 Flutter打包"
         case .packageIOS:
-            return "iOS"
+            return "🍏 iOS"
         case .packageAndroid:
-            return "Android"
+            return "🤖 Android"
         case .packageHarmony:
-            return "OpenHarmony"
+            return "🌸 OpenHarmony"
         case .codegen:
-            return "Flutter自动化生产代码"
+            return "⚙️ Flutter自动化生产代码"
         case .nativeDoctor:
-            return "原生Flutter项目体检"
+            return "🧑‍⚕️ 原生Flutter项目体检"
         case .harmonyDoctor:
-            return "OpenHarmony Flutter 环境体检"
+            return "💓 OpenHarmony Flutter 环境体检"
         case .cleanBuildArtifacts:
-            return "清理当前 Flutter 项目构建产物"
+            return "🗑️ 清理当前 Flutter 项目构建产物"
         case .maintenance:
-            return "依赖与缓存维护"
+            return "♻️ 依赖与缓存维护"
         case .repairNamespace:
-            return "修复 Flutter 插件 namespace"
+            return "🏷️ 修复 Flutter 插件 namespace"
         case .repairAndroid:
-            return "修复 Android SDK / platforms 缺失"
+            return "🩹 修复 Android SDK / platforms 缺失"
         case .repairImports:
-            return "修复 Flutter 项目中文路径"
+            return "🈶 修复 Flutter 项目中文路径"
         case .repairPackageImports:
-            return "修复 Dart 相对 import 为 package 引用"
+            return "🔤 修复 Dart 相对 import 为 package 引用"
         }
     }
 

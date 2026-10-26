@@ -25,11 +25,11 @@ final class FinderSync: FIFinderSync {
         }
         let menu = NSMenu(title: "")
         let action = menuKind == .contextualMenuForItems ? #selector(manageSelectedProject(_:)) : #selector(manageContainerProject(_:))
-        let item = NSMenuItem(title: "Git 提交回退", action: action, keyEquivalent: "")
+        let item = NSMenuItem(title: "⏪ Git 提交回退", action: action, keyEquivalent: "")
         item.target = self
-        let submenu = NSMenu(title: "Git操作")
+        let submenu = NSMenu(title: "🌿 Git操作")
         submenu.addItem(item)
-        let group = NSMenuItem(title: "Git操作", action: nil, keyEquivalent: "")
+        let group = NSMenuItem(title: "🌿 Git操作", action: nil, keyEquivalent: "")
         group.submenu = submenu
         menu.addItem(group)
         return menu

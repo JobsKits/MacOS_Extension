@@ -38,7 +38,7 @@ final class FinderSync: FIFinderSync {
         let enabledFeatures = enabledFeatures()
         let menu = NSMenu(title: "")
         if !isContainer, enabledFeatures.contains(.open) {
-            let openItem = NSMenuItem(title: "用终端打开", action: #selector(openInTerminal(_:)), keyEquivalent: "")
+            let openItem = NSMenuItem(title: "💻 用终端打开", action: #selector(openInTerminal(_:)), keyEquivalent: "")
             openItem.target = self
             openItem.isEnabled = true
             menu.addItem(openItem)
@@ -49,14 +49,14 @@ final class FinderSync: FIFinderSync {
         if enabledFeatures.contains(.cleanBuildArtifacts),
            dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: directoryURL) {
             let action = isContainer ? #selector(cleanBuildArtifactsInContainer(_:)) : #selector(cleanBuildArtifacts(_:))
-            let cleanItem = NSMenuItem(title: "清理 Android / OpenHarmony 构建产物", action: action, keyEquivalent: "")
+            let cleanItem = NSMenuItem(title: "🧯 清理 Android / OpenHarmony 构建产物", action: action, keyEquivalent: "")
             cleanItem.target = self
             menu.addItem(cleanItem)
         }
 
         if !isContainer, enabledFeatures.contains(.codeGraphBootstrap),
            dependencyProjectValidator.isCodeGraphTargetFolder(at: directoryURL) {
-            let codeGraphItem = NSMenuItem(title: "更新代码地图（.codegraph）", action: #selector(updateCodeGraph(_:)), keyEquivalent: "")
+            let codeGraphItem = NSMenuItem(title: "🗺️ 更新代码地图（.codegraph）", action: #selector(updateCodeGraph(_:)), keyEquivalent: "")
             codeGraphItem.target = self
             codeGraphItem.isEnabled = true
             menu.addItem(codeGraphItem)

@@ -158,7 +158,7 @@ class IPAResignMenuTests < Minitest::Test
       controller.targeted = folder
       controller.selected = [file]
       let singleMenu = extensionInstance.menu(for: .contextualMenuForItems)
-      expect(singleMenu?.items.map(\.title) == ["IPA 免编译重签"], "one ordinary file exposes exactly one action")
+      expect(singleMenu?.items.map(\.title) == ["🖋️ IPA 免编译重签"], "one ordinary file exposes exactly one action")
       expect(singleMenu?.items.first?.target === extensionInstance, "menu target is the real extension instance")
 
       for menuKind in FIMenuKind.allCases where menuKind != .contextualMenuForItems {

@@ -20,7 +20,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu(title: "")
-        let item = NSMenuItem(title: "显示 / 隐藏文件", action: #selector(toggleHiddenFiles(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "👁️ 显示 / 隐藏文件", action: #selector(toggleHiddenFiles(_:)), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

@@ -31,16 +31,16 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .androidStudio: return "用 Android Studio 打开项目"
-        case .vscode: return "用 VSCode 打开项目"
-        case .xcode: return "用 Xcode 打开项目"
-        case .gitPull: return "拉取 Git 到最新"
+        case .androidStudio: return "🧭 用 Android Studio 打开项目"
+        case .vscode: return "📝 用 VSCode 打开项目"
+        case .xcode: return "🛠️ 用 Xcode 打开项目"
+        case .gitPull: return "⬇️ 拉取 Git 到最新"
         case .gitRollback:
-            return "Git 提交回退"
-        case .gitRemote: return "打开 Git 远程地址"
-        case .gitRemoteCopy: return "复制 Git 远程地址"
-        case .gitProxy: return "配置 Git 动态代理"
-        case .gitEmptyCommitPush: return "在终端创建空白 Commit 并 Push"
+            return "⏪ Git 提交回退"
+        case .gitRemote: return "🌐 打开 Git 远程地址"
+        case .gitRemoteCopy: return "🔗 复制 Git 远程地址"
+        case .gitProxy: return "📡 配置 Git 动态代理"
+        case .gitEmptyCommitPush: return "📤 在终端创建空白 Commit 并 Push"
         }
     }
 

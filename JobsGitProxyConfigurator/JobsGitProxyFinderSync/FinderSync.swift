@@ -22,7 +22,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu(title: "")
-        let item = NSMenuItem(title: "配置 Git 动态代理", action: #selector(configureFromContainer(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "📡 配置 Git 动态代理", action: #selector(configureFromContainer(_:)), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

@@ -22,7 +22,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu(title: "")
-        let item = NSMenuItem(title: "Android 模拟器检测与修复", action: #selector(repairFromContainer(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "🩺 Android 模拟器检测与修复", action: #selector(repairFromContainer(_:)), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

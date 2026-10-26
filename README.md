@@ -42,6 +42,8 @@
 
 **项目定位：** 面向 Jobs 与 macOS 开发人员的 Finder 日常开发工具集合。**状态：维护中**（基于当前源码与提交活动）；负责人 **Jobs** / [**JobsKits**](https://github.com/JobsKits)，未登记其他维护团队。功能、工程与代码规模的复核日期见统计章。
 
+右键菜单在名称前使用功能对应的 emoji，不同功能不重复，同一功能的兼容入口和 Windows 入口保持一致。运行授权两项仅对脚本或原生可执行格式显示：已有任一 POSIX 执行位时“🔓 运行授权”置灰、“🔒 解除运行授权”可点；无执行位时反向置灰。普通文档即使误加了执行位也不显示这两项。
+
 29 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
@@ -193,8 +195,8 @@ ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
 | `./JobsGitRemoteCopier` | `复制 Git 远程地址` | 常规入口转交 Git 子菜单；旧源码保留远程地址解析与复制实现。 | `./JobsGitRemoteCopier/JobsGitRemoteCopier.xcodeproj` |
 | `./JobsPathCopier` | `复制绝对路径` | 右键任意一个本地文件或文件夹，把绝对路径写入剪贴板。 | `./JobsPathCopier/JobsPathCopier.xcodeproj` |
 | [JobsHiddenFilesToggler](./JobsHiddenFilesToggler/README.md) | `显示 / 隐藏文件` | 仅桌面及文件夹空白处，直接切换 Finder 隐藏文件显示并刷新。 | `./JobsHiddenFilesToggler/JobsHiddenFilesToggler.xcodeproj` |
-| [JobsRunAuthorizer](./JobsRunAuthorizer/README.md) | `运行授权` | 仅单个普通文件；终端确认后执行 `chmod +x`，不递归、不运行文件。 | `./JobsRunAuthorizer/JobsRunAuthorizer.xcodeproj` |
-| [JobsRunAuthorizationRevoker](./JobsRunAuthorizationRevoker/README.md) | `解除运行授权` | 仅单个普通文件；终端确认清除全部执行位，不递归、不运行文件。 | `./JobsRunAuthorizationRevoker/JobsRunAuthorizationRevoker.xcodeproj` |
+| [JobsRunAuthorizer](./JobsRunAuthorizer/README.md) | `🔓 运行授权` | 仅单个可执行格式文件；已有执行位时置灰；终端确认后执行 `chmod +x`，不递归、不运行文件。 | `./JobsRunAuthorizer/JobsRunAuthorizer.xcodeproj` |
+| [JobsRunAuthorizationRevoker](./JobsRunAuthorizationRevoker/README.md) | `🔒 解除运行授权` | 仅单个可执行格式文件；无执行位时置灰；终端确认清除全部执行位，不递归、不运行文件。 | `./JobsRunAuthorizationRevoker/JobsRunAuthorizationRevoker.xcodeproj` |
 | [JobsIPAResigner](./JobsIPAResigner/README.md) | `IPA 免编译重签` | 仅单个 `.ipa` 普通文件；终端确认后重签、验证、原路径替换，可选安装到设备。 | `./JobsIPAResigner/JobsIPAResigner.xcodeproj` |
 | `./JobsXcodeOpener` | `用 Xcode 打开项目` | 仅当前层 Xcode 工程 / 工作区 / Swift Package 显示；Flutter 根目录只保留 Android Studio / VSCode，即使同层也有原生工程；单独右键 `ios/` 原生工程按 Xcode 处理。 | `./JobsXcodeOpener/JobsXcodeOpener.xcodeproj` |
 | `./JobsVSCodeOpener` | `用 VSCode 打开项目` | Xcode 项目隐藏；其它目录检查 VSCode 后打开，缺失时打开官方下载页。 | `./JobsVSCodeOpener/JobsVSCodeOpener.xcodeproj` |
@@ -343,7 +345,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 * 原有四个扩展工程均为普通源码目录；本仓统一维护各工程、总安装 / 卸载入口及 `Scripts/SelectFinderExtensionFeatures.swift` 原生选择界面。
   * [JobsGitRemoteCopier](./JobsGitRemoteCopier/README.md)、[JobsGitRemoteOpener](./JobsGitRemoteOpener/README.md)、[JobsPathCopier](./JobsPathCopier/README.md)、[JobsTerminalOpener](./JobsTerminalOpener/README.md)。
 * 三个 IDE 工程也由本仓统一管理，各自保留独立构建和安装能力：[JobsXcodeOpener](./JobsXcodeOpener/README.md)、[JobsVSCodeOpener](./JobsVSCodeOpener/README.md)、[JobsAndroidStudioOpener](./JobsAndroidStudioOpener/README.md)。
-* [JobsRunAuthorizer](./JobsRunAuthorizer/README.md)：单个普通文件的“运行授权”入口；Terminal 确认后按原脚本语义执行 `chmod +x`，不递归、不执行文件。独立安装 / 卸载脚本直接放在该目录内。
+* [JobsRunAuthorizer](./JobsRunAuthorizer/README.md)：单个可执行格式文件的“🔓 运行授权”入口，已有执行位时置灰；Terminal 确认后按原脚本语义执行 `chmod +x`，不递归、不执行文件。独立安装 / 卸载脚本直接放在该目录内。
 * [JobsRunAuthorizationRevoker](./JobsRunAuthorizationRevoker/README.md)：独立的“解除运行授权”入口，Terminal 确认后以 `chmod a-x` 清除全部执行位，复读权限，不执行文件；安装 / 卸载和日志独立。
 * [JobsIPAResigner](./JobsIPAResigner/README.md)：单个 `.ipa` 普通文件的“IPA 免编译重签”入口；完整业务脚本随 App 打包，保持原团队与 Bundle ID，验证成功后原路径替换 IPA，再按确认可选安装。独立安装 / 卸载入口与本包 README 平级，总面板可单独勾选。
 * [JobsFlutterRunner](./JobsFlutterRunner/README.md)：独立 Flutter 运行扩展；Terminal 选设备，launchd 独立托管，关闭终端后继续；仅打包运行脚本与 JXA helper。

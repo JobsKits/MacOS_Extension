@@ -21,7 +21,7 @@ final class FinderSync: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         guard let url = candidateURL(for: menuKind) else { return nil }
         let menu = NSMenu(title: "")
-        let gitMenu = NSMenu(title: "Git操作")
+        let gitMenu = NSMenu(title: "🌿 Git操作")
         let actions = ProjectMenuAction.visible(at: url, enabled: ProjectMenuConfiguration.enabledFeatures())
         NSLog("JobsProjectTools Finder menu target=%@ enabled=%ld visible=%ld",
               url.path, ProjectMenuConfiguration.enabledFeatures().count, actions.count)
@@ -35,7 +35,7 @@ final class FinderSync: FIFinderSync {
             }
         }
         if !gitMenu.items.isEmpty {
-            let parent = NSMenuItem(title: "Git操作", action: nil, keyEquivalent: "")
+            let parent = NSMenuItem(title: "🌿 Git操作", action: nil, keyEquivalent: "")
             parent.submenu = gitMenu
             menu.addItem(parent)
         }

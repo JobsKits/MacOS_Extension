@@ -33,7 +33,7 @@ struct RunAuthorizationLauncher {
     }
 
     func prepare(fileURL: URL, businessScriptURL: URL) throws -> PreparedRequest {
-        guard validator.isRegularFile(at: fileURL) else {
+        guard validator.isExecutableFormat(at: fileURL) else {
             throw failure("请选择单个普通文件；文件夹、应用包和符号链接不支持运行授权。")
         }
         let scriptData = try Data(contentsOf: businessScriptURL)

@@ -19,14 +19,16 @@ final class FinderSync: FIFinderSync {
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         guard menuKind == .contextualMenuForItems,
-              selectedFile() != nil else {
+              let fileURL = selectedFile() else {
             return nil
         }
         let menu = NSMenu.make(title: "")
-        let item = NSMenuItem.make(title: "运行授权", action: #selector(authorizeSelectedFile(_:)), keyEquivalent: "") {
+            .byAutoenablesItems(false)
+        let item = NSMenuItem.make(title: "🔓 运行授权", action: #selector(authorizeSelectedFile(_:)), keyEquivalent: "") {
             $0.byTarget(self)
+                .byEnabled(!validator.hasExecutionPermission(at: fileURL))
         }
-        menu.addItem(item)
+        menu.byAddItem(item)
         return menu
     }
 
@@ -37,8 +39,9 @@ final class FinderSync: FIFinderSync {
     @objc private func authorizeSelectedFile(_ sender: NSMenuItem) {
         // 点击时重新读取 Finder 上下文，拒绝菜单打开后改变为目录或多选的目标。
         guard let fileURL = selectedFile(),
+              !validator.hasExecutionPermission(at: fileURL),
               let requestURL = RunAuthorizationRequest.url(for: fileURL) else {
-            showFailure("请重新右键单个普通文件；文件夹、应用包、符号链接和多选均不支持运行授权。")
+            showFailure("请重新右键单个可执行格式文件并确认当前执行权限；普通文档、文件夹、应用包、符号链接和多选均不支持运行授权。")
             return
         }
         guard NSWorkspace.shared.open(requestURL) else {

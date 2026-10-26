@@ -59,6 +59,7 @@ class RunAuthorizationMenuTests < Minitest::Test
       }
       final class NSMenu: NSObject {
           let title: String
+          var autoenablesItems = true
           var items: [NSMenuItem] = []
           init(title: String) {
               self.title = title
@@ -69,6 +70,7 @@ class RunAuthorizationMenuTests < Minitest::Test
       final class NSMenuItem: NSObject {
           let title: String
           let action: Selector?
+          var isEnabled = true
           var target: AnyObject?
           init(title: String, action: Selector?, keyEquivalent: String) {
               self.title = title
@@ -131,6 +133,8 @@ class RunAuthorizationMenuTests < Minitest::Test
       let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
       let file = root.appendingPathComponent("普通文件.command")
       let otherFile = root.appendingPathComponent("另一个文件.sh")
+      let document = root.appendingPathComponent("README.md")
+      let textFile = root.appendingPathComponent("ordinary.txt")
       let special = root.appendingPathComponent("中文 空格 ' 双引号\" $ $(touch SUBSTITUTED) `touch BACKTICK`\n下一行.command")
       let folder = root.appendingPathComponent("普通文件夹", isDirectory: true)
       let package = root.appendingPathComponent("Application.app", isDirectory: true)
@@ -140,7 +144,11 @@ class RunAuthorizationMenuTests < Minitest::Test
       let fifo = root.appendingPathComponent("named-pipe.command")
       for regularFile in [file, otherFile, special] {
           try Data("#!/bin/zsh\ntouch EXECUTED\n".utf8).write(to: regularFile)
+          try manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: regularFile.path)
       }
+      try Data("# ordinary document\n".utf8).write(to: document)
+      try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: document.path)
+      try Data("ordinary text\n".utf8).write(to: textFile)
       for directory in [folder, package] {
           try manager.createDirectory(at: directory, withIntermediateDirectories: true)
       }
@@ -154,8 +162,22 @@ class RunAuthorizationMenuTests < Minitest::Test
       controller.targeted = folder
       controller.selected = [file]
       let singleMenu = extensionInstance.menu(for: .contextualMenuForItems)
-      expect(singleMenu?.items.map(\.title) == ["运行授权"], "one ordinary file exposes exactly one action")
+      expect(singleMenu?.items.map(\.title) == ["🔓 运行授权"], "one executable-format file exposes exactly one action")
+      expect(singleMenu?.autoenablesItems == false, "automatic AppKit validation cannot override explicit permission state")
+      expect(singleMenu?.items.first?.isEnabled == true, "authorization is enabled without execute bits")
       expect(singleMenu?.items.first?.target === extensionInstance, "menu target is the real extension instance")
+
+      for mode in [0o755, 0o654, 0o645] {
+          try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path)
+          let executableMenu = extensionInstance.menu(for: .contextualMenuForItems)
+          expect(executableMenu?.items.map(\.title) == ["🔓 运行授权"], "execute bits retain the authorization menu")
+          expect(executableMenu?.items.first?.isEnabled == false, "any user/group/other execute bit disables authorization")
+          TestWorkspace.reset()
+          click(singleMenu)
+          expect(TestWorkspace.urls.isEmpty, "permission changed after menu creation prevents authorization dispatch")
+          expect(TestAlerts.count == 1, "stale permission state reports one failure")
+      }
+      try manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
 
       for menuKind in FIMenuKind.allCases where menuKind != .contextualMenuForItems {
           expect(extensionInstance.menu(for: menuKind) == nil, "non-item context \(menuKind) is always hidden")
@@ -167,6 +189,8 @@ class RunAuthorizationMenuTests < Minitest::Test
           ("dangling symbolic link", [brokenLink]),
           ("missing file", [missing]),
           ("named pipe", [fifo]),
+          ("executable-bit Markdown document", [document]),
+          ("unknown plain-text format", [textFile]),
           ("multiple ordinary files", [file, otherFile]),
           ("file and directory", [file, folder]),
           ("empty selection", []),

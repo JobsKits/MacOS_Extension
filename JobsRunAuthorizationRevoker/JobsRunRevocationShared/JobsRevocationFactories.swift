@@ -66,6 +66,12 @@ extension DispatchWorkItem {
 }
 
 extension NSMenu {
+    @discardableResult
+    func byAutoenablesItems(_ value: Bool) -> Self {
+        autoenablesItems = value
+        return self
+    }
+
     static func make(title: String) -> NSMenu {
         return NSMenu(title: title)
     }
@@ -78,6 +84,12 @@ extension NSMenu {
 }
 
 extension NSMenuItem {
+    @discardableResult
+    func byEnabled(_ value: Bool) -> Self {
+        isEnabled = value
+        return self
+    }
+
     static func make(title: String, action: Selector, keyEquivalent: String, configure: (NSMenuItem) -> Void) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         configure(item)

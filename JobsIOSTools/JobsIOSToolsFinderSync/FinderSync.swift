@@ -27,7 +27,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         let menu = NSMenu.make(title: "")
-        let tools = NSMenu.make(title: "iOS / CocoaPods 辅助工具")
+        let tools = NSMenu.make(title: "🧑‍💻 iOS / CocoaPods 辅助工具")
         let group = NSMenuItem.make(title: tools.title, action: nil, keyEquivalent: "") {
             $0.bySubmenu(tools)
         }

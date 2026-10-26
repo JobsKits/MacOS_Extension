@@ -72,14 +72,14 @@ try file("submodule/.git", "gitdir: ../repo/.git/modules/child\n")
 try repository("repo/.git/modules/child")
 let finder = FinderSync()
 let controller = FIFinderSyncController.default()
-let git = ["拉取 Git 到最新", "Git 提交回退", "打开 Git 远程地址", "复制 Git 远程地址", "配置 Git 动态代理", "在终端创建空白 Commit 并 Push"]
-let editors = ["用 Android Studio 打开项目", "用 VSCode 打开项目"]
+let git = ["⬇️ 拉取 Git 到最新", "⏪ Git 提交回退", "🌐 打开 Git 远程地址", "🔗 复制 Git 远程地址", "📡 配置 Git 动态代理", "📤 在终端创建空白 Commit 并 Push"]
+let editors = ["🧭 用 Android Studio 打开项目", "📝 用 VSCode 打开项目"]
 for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
-                       ("ios", ["用 Xcode 打开项目"]),
-                       ("ios/App.xcodeproj", ["用 Xcode 打开项目"]),
-                       ("flutter", editors), ("package", ["用 Xcode 打开项目"]),
-                       ("repo", editors + ["Git操作"]), ("repo/sub", editors + ["Git操作"]),
-                       ("worktree", editors + ["Git操作"]), ("submodule", editors + ["Git操作"]),
+                       ("ios", ["🛠️ 用 Xcode 打开项目"]),
+                       ("ios/App.xcodeproj", ["🛠️ 用 Xcode 打开项目"]),
+                       ("flutter", editors), ("package", ["🛠️ 用 Xcode 打开项目"]),
+                       ("repo", editors + ["🌿 Git操作"]), ("repo/sub", editors + ["🌿 Git操作"]),
+                       ("worktree", editors + ["🌿 Git操作"]), ("submodule", editors + ["🌿 Git操作"]),
                        ("repo/invalid", editors), ("repo/dangling", editors),
                        ("repo/bare.git", editors), ("repo/.git", editors),
                        ("repo/sub/code.txt", editors)] {
@@ -89,8 +89,8 @@ for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
   controller.targeted = kind == .contextualMenuForContainer ? url : nil
   let menu = finder.menu(for: kind)!
   expect(menu.items.map(\.title) == titles, "order/visibility for \(path)")
-  let actualGit = menu.items.first(where: { $0.title == "Git操作" })?.submenu
-  if titles.contains("Git操作") {
+  let actualGit = menu.items.first(where: { $0.title == "🌿 Git操作" })?.submenu
+  if titles.contains("🌿 Git操作") {
    expect(actualGit?.items.map(\.title) == git, "all six Git actions grouped")
   } else {
    expect(actualGit == nil, "Git hidden outside valid directory")
@@ -123,12 +123,12 @@ expect(TestWorkspace.requests.count == before, "stale Git selection rejected")
 controller.selected = [root.appendingPathComponent("repo")]
 ProjectMenuConfiguration.enabled = [.vscode, .gitRemoteCopy]
 let partial = finder.menu(for: .contextualMenuForItems)!
-expect(partial.items.map(\.title) == ["用 VSCode 打开项目", "Git操作"], "partial installation")
-expect(partial.items.last!.submenu!.items.map(\.title) == ["复制 Git 远程地址"], "only selected Git feature")
+expect(partial.items.map(\.title) == ["📝 用 VSCode 打开项目", "🌿 Git操作"], "partial installation")
+expect(partial.items.last!.submenu!.items.map(\.title) == ["🔗 复制 Git 远程地址"], "only selected Git feature")
 ProjectMenuConfiguration.enabled = [.gitRollback]
-expect(finder.menu(for: .contextualMenuForItems)?.items.last?.submenu?.items.map(\.title) == ["Git 提交回退"], "rollback-only installation")
+expect(finder.menu(for: .contextualMenuForItems)?.items.last?.submenu?.items.map(\.title) == ["⏪ Git 提交回退"], "rollback-only installation")
 ProjectMenuConfiguration.enabled = [.gitProxy]
-expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["Git操作"], "Git-only installation")
+expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["🌿 Git操作"], "Git-only installation")
 controller.selected = [root.appendingPathComponent("flutter")]
 expect(finder.menu(for: .contextualMenuForItems) == nil, "Git-only non-repo hidden")
 ProjectMenuConfiguration.enabled = []

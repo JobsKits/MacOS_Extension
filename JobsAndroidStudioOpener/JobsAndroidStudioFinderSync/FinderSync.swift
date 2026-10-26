@@ -24,7 +24,7 @@ final class FinderSync: FIFinderSync {
 
         let menu = NSMenu(title: "")
         let action = menuKind == .contextualMenuForItems ? #selector(openSelectedProject(_:)) : #selector(openContainerProject(_:))
-        let item = NSMenuItem(title: "用 Android Studio 打开项目", action: action, keyEquivalent: "")
+        let item = NSMenuItem(title: "🧭 用 Android Studio 打开项目", action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu

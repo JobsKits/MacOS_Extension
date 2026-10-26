@@ -29,7 +29,7 @@ final class FinderSync: FIFinderSync {
         guard menuKind == .contextualMenuForItems, urls.count == 1 else { return nil }
 
         let menu = NSMenu(title: "")
-        let openItem = NSMenuItem(title: "打开 Git 远程地址", action: #selector(openGitRemoteURL(_:)), keyEquivalent: "")
+        let openItem = NSMenuItem(title: "🌐 打开 Git 远程地址", action: #selector(openGitRemoteURL(_:)), keyEquivalent: "")
         openItem.target = self
         openItem.isEnabled = true
         menu.addItem(openItem)

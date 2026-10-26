@@ -110,7 +110,7 @@ class DesktopFinderMenuTests < Minitest::Test
             let selected = root.appendingPathComponent(path)
             controller.selected = [selected]
             let menu = finder.menu(for: .contextualMenuForItems)
-            expect(menu?.items.map(\.title) == ["清理 Android / OpenHarmony 构建产物"], "wrong title for \(path)")
+            expect(menu?.items.map(\.title) == ["🧯 清理 Android / OpenHarmony 构建产物"], "wrong title for \(path)")
             let item = menu!.items[0]
             _ = (item.target as! NSObject).perform(item.action!, with: item)
             let components = URLComponents(url: TestActions.lastURL!, resolvingAgainstBaseURL: false)!
@@ -129,7 +129,7 @@ class DesktopFinderMenuTests < Minitest::Test
         FinderMenuFeatureConfiguration.enabled = [.open, .cleanBuildArtifacts]
         for path in flutterPaths {
             controller.selected = [root.appendingPathComponent(path)]
-            expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["用终端打开", "清理 Android / OpenHarmony 构建产物"], "\(path) offers terminal and scoped cleanup")
+            expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["💻 用终端打开", "🧯 清理 Android / OpenHarmony 构建产物"], "\(path) offers terminal and scoped cleanup")
         }
         FinderMenuFeatureConfiguration.enabled = [.open, .cleanBuildArtifacts, .codeGraphBootstrap]
         for path in supportedPaths {
@@ -137,7 +137,7 @@ class DesktopFinderMenuTests < Minitest::Test
             controller.targeted = target
             controller.selected = [root.appendingPathComponent("ios")]
             let menu = finder.menu(for: .contextualMenuForContainer)
-            expect(menu?.items.map(\.title) == ["清理 Android / OpenHarmony 构建产物"], "container offers only scoped cleanup")
+            expect(menu?.items.map(\.title) == ["🧯 清理 Android / OpenHarmony 构建产物"], "container offers only scoped cleanup")
             let item = menu!.items[0]
             _ = (item.target as! NSObject).perform(item.action!, with: item)
             let components = URLComponents(url: TestActions.lastURL!, resolvingAgainstBaseURL: false)!
@@ -229,7 +229,7 @@ def test_harmony_simulator_menu_only_uses_the_real_desktop_background
       controller.targeted = desktop
       controller.selected = nil
       let menu = extensionMenu.menu(for: .contextualMenuForContainer)
-      expect(menu?.items.map(\.title) == ["新建 Harmony 模拟器"], "Only desktop background may show Harmony action")
+      expect(menu?.items.map(\.title) == ["🌈 新建 Harmony 模拟器"], "Only desktop background may show Harmony action")
       TestActions.count = 0
         click(menu)
       expect(TestActions.count == 1, "Desktop click dispatches once")
@@ -292,7 +292,7 @@ def test_android_repair_menu_only_uses_the_real_desktop_background
       controller.targeted = desktop
       controller.selected = nil
       let menu = extensionMenu.menu(for: .contextualMenuForContainer)
-      expect(menu?.items.map(\.title) == ["Android 模拟器检测与修复"], "Only desktop background may show Android repair action")
+      expect(menu?.items.map(\.title) == ["🩺 Android 模拟器检测与修复"], "Only desktop background may show Android repair action")
       TestActions.count = 0
         click(menu)
       expect(TestActions.count == 1, "Desktop click dispatches once")
@@ -356,7 +356,7 @@ def test_harmony_repair_menu_only_uses_the_real_desktop_background
       controller.targeted = desktop
       controller.selected = nil
       let menu = extensionMenu.menu(for: .contextualMenuForContainer)
-      expect(menu?.items.map(\.title) == ["Harmony 模拟器检测与修复"], "Only desktop background may show Harmony repair action")
+      expect(menu?.items.map(\.title) == ["🧰 Harmony 模拟器检测与修复"], "Only desktop background may show Harmony repair action")
       TestActions.count = 0
         click(menu)
       expect(TestActions.count == 1, "Desktop click dispatches once")
@@ -453,7 +453,7 @@ end
         controller.selected = nil
         controller.targeted = desktop
         let desktopMenu = extensionInstance.menu(for: .contextualMenuForContainer)
-        expect(desktopMenu?.items.map(\.title) == ["配置 Git 动态代理"], "desktop has one Git proxy action")
+        expect(desktopMenu?.items.map(\.title) == ["📡 配置 Git 动态代理"], "desktop has one Git proxy action")
         TestActions.count = 0
         TestActions.lastURL = nil
         click(desktopMenu)
@@ -710,7 +710,7 @@ end
       controller.selected = nil
       controller.targeted = passwdDesktop
       let desktopMenu = simulator.menu(for: .contextualMenuForContainer)
-      expect(desktopMenu?.items.map(\\.title) == ["新建 iOS 模拟器"], "simulator: desktop only item")
+      expect(desktopMenu?.items.map(\\.title) == ["🍎 新建 iOS 模拟器"], "simulator: desktop only item")
       TestActions.count = 0
       click(desktopMenu)
       expect(TestActions.count == 1, "simulator: desktop click dispatched")
@@ -763,7 +763,7 @@ end
       controller.selected = nil
       controller.targeted = passwdDesktop
       let androidDesktopMenu = androidSimulator.menu(for: .contextualMenuForContainer)
-      expect(androidDesktopMenu?.items.map(\\.title) == ["新建 Android 模拟器"], "android: desktop only item")
+      expect(androidDesktopMenu?.items.map(\\.title) == ["📱 新建 Android 模拟器"], "android: desktop only item")
       TestActions.count = 0
       click(androidDesktopMenu)
       expect(TestActions.count == 1, "android: desktop click dispatched")

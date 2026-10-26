@@ -22,7 +22,7 @@ final class FinderSync: FIFinderSync {
             return nil
         }
         return NSMenu.make(title: "").byAddItem(
-            NSMenuItem.make(title: "Harmony 模拟器检测与修复", action: #selector(repairFromContainer(_:)), keyEquivalent: "") {
+            NSMenuItem.make(title: "🧰 Harmony 模拟器检测与修复", action: #selector(repairFromContainer(_:)), keyEquivalent: "") {
                 $0.byTarget(self)
             }
         )
