@@ -8,10 +8,11 @@ APP_PATH="${PROJECT_ROOT}/work/DerivedData/Build/Products/Debug/JobsProjectTools
 EXTENSION_PATH="${APP_PATH}/Contents/PlugIns/JobsProjectToolsFinderSync.appex"
 EXTENSION_ID="com.jobs.JobsProjectTools.FinderSyncExtension"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
-FEATURES=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure git_empty_commit_push)
+FEATURES=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure git_empty_commit_push git-rollback)
 LEGACY_APPS=(JobsAndroidStudioOpener JobsVSCodeOpener JobsXcodeOpener JobsGitPuller JobsGitRemoteOpener JobsGitRemoteCopier)
 LEGACY_EXTENSIONS=(JobsAndroidStudioFinderSync JobsVSCodeFinderSync JobsXcodeFinderSync JobsGitPullFinderSync JobsGitRemoteFinderSync JobsGitRemoteCopyFinderSync)
 GIT_MIGRATION_PATH="${CONFIG_DIR}/GitMenuMigrationVersion.txt"
+ROLLBACK_MIGRATION_PATH="${CONFIG_DIR}/GitRollbackMigrationVersion.txt"
 TERMINAL_CONFIG_PATH="${HOME}/Library/Application Support/JobsTerminalOpener/EnabledFinderMenuFeatures.txt"
 typeset -A ENABLED
 
@@ -55,6 +56,23 @@ migrate_legacy_git_features() {
     for entry in ${(s:,:)$(<"$TERMINAL_CONFIG_PATH")}; do
       [[ "$entry" != git-empty-commit-push ]] || ENABLED[git_empty_commit_push]=1
     done
+  fi
+  return 0
+}
+# 仅迁移已启用的独立回退菜单，不重复打开用户已经关闭的选择。
+migrate_legacy_rollback_feature() {
+  [[ ! -f "$ROLLBACK_MIGRATION_PATH" ]] || return 0
+  if identifier_is_enabled com.jobs.JobsGitRollback.FinderSyncExtension; then
+    ENABLED[git-rollback]=1
+  fi
+  return 0
+}
+# 独立回退实现仍可保留源码，统一菜单启用后精确停用其登记。
+retire_legacy_rollback() {
+  /usr/bin/pkill -x JobsGitRollback 2>/dev/null || true
+  /usr/bin/pkill -f 'JobsGitRollbackFinderSync.appex/Contents/MacOS/JobsGitRollbackFinderSync' 2>/dev/null || true
+  if identifier_is_enabled com.jobs.JobsGitRollback.FinderSyncExtension; then
+    /usr/bin/pluginkit -e ignore -i com.jobs.JobsGitRollback.FinderSyncExtension
   fi
   return 0
 }
@@ -119,6 +137,7 @@ install_features() {
     done
   fi
   migrate_legacy_git_features
+  migrate_legacy_rollback_feature
   for feature in "$@"; do ENABLED[$feature]=1; done
   JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 /usr/bin/xcodebuild \
     -project "$PROJECT_ROOT/JobsProjectTools.xcodeproj" -scheme JobsProjectTools \
@@ -133,9 +152,11 @@ install_features() {
   wait_until_enabled
   save_configuration
   save_git_migration_marker
+  print -r -- 1 > "$ROLLBACK_MIGRATION_PATH"
   retire_terminal_git_menu
   for index in {1..6}; do retire_legacy "$index"; done
   retire_legacy_proxy
+  retire_legacy_rollback
   print -r -- "已启用统一项目菜单：$(<"$CONFIG_PATH")"
 }
 
@@ -148,6 +169,8 @@ uninstall_features() {
       retire_legacy "$index"
     elif [[ "$feature" == git-proxy-configure ]]; then
       retire_legacy_proxy
+    elif [[ "$feature" == git-rollback ]]; then
+      retire_legacy_rollback
     elif [[ "$feature" == git_empty_commit_push ]]; then
       retire_terminal_git_menu
     fi

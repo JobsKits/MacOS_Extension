@@ -15,7 +15,8 @@ menu = menu.replace('import FinderSync', '').replace('NSWorkspace.shared.open(re
 sources = [shared, menu, (root / 'JobsProjectTools/Shared/GitRepositoryValidator.swift').read_text()]
 for relative in ['JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/XcodeProjectDetector.swift',
                  'JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/FlutterProjectValidator.swift',
-                 'JobsGitPuller/JobsGitPullShared/GitFolderValidator/GitFolderValidator.swift']:
+                 'JobsGitPuller/JobsGitPullShared/GitFolderValidator/GitFolderValidator.swift',
+                 'JobsGitRollback/JobsGitRollbackShared/GitRollbackMenuContext/GitRollbackMenuContext.swift']:
     sources.append((root / relative).read_text())
 stub = '''import AppKit
 enum FIMenuKind { case contextualMenuForItems, contextualMenuForContainer, toolbarItemMenu }
@@ -71,7 +72,7 @@ try file("submodule/.git", "gitdir: ../repo/.git/modules/child\n")
 try repository("repo/.git/modules/child")
 let finder = FinderSync()
 let controller = FIFinderSyncController.default()
-let git = ["拉取 Git 到最新", "打开 Git 远程地址", "复制 Git 远程地址", "配置 Git 动态代理", "在终端创建空白 Commit 并 Push"]
+let git = ["拉取 Git 到最新", "Git 提交回退", "打开 Git 远程地址", "复制 Git 远程地址", "配置 Git 动态代理", "在终端创建空白 Commit 并 Push"]
 let editors = ["用 Android Studio 打开项目", "用 VSCode 打开项目"]
 for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
                        ("ios", ["用 Xcode 打开项目"]),
@@ -90,7 +91,7 @@ for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
   expect(menu.items.map(\.title) == titles, "order/visibility for \(path)")
   let actualGit = menu.items.first(where: { $0.title == "Git操作" })?.submenu
   if titles.contains("Git操作") {
-   expect(actualGit?.items.map(\.title) == git, "all five Git actions grouped")
+   expect(actualGit?.items.map(\.title) == git, "all six Git actions grouped")
   } else {
    expect(actualGit == nil, "Git hidden outside valid directory")
   }
@@ -124,6 +125,8 @@ ProjectMenuConfiguration.enabled = [.vscode, .gitRemoteCopy]
 let partial = finder.menu(for: .contextualMenuForItems)!
 expect(partial.items.map(\.title) == ["用 VSCode 打开项目", "Git操作"], "partial installation")
 expect(partial.items.last!.submenu!.items.map(\.title) == ["复制 Git 远程地址"], "only selected Git feature")
+ProjectMenuConfiguration.enabled = [.gitRollback]
+expect(finder.menu(for: .contextualMenuForItems)?.items.last?.submenu?.items.map(\.title) == ["Git 提交回退"], "rollback-only installation")
 ProjectMenuConfiguration.enabled = [.gitProxy]
 expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["Git操作"], "Git-only installation")
 controller.selected = [root.appendingPathComponent("flutter")]

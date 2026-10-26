@@ -6,7 +6,7 @@ CLI_AUTHORIZED=0
 SKIP_RESTART=0
 # 先说明功能范围，再按双击或明确 CLI 参数决定是否等待确认。
 show_script_intro_and_wait() {
-  print '安装项目工具：IDE 保留一级入口，五项 Git 功能集中到 Git操作子菜单。'
+  print '安装项目工具：IDE 保留一级入口，六项 Git 功能集中到 Git操作子菜单。'
   print 'Git操作只在有效 Git 普通文件夹 / 工作树内显示；不会自动拉取、提交或修改代理。'
   print '其它已安装功能保留；Ctrl+C 取消。'
   local argument="" answer=""
@@ -29,7 +29,7 @@ show_script_intro_and_wait() {
 manage_selected_features() {
   setopt NO_NOMATCH
   if (( ${#FEATURES} == 0 )); then
-    FEATURES=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure git_empty_commit_push)
+    FEATURES=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier git-proxy-configure git_empty_commit_push)
   fi
   JOBS_SKIP_FINDER_RESTART="$SKIP_RESTART" /bin/zsh "${ZSH_ARGZERO:A:h}/Scripts/ManageProjectTools.zsh" install "${FEATURES[@]}"
 }

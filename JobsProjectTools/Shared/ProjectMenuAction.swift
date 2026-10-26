@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 
 /// IDE 保留一级入口；Git 动作按声明顺序进入同一个子菜单。
 enum ProjectMenuAction: String, CaseIterable {
@@ -13,6 +14,7 @@ enum ProjectMenuAction: String, CaseIterable {
     case vscode = "vscode_opener"
     case xcode = "xcode_opener"
     case gitPull = "git-pull"
+    case gitRollback = "git-rollback"
     case gitRemote = "git_remote"
     case gitRemoteCopy = "git_remote_copier"
     case gitProxy = "git-proxy-configure"
@@ -20,7 +22,7 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var isGitAction: Bool {
         switch self {
-        case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
+        case .gitPull, .gitRollback, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
             return true
         default:
             return false
@@ -33,6 +35,8 @@ enum ProjectMenuAction: String, CaseIterable {
         case .vscode: return "用 VSCode 打开项目"
         case .xcode: return "用 Xcode 打开项目"
         case .gitPull: return "拉取 Git 到最新"
+        case .gitRollback:
+            return "Git 提交回退"
         case .gitRemote: return "打开 Git 远程地址"
         case .gitRemoteCopy: return "复制 Git 远程地址"
         case .gitProxy: return "配置 Git 动态代理"
@@ -56,6 +60,8 @@ enum ProjectMenuAction: String, CaseIterable {
             case .xcode: return isXcode
             case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
                 return isGit
+            case .gitRollback:
+                return GitRollbackMenuContext().isWorkingDirectory(at: url)
             }
         }
     }
@@ -63,18 +69,64 @@ enum ProjectMenuAction: String, CaseIterable {
 
 enum ProjectMenuConfiguration {
     static var fileURL: URL? {
-        guard let home = NSHomeDirectoryForUser(NSUserName()) else { return nil }
-        return URL(fileURLWithPath: home, isDirectory: true)
+        return configurationURL(realHomePath: accountHomeDirectory())
+    }
+
+    /// Finder 沙盒会重定向 Foundation 的 Home；配置始终使用系统账户的真实目录。
+    static func accountHomeDirectory() -> String? {
+        var bufferSize = max(16_384, Int(sysconf(_SC_GETPW_R_SIZE_MAX)))
+        while bufferSize <= 1_048_576 {
+            var account = passwd()
+            var result: UnsafeMutablePointer<passwd>?
+            var buffer = [CChar](repeating: 0, count: bufferSize)
+            let lookup = buffer.withUnsafeMutableBufferPointer { storage -> (status: Int32, home: String?) in
+                let status = getpwuid_r(getuid(), &account, storage.baseAddress, storage.count, &result)
+                guard status == 0, let home = result?.pointee.pw_dir else {
+                    return (status, nil)
+                }
+                return (status, String(cString: home))
+            }
+            if lookup.status == 0 {
+                return lookup.home
+            }
+            guard lookup.status == ERANGE else {
+                return nil
+            }
+            bufferSize *= 2
+        }
+        return nil
+    }
+
+    /// 单独计算配置地址，便于验证容器别名不会改变用户配置的位置。
+    static func configurationURL(realHomePath: String?) -> URL? {
+        guard let realHomePath, realHomePath.hasPrefix("/"), !realHomePath.contains("\0") else {
+            return nil
+        }
+        return URL(fileURLWithPath: realHomePath, isDirectory: true)
             .appendingPathComponent("Library/Application Support/JobsProjectTools/EnabledFeatures.txt")
     }
 
     static func enabledFeatures() -> Set<ProjectMenuAction> {
-        guard let fileURL, let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            // 未安装 / 配置不可读时不意外启用用户没有选择的菜单。
+        return enabledFeatures(at: fileURL)
+    }
+
+    /// 配置缺失或不可读时保持关闭，诊断仅记录路径与读取错误。
+    static func enabledFeatures(at configurationURL: URL?) -> Set<ProjectMenuAction> {
+        guard let configurationURL else {
+            NSLog("JobsProjectTools configuration: cannot resolve account Home directory.")
             return []
         }
-        return Set(text.split(whereSeparator: { $0 == "," || $0.isWhitespace })
-            .compactMap { ProjectMenuAction(rawValue: String($0)) })
+        do {
+            let text = try String(contentsOf: configurationURL, encoding: .utf8)
+            return Set(text.split { character in
+                character == "," || character.isWhitespace
+            }.compactMap { value in
+                ProjectMenuAction(rawValue: String(value))
+            })
+        } catch {
+            NSLog("JobsProjectTools configuration read failed at %@: %@", configurationURL.path, error.localizedDescription)
+            return []
+        }
     }
 }
 

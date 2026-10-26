@@ -14,13 +14,15 @@ host = host.replace('@main\n', '').replace('private func handle(_ url:', 'func h
 sources = [shared, host]
 for relative in ['JobsProjectTools/Shared/GitRepositoryValidator.swift',
                  'JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/XcodeProjectDetector.swift',
-                 'JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/FlutterProjectValidator.swift']:
+                 'JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/FlutterProjectValidator.swift',
+                 'JobsGitRollback/JobsGitRollbackShared/GitRollbackMenuContext/GitRollbackMenuContext.swift']:
     sources.append((root / relative).read_text())
 stubs = '''import AppKit
-enum Launches { static var pull = 0; static var proxy = 0; static var commit = 0 }
+enum Launches { static var rollback = 0; static var pull = 0; static var proxy = 0; static var commit = 0 }
 struct IDEProjectOpener {
  func open(_ action: ProjectMenuAction, at url: URL, completion: @escaping () -> Void) throws { completion() }
 }
+struct GitRollbackTerminalLauncher { func launch(projectURL: URL) throws { Launches.rollback += 1 } }
 struct GitPullTerminalLauncher { func launch(projectURL: URL) throws { Launches.pull += 1 } }
 struct GitProxyTerminalLauncher { func launch() throws { Launches.proxy += 1 } }
 struct TerminalOpener {
@@ -49,12 +51,13 @@ func wait() {
  let until = Date().addingTimeInterval(0.2)
  while Date() < until { _ = RunLoop.current.run(mode: .default, before: until) }
 }
-for action in [ProjectMenuAction.gitPull, .gitProxy, .gitEmptyCommitPush] {
+for action in [ProjectMenuAction.gitRollback, .gitPull, .gitProxy, .gitEmptyCommitPush] {
  let url = ProjectMenuRequest(action: action, fileURL: root).url!
  host.handle(url)
  host.handle(url)
  wait()
 }
+expect(Launches.rollback == 1, "duplicate rollback URL dispatched once")
 expect(Launches.pull == 1, "duplicate pull URL dispatched once")
 expect(Launches.proxy == 1, "duplicate proxy URL dispatched once")
 expect(Launches.commit == 1, "duplicate empty commit URL dispatched once")

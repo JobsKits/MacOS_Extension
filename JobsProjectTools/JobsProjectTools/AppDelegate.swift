@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 launchInBackground {
                     try GitPullTerminalLauncher().launch(projectURL: request.fileURL)
                 }
+            case .gitRollback:
+                launchInBackground {
+                    try GitRollbackTerminalLauncher().launch(projectURL: request.fileURL)
+                }
             case .gitProxy:
                 launchInBackground {
                     try GitProxyTerminalLauncher().launch()

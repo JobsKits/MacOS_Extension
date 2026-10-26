@@ -12,13 +12,20 @@ final class FinderSync: FIFinderSync {
     override init() {
         super.init()
         FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/", isDirectory: true)]
+        NSLog("JobsProjectTools Finder configuration=%@ enabled=%ld homeAlias=%@",
+              ProjectMenuConfiguration.fileURL?.path ?? "unavailable",
+              ProjectMenuConfiguration.enabledFeatures().count,
+              NSHomeDirectoryForUser(NSUserName()) ?? "unavailable")
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         guard let url = candidateURL(for: menuKind) else { return nil }
         let menu = NSMenu(title: "")
         let gitMenu = NSMenu(title: "Git操作")
-        for action in ProjectMenuAction.visible(at: url, enabled: ProjectMenuConfiguration.enabledFeatures()) {
+        let actions = ProjectMenuAction.visible(at: url, enabled: ProjectMenuConfiguration.enabledFeatures())
+        NSLog("JobsProjectTools Finder menu target=%@ enabled=%ld visible=%ld",
+              url.path, ProjectMenuConfiguration.enabledFeatures().count, actions.count)
+        for action in actions {
             let item = NSMenuItem(title: action.title, action: selector(for: action, kind: menuKind), keyEquivalent: "")
             item.target = self
             if action.isGitAction {
@@ -57,6 +64,8 @@ final class FinderSync: FIFinderSync {
         case .vscode: return selected ? #selector(vscodeSelected(_:)) : #selector(vscodeContainer(_:))
         case .xcode: return selected ? #selector(xcodeSelected(_:)) : #selector(xcodeContainer(_:))
         case .gitPull: return selected ? #selector(pullSelected(_:)) : #selector(pullContainer(_:))
+        case .gitRollback:
+            return selected ? #selector(rollbackSelected(_:)) : #selector(rollbackContainer(_:))
         case .gitRemote: return selected ? #selector(remoteSelected(_:)) : #selector(remoteContainer(_:))
         case .gitRemoteCopy: return selected ? #selector(copySelected(_:)) : #selector(copyContainer(_:))
         case .gitProxy: return selected ? #selector(proxySelected(_:)) : #selector(proxyContainer(_:))
@@ -73,6 +82,12 @@ final class FinderSync: FIFinderSync {
     @objc private func xcodeContainer(_ sender: NSMenuItem) { perform(.xcode, .contextualMenuForContainer) }
     @objc private func pullSelected(_ sender: NSMenuItem) { perform(.gitPull, .contextualMenuForItems) }
     @objc private func pullContainer(_ sender: NSMenuItem) { perform(.gitPull, .contextualMenuForContainer) }
+    @objc private func rollbackSelected(_ sender: NSMenuItem) {
+        perform(.gitRollback, .contextualMenuForItems)
+    }
+    @objc private func rollbackContainer(_ sender: NSMenuItem) {
+        perform(.gitRollback, .contextualMenuForContainer)
+    }
     @objc private func remoteSelected(_ sender: NSMenuItem) { perform(.gitRemote, .contextualMenuForItems) }
     @objc private func remoteContainer(_ sender: NSMenuItem) { perform(.gitRemote, .contextualMenuForContainer) }
     @objc private func copySelected(_ sender: NSMenuItem) { perform(.gitRemoteCopy, .contextualMenuForItems) }

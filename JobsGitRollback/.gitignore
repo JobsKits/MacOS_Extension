@@ -1,0 +1,10 @@
+# 本机 Xcode 状态与构建产物
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+Build/
+work/
+*.app/
+*.appex/

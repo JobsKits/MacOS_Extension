@@ -276,7 +276,7 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -303,6 +303,8 @@ SELECTABLE_FUNCTION_TITLE[flutter_sdk_version]="查看当前 Flutter SDK 版本"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter_sdk_version]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="project-tools"
+SELECTABLE_FUNCTION_TITLE[git-rollback]="Git 提交回退"
+SELECTABLE_FUNCTION_PROJECT_KEY[git-rollback]="project-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-run]="从终端运行 Flutter 项目"

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-FEATURES = ['android_studio_opener', 'vscode_opener', 'xcode_opener', 'git-pull', 'git_remote', 'git_remote_copier', 'git-proxy-configure', 'git_empty_commit_push']
+FEATURES = ['android_studio_opener', 'vscode_opener', 'xcode_opener', 'git-pull', 'git_remote', 'git_remote_copier', 'git-proxy-configure', 'git_empty_commit_push', 'git-rollback']
 APPS = ['JobsAndroidStudioOpener', 'JobsVSCodeOpener', 'JobsXcodeOpener', 'JobsGitPuller', 'JobsGitRemoteOpener', 'JobsGitRemoteCopier']
 GROUP_ID = 'com.jobs.JobsProjectTools.FinderSyncExtension'
 
@@ -17,7 +17,7 @@ class InstallerTests(unittest.TestCase):
         self.base = pathlib.Path(self.temp.name)
         self.config = self.base / 'config/EnabledFeatures.txt'
         self.state = self.base / 'state.json'
-        self.state.write_text(json.dumps({**{f'com.jobs.{app}.FinderSyncExtension': '+' for app in APPS}, 'com.jobs.gitproxyconfigurator.findersync': '+', 'com.jobs.JobsTerminalOpener.FinderSyncExtension': '+'}))
+        self.state.write_text(json.dumps({**{f'com.jobs.{app}.FinderSyncExtension': '+' for app in APPS}, 'com.jobs.gitproxyconfigurator.findersync': '+', 'com.jobs.JobsTerminalOpener.FinderSyncExtension': '+', 'com.jobs.JobsGitRollback.FinderSyncExtension': '+'}))
         self.terminal = self.base / 'terminal/EnabledFinderMenuFeatures.txt'
         self.terminal.parent.mkdir()
         self.terminal.write_text('open,pod-install,git-empty-commit-push,unknown')
@@ -120,10 +120,10 @@ if name=='pluginkit':
         self.config.parent.mkdir()
         self.config.write_text('vscode_opener')
         self.run_script('install', 'git_remote')
-        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'git-proxy-configure', 'git_empty_commit_push'})
+        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'git-proxy-configure', 'git_empty_commit_push', 'git-rollback'})
         self.run_script('uninstall', 'git-proxy-configure', 'git_empty_commit_push')
         self.run_script('install', 'xcode_opener')
-        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'xcode_opener'})
+        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'xcode_opener', 'git-rollback'})
         self.assertEqual(self.terminal.read_text(), 'open,pod-install,unknown')
 
     def test_uninstalling_ide_before_migration_preserves_legacy_git_choice(self):
@@ -139,6 +139,34 @@ if name=='pluginkit':
         self.run_script('uninstall', 'git_empty_commit_push')
         self.assertEqual(self.terminal.read_text(), 'open,pod-install,unknown')
         self.assertFalse(self.config.exists())
+
+    def test_rollback_migrates_once_then_respects_uninstall(self):
+        self.run_script('install', 'git-rollback')
+        self.assertIn('git-rollback', self.configured())
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state['com.jobs.JobsGitRollback.FinderSyncExtension'], '-')
+        self.assertTrue((self.config.parent / 'GitRollbackMigrationVersion.txt').exists())
+        self.run_script('uninstall', 'git-rollback')
+        self.assertNotIn('git-rollback', self.configured())
+        self.run_script('install', 'vscode_opener')
+        self.assertNotIn('git-rollback', self.configured())
+
+    def test_rollback_uninstall_preserves_unrelated_legacy_menus(self):
+        self.run_script('uninstall', 'git-rollback')
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state['com.jobs.JobsGitRollback.FinderSyncExtension'], '-')
+        self.assertEqual(state['com.jobs.JobsVSCodeOpener.FinderSyncExtension'], '+')
+        self.assertFalse(self.config.exists())
+
+    def test_rollback_entries_and_bundle_use_the_shared_implementation(self):
+        project = (ROOT / 'JobsProjectTools/JobsProjectTools.xcodeproj/project.pbxproj').read_text()
+        self.assertIn('../JobsGitRollback/Scripts/RollbackGitRepository.zsh', project)
+        resources = project.split('/* Begin PBXResourcesBuildPhase section */')[1].split('/* End PBXResourcesBuildPhase section */')[0]
+        self.assertIn('RollbackGitRepository.zsh', resources)
+        for operation in ['安装', '卸载']:
+            entry = next((ROOT / 'JobsGitRollback').glob(f'【MacOS】{operation}*Finder扩展.command')).read_text()
+            self.assertIn(f'JobsProjectTools/【MacOS】{operation}项目工具Finder扩展.command', entry)
+            self.assertIn('exec /bin/zsh "$entry" git-rollback', entry)
 
     def test_all_entry_points_route_to_the_group(self):
         installer = (ROOT / '【MacOS】🧩安装Finder扩展.command').read_text()

@@ -1,4 +1,4 @@
-> IDE 和 Git 八项功能由 [JobsProjectTools](JobsProjectTools/README.md) 统一排序：Android Studio / VSCode / Xcode 保留一级入口，五项 Git 功能进入“Git操作”子菜单，只在有效 Git 工作树的普通文件夹或其内部空白处显示。iOS/Xcode 工程仅显示 Xcode；旧单项安装、卸载入口自动转交统一包。
+> IDE 和 Git 九项功能由 [JobsProjectTools](JobsProjectTools/README.md) 统一排序：Android Studio / VSCode / Xcode 保留一级入口，六项 Git 功能进入“Git操作”子菜单，只在有效 Git 工作树的普通文件夹或其内部空白处显示。iOS/Xcode 工程仅显示 Xcode；旧单项安装、卸载入口自动转交统一包。
 
 > Flutter 菜单由 [JobsFlutterTools](JobsFlutterTools/README.md)：固定顺序的“Flutter开发相关辅助工具”，内含原生 / OpenHarmony SDK 安装切换、项目 Java 管理、“Flutter项目修复”和 iOS / Android / OpenHarmony打包子菜单，以及原生/Harmony 双层体检与清理维护。修复组包含“修复 Dart 相对 import 为 package 引用”，只在 Flutter 项目根文件夹或其内部空白处显示。旧 Flutter 单项安装入口转到统一包；构建、依赖和 SDK 维护使用项目 FVM，白名单产物清理与相对 import 修复无需 SDK。详细菜单、显示条件与执行边界见功能说明。
 
@@ -42,7 +42,7 @@
 
 **项目定位：** 面向 Jobs 与 macOS 开发人员的 Finder 日常开发工具集合。**状态：维护中**（基于当前源码与提交活动）；负责人 **Jobs** / [**JobsKits**](https://github.com/JobsKits)，未登记其他维护团队。功能、工程与代码规模的复核日期见统计章。
 
-28 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
+29 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
 
@@ -62,18 +62,18 @@
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **51 个 Finder 安装选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 2026-10-24 依据选择器和根安装映射去重，共 14 个现行安装单元；Flutter 的十九项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
+> **52 个 Finder 安装选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 2026-10-24 依据选择器和根安装映射去重，共 14 个现行安装单元；Flutter 的十九项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
 
 | 安装分组 | 选项数 | 可逐项勾选的功能 |
 | --- | --- | --- |
 | IDE | 3 | 用 Android Studio / VSCode / Xcode 打开项目 |
-| Git | 5 | 拉取到最新、打开远程地址、复制远程地址、动态代理、空白 Commit 并 Push |
+| Git | 6 | 拉取到最新、提交回退、打开远程地址、复制远程地址、动态代理、空白 Commit 并 Push |
 | 通用 | 7 | 复制绝对路径、运行授权、解除运行授权、显示 / 隐藏文件、用终端打开、清理 Android / OpenHarmony 构建产物、更新代码地图 |
 | Flutter | 19 | Flutter开发相关辅助工具；运行、依赖、SDK、打包、体检、生成、修复和清理归入该入口 |
 | iOS / CocoaPods | 12 | `Pod Install`、`Pod Update` 相邻，iOS 构建产物清理、其它 iOS 辅助工具及 IPA 免编译重签分别勾选 |
 | 模拟器 | 5 | 新建 iOS / Android / Harmony 模拟器、Android / Harmony 模拟器检测与修复 |
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。2026-10-24 按根层 `.xcodeproj/project.pbxproj` 核对，共 28 个源码工程；其中 14 个旧 Flutter / IDE / Git 工程保留源码与兼容入口，不计入上面的 14 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。2026-10-26 按根层 `.xcodeproj/project.pbxproj` 核对，共 29 个源码工程；其中 15 个兼容 / 单项 Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 14 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 [JobsIOSTools](./JobsIOSTools/README.md) 在“iOS / CocoaPods 辅助工具”子菜单提供以下十一项功能，全部业务资源随 App 打包；安装菜单本身不执行清理、依赖安装或工程改写。`Pod Install` 和 iOS 构建产物清理也在此子菜单内。
 
@@ -153,7 +153,7 @@ ruby ./Tests/DesktopFinderMenuTests.rb
 
 | 检查项 | 最低要求 | 说明 |
 | --- | --- | --- |
-| 系统版本 | macOS `12.0` 及以上 | 28 个源码工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
+| 系统版本 | macOS `12.0` 及以上 | 29 个源码工程的 `MACOSX_DEPLOYMENT_TARGET` 均为 `12.0`，并依赖 macOS 的 Finder Sync Extension 机制。 |
 | 开发工具 | [**Xcode**](https://developer.apple.com/xcode) 可正常打开 `.xcodeproj` | 手动运行需要 Xcode；批量安装脚本还需要 `xcodebuild`。首次换机器构建时，按 Xcode 提示完成本机签名配置。 |
 | 命令行工具 | `xcodebuild`、`pluginkit`、`pkill`、`killall` 可用 | `xcodebuild` 负责构建 App，`pluginkit` 负责注册和启用 Finder Sync Extension，`pkill pkd` 和 `killall Finder` 用来刷新扩展发现索引与 Finder 菜单缓存。 |
 | 安装选择 | 系统 `osascript` 与 AppKit 可用 | 根目录安装脚本会打开 macOS 原生复选框窗口，不再依赖 fzf。 |
@@ -187,7 +187,7 @@ ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
 | 工程 | 入口文案 | 核心用途 | 打开方式 |
 | --- | --- | --- | --- |
 | [JobsFlutterTools](./JobsFlutterTools/README.md) | `Flutter开发相关辅助工具` | 统一 Flutter 开发、体检、修复与清理维护；下列七个旧 Flutter 工程保留兼容源码，安装均转交本包。 | `./JobsFlutterTools/JobsFlutterTools.xcodeproj` |
-| [JobsProjectTools](./JobsProjectTools/README.md) | IDE 三项、Git操作五项 | 三个 IDE 一级入口，五项 Git 子菜单仅有效工作树普通文件夹显示。 | `./JobsProjectTools/JobsProjectTools.xcodeproj` |
+| [JobsProjectTools](./JobsProjectTools/README.md) | IDE 三项、Git操作六项 | 三个 IDE 一级入口，六项 Git 子菜单仅有效工作树普通文件夹显示。 | `./JobsProjectTools/JobsProjectTools.xcodeproj` |
 | [JobsIOSTools](./JobsIOSTools/README.md) | iOS / CocoaPods 十一项 | 统一 Pod Install、构建产物清理及九项工程工具；本地 Pod 编译自检仅同层 `*.podspec` 显示。 | `./JobsIOSTools/JobsIOSTools.xcodeproj` |
 | `./JobsGitRemoteOpener` | `打开 Git 远程地址` | 右键 Git 仓库文件夹，打开 `remote` 对应网页。 | `./JobsGitRemoteOpener/JobsGitRemoteOpener.xcodeproj` |
 | `./JobsGitRemoteCopier` | `复制 Git 远程地址` | 常规入口转交 Git 子菜单；旧源码保留远程地址解析与复制实现。 | `./JobsGitRemoteCopier/JobsGitRemoteCopier.xcodeproj` |
@@ -207,6 +207,7 @@ ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
 | [JobsFlutterRunner](./JobsFlutterRunner/README.md) | `从终端运行 Flutter 项目` | 终端选择设备、内置 iOS 模拟器初始化、独立后台运行与日志重连。 | `./JobsFlutterRunner/JobsFlutterRunner.xcodeproj` |
 | [JobsFlutterDependencyExtractor](./JobsFlutterDependencyExtractor/README.md) | `提取 Flutter 第三方依赖` | 只读实际 Pub 解析，导出源码、许可证、manifest；目标回车默认桌面。 | `./JobsFlutterDependencyExtractor/JobsFlutterDependencyExtractor.xcodeproj` |
 | [JobsGitPuller](./JobsGitPuller/README.md) | `拉取 Git 到最新` | 保护未提交改动，合并当前分支 upstream，冲突提供回滚、放弃、提交后三选一。 | `./JobsGitPuller/JobsGitPuller.xcodeproj` |
+| [JobsGitRollback](./JobsGitRollback/README.md) | `Git操作 → Git 提交回退` | 仅有效 Git 文件夹，终端选择远端快照 soft / 历史 soft / hard；识别子 Git，hard 输入 `YES`。安装转交统一项目工具。 | `./JobsGitRollback/JobsGitRollback.xcodeproj` |
 | [JobsIOSSimulatorCreator](./JobsIOSSimulatorCreator/README.md) | `新建 iOS 模拟器` | 仅桌面空白右键，选择已安装运行时和兼容机型，新建并启动设备。 | `./JobsIOSSimulatorCreator/JobsIOSSimulatorCreator.xcodeproj` |
 | [JobsAndroidSimulatorCreator](./JobsAndroidSimulatorCreator/README.md) | `新建 Android 模拟器` | 仅桌面空白右键；SDK 体检、架构匹配、独立创建并启动 AVD。 | `./JobsAndroidSimulatorCreator/JobsAndroidSimulatorCreator.xcodeproj` |
 | [JobsAndroidSimulatorRepairer](./JobsAndroidSimulatorRepairer/README.md) | `Android 模拟器检测与修复` | 桌面空白入口；模拟器安装空间诊断、确认后修复与受保护的 AVD 配置调整。 | `./JobsAndroidSimulatorRepairer/JobsAndroidSimulatorRepairer.xcodeproj` |
@@ -215,7 +216,7 @@ ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
 | [JobsGitProxyConfigurator](./JobsGitProxyConfigurator/README.md) | `配置 Git 动态代理` | 常规入口转交 Git 子菜单，Terminal 安装、检查或恢复用户级动态入口；保留完整业务源码。 | `./JobsGitProxyConfigurator/JobsGitProxyConfigurator.xcodeproj` |
 | `./JobsTerminalOpener` | 3 个可独立勾选的 Terminal 功能 | `用终端打开`、Android / OpenHarmony构建产物清理、`更新代码地图（.codegraph）`；iOS、Git 和 Flutter 专属动作由对应子菜单提供。 | `./JobsTerminalOpener/JobsTerminalOpener.xcodeproj` |
 
-28 个工程均为本仓管理的普通源码目录；旧工程保留构建与卸载能力，现行安装按统一单元处理。每个工程根目录统一提供裸露的安装 / 卸载双击脚本，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
+29 个工程均为本仓管理的普通源码目录；旧工程保留构建与卸载能力，现行安装按统一单元处理。每个工程根目录统一提供裸露的安装 / 卸载双击脚本，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
 
 各子功能的独立安装入口统一为：直接回车安装，输入任意字符（包括空格）后回车跳过。根目录总安装入口按回车后进入功能勾选面板，选好功能再点击“安装”。
 
@@ -229,7 +230,7 @@ ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
 
 3、任一工程文件缺失时，脚本列出具体路径并停止；从本仓恢复完整源码后重新运行。检查通过后打开 macOS 原生复选框窗口。
 
-4、在 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组中逐项勾选。每组的“全选 / 全不选”只作用于本组，底部同名按钮作用于全部 51 项；选好后点击“安装”，空选时按钮置灰。底部按钮固定显示；选项超出屏幕高度时，仅中间列表滚动，所有子功能均可到达。IDE / Git 八项、Terminal 三项、Flutter 十九项、iOS 十一项分别归并为一次工程构建；全部源码工程应随本仓完整取得。
+4、在 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组中逐项勾选。每组的“全选 / 全不选”只作用于本组，底部同名按钮作用于全部 52 项；选好后点击“安装”，空选时按钮置灰。底部按钮固定显示；选项超出屏幕高度时，仅中间列表滚动，所有子功能均可到达。IDE / Git 九项、Terminal 三项、Flutter 十九项、iOS 十一项分别归并为一次工程构建；全部源码工程应随本仓完整取得。
 
 5、确认后，脚本会调用 `xcodebuild` 构建相关 App，清理同 Bundle ID 的旧 LaunchServices / PlugInKit 记录，注册并启用 Finder Sync Extension，最后重启 `pkd` 和 Finder 刷新右键菜单缓存。
 
@@ -271,7 +272,7 @@ Flutter 分组直接列出运行、依赖、SDK / Java、三端打包、两类�
 
 ## 五、<span id="single-repository-management">源码取得与单仓管理</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-从 [**GitHub**](https://github.com/JobsKits/MacOS_Extension) 或 [**Gitee**](https://gitee.com/JobsGo/MacOS_Extension) 取得本仓，28 个工程源码随仓库一起检出，不需要 `--recurse-submodules`。例如：
+从 [**GitHub**](https://github.com/JobsKits/MacOS_Extension) 或 [**Gitee**](https://gitee.com/JobsGo/MacOS_Extension) 取得本仓，29 个工程源码随仓库一起检出，不需要 `--recurse-submodules`。例如：
 
 ```shell
 git clone https://github.com/JobsKits/MacOS_Extension.git
@@ -349,6 +350,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 * [JobsFlutterVersionMgr](./JobsFlutterVersionMgr/README.md)：独立安装工程，提供 Flutter SDK 安装 / 切换功能，包含宿主、Finder 扩展、终端脚本、独立安装和卸载入口；Windows 对应实现见[平行仓库](../WindowsOS@Extension/README.md)。
 * [JobsFlutterDependencyExtractor](./JobsFlutterDependencyExtractor/README.md)：独立安装工程，包含 Flutter 依赖提取宿主与 Finder 扩展；[桌面脚本源包](./JobsFlutterDependencyExtractor/【MacOS】提取Flutter第三方依赖.command/README.md)可整体拷走使用。
 * [JobsGitPuller](./JobsGitPuller/README.md)：独立安装工程，包含宿主、Finder 扩展及安装 / 卸载入口；拉取 Git 与冲突三选一在 Terminal 内执行。
+* [JobsGitRollback](./JobsGitRollback/README.md)：提交回退独立源码与完整随包业务；安装 / 卸载转交统一“Git操作”单项，支持子模块、嵌套 Git 和 linked worktree，不递归回退子仓。
 * [JobsIOSSimulatorCreator](./JobsIOSSimulatorCreator/README.md)：独立的桌面空白右键入口，后台宿主转发至 Terminal 选择运行时、机型和名称；不清理已有模拟器，内含独立安装 / 卸载脚本。
 * [JobsAndroidSimulatorCreator](./JobsAndroidSimulatorCreator/README.md)：独立的桌面空白右键入口，SDK / Java 体检后选择机型和架构匹配映像，固定以 `--create` 新建；不删除或覆盖已有 AVD，内含独立安装 / 卸载脚本。
 * [JobsAndroidSimulatorRepairer](./JobsAndroidSimulatorRepairer/README.md)：独立桌面空白右键修复入口，内置核心脚本，不依赖原双击脚本或其它扩展；卸载菜单保留 AVD、备份和日志。
@@ -367,7 +369,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 
 * 阅读自述并回车，检查系统工具与现行安装工程。
   * 任一工程缺失：列出具体 `.xcodeproj` 路径并停止；恢复本仓完整源码后重试。
-* 在原生复选框窗口按六组逐项勾选，使用组内或底部全部功能的“全选 / 全不选”，再点击“安装”；IDE / Git 八项、Terminal 三项、iOS 十一项分别归并为一次工程安装。
+* 在原生复选框窗口按六组逐项勾选，使用组内或底部全部功能的“全选 / 全不选”，再点击“安装”；IDE / Git 九项、Terminal 三项、iOS 十一项分别归并为一次工程安装。
   * 未选择项目时“安装”置灰；点击取消或关闭窗口退出安装。
 * 构建选中的宿主 APP，清理同 Bundle ID 的过期注册，注册并启用对应 Finder 扩展，保存 Terminal 功能选择并合并已安装的 iOS 子功能。
 * 对成功安装项刷新 pkd / Finder，汇总结果与日志；失败项在终端显示具体原因。
@@ -392,7 +394,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 | --- | --- | --- |
 | 语言 / SDK | Swift 语言模式 `5.0`；macOS SDK 随所选 Xcode | 28 个 `*.xcodeproj/project.pbxproj` 的 `SWIFT_VERSION`（2026-10-24）；不是编译器版本锁。 |
 | 构建工具 | Xcode 未固定精确版本；工程 `LastUpgradeCheck = 2650` | 此字段仅为工程升级检查记录，最低可构建 Xcode 版本待实机矩阵核实；用 `xcodebuild -version` 记录实际环境。 |
-| 最低系统 | macOS `12.0` | 28 个工程全部 target 的 `MACOSX_DEPLOYMENT_TARGET`（2026-10-24）。 |
+| 最低系统 | macOS `12.0` | 29 个工程全部 target 的 `MACOSX_DEPLOYMENT_TARGET`（2026-10-24）。 |
 | 安装 / 维护 | 系统 zsh、osascript、swiftc、PlugInKit、Git；Ruby 用于隔离测试 | 未设精确版本；本机版本由环境自检确认，不把本机输出视为仓库版本约束。 |
 | Node 工具链 | 文档 Node.js `20+`；CodeGraph `1.6.2` 安装链要求 `>=20 <25`，修复使用 Homebrew `node@24` | `.jobs-markdown-toc/README.md` 与 Terminal 工程 `TerminalOpener.swift`；CodeGraph 兼容范围于 2026-10-20 复核，健康既有工具先复用，非精确补丁版本锁。 |
 | 功能工具 | FVM / fzf / Flutter / Dart；Pod 功能直接使用终端环境中的 CocoaPods；CodeGraph 经健康检查复用 | 工具按功能使用现有环境或原有安装链，版本来源与风险见[依赖清单](#direct-dependencies)。 |
@@ -411,12 +413,12 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 | 独立安装面板 | 不并入页面数 | — | — | `Scripts/SelectFinderExtensionFeatures.swift` 使用 `NSWindow` / `NSObject`，是安装工具界面；按控制器单位排除。 |
 | iOS / Android / Web | 不适用 | 不适用 | 不适用 | 本仓未交付这些平台的前端。Finder 菜单、`NSAlert`、文件选择对话框、终端及外部 IDE 窗口不计页面；无 H5 / 跨端页面容器。 |
 
-2026-10-22 的 14 个宿主 `Info.plist` URL Scheme 基线（Terminal、VSCode、FVM、SDK 查看、Flutter 打包 / 体检 / 代码生成 / 运行、Git 拉取 / 动态代理、依赖提取、运行授权、iOS / Android 模拟器创建）用于 Finder 到宿主的进程间请求，**不算 Web 页面路由或后端 RPC 接口**。2026-10-24 按 `Scripts/SelectFinderExtensionFeatures.swift` 和根安装器映射核对，现行选择标识为 `51` 项、安装单元为 `14` 个 App + 各自 Finder Extension；其余源码工程保留兼容，二者不与页面数混算。
+2026-10-22 的 14 个宿主 `Info.plist` URL Scheme 基线（Terminal、VSCode、FVM、SDK 查看、Flutter 打包 / 体检 / 代码生成 / 运行、Git 拉取 / 动态代理、依赖提取、运行授权、iOS / Android 模拟器创建）用于 Finder 到宿主的进程间请求，**不算 Web 页面路由或后端 RPC 接口**。2026-10-26 按 `Scripts/SelectFinderExtensionFeatures.swift` 和根安装器映射核对，现行选择标识为 `52` 项、安装单元为 `14` 个 App + 各自 Finder Extension；其余源码工程保留兼容，二者不与页面数混算。
 
-| 后端统计项 | 结果与依据（2026-10-24） |
+| 后端统计项 | 结果与依据（2026-10-26） |
 | --- | --- |
 | 对外接口：HTTP / RPC / MQ | 均为 `0`；各宿主、FinderSync 与终端脚本未提供对外监听服务。下载与 Git 网络请求是客户端出站调用，不计入。 |
-| 服务模块 / 部署单元 | 后端服务 `0`；现行本地部署单元为 14 组宿主 App / 内嵌 appex，依据根安装映射去重；本仓含 28 个源码工程；不计为后端服务。 |
+| 服务模块 / 部署单元 | 后端服务 `0`；现行本地部署单元为 14 组宿主 App / 内嵌 appex，依据根安装映射去重；本仓含 29 个源码工程；不计为后端服务。 |
 | 核心业务表 | `0`；未声明自有业务数据库。目标 `.codegraph` 的 SQLite 由外部工具管理。 |
 | 业务状态机 | 后端业务状态机 `0`；安装、确认、冲突恢复是本地操作流程，不作为订单等服务业务对象计数。 |
 | 外部系统集成 | 无支付 / 短信 / ERP 等业务服务；Git 托管、官方 SDK / 包源及 IDE 为条件工具集成，详见依赖表，目标服务地址随项目配置变化。 |
@@ -433,13 +435,13 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 ```mermaid
 flowchart TD
     A["总安装入口<br/>【MacOS】🧩安装Finder扩展.command"] --> B["原生选择器<br/>Scripts/SelectFinderExtensionFeatures.swift"]
-    A --> C["14 个现行安装单元 / 28 个源码工程<br/>安装映射 + 各 project.pbxproj"]
+    A --> C["14 个现行安装单元 / 29 个源码工程<br/>安装映射 + 各 project.pbxproj"]
     C --> D["宿主 App<br/>各工程 AppDelegate.swift / main.swift"]
     C --> E["Finder 扩展<br/>各 FinderSync.swift"]
     E --> F["直接系统操作<br/>ProjectOpener.swift / GitRemoteResolver.swift / PathClipboardWriter.swift"]
     E --> D
     D --> G["终端业务桥<br/>TerminalOpener.swift / 各 TerminalLauncher.swift"]
-    G --> H["业务脚本<br/>ManageFlutterVersion.zsh / PullGitRepository.zsh / ExtractFlutterDependencies.zsh<br/>CreateIOSSimulator.zsh / CreateAndroidSimulator.zsh / AuthorizeRun.zsh / RevokeRun.zsh / RepairHarmonySimulator.zsh / ConfigureGitDynamicProxy.command<br/>JobsIOSTools 十一项 iOS 动作与随包资源"]
+    G --> H["业务脚本<br/>ManageFlutterVersion.zsh / PullGitRepository.zsh / RollbackGitRepository.zsh / ExtractFlutterDependencies.zsh<br/>CreateIOSSimulator.zsh / CreateAndroidSimulator.zsh / AuthorizeRun.zsh / RevokeRun.zsh / RepairHarmonySimulator.zsh / ConfigureGitDynamicProxy.command<br/>JobsIOSTools 十一项 iOS 动作与随包资源"]
     F -.-> I["外部 macOS / 剪贴板 / IDE / 浏览器"]
     H -.-> J["外部 Git / FVM / Pub / CocoaPods / CodeGraph / simctl<br/>Android SDK / Java / emulator / chmod"]
     A -.-> K["外部 xcodebuild / PlugInKit / Finder"]
@@ -478,28 +480,28 @@ flowchart TD
 
 ### <span id="jobs-toc-heading-19" data-jobs-toc="v2">7.6、业务代码占比与聚合边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-<strong id="current-source-statistics">当前单仓源码规模（2026-10-24）</strong>
+<strong id="current-source-statistics">当前单仓源码规模（2026-10-26）</strong>
 
-依据本仓 `git ls-files -c -o --exclude-standard` 合并候选、按相对路径去重，统计现存普通 UTF-8 文本；包含未提交与未跟踪源码，排除 Markdown、资源、锁文件、第三方、生成代码、`xcuserdata`、`work` 与常规依赖 / 构建目录。纳入 Swift、Dart、JXA、Shell、Ruby、Python、C++ / 头文件、JS/MJS、AppleScript、Xcode / plist / entitlements / Scheme / JSON / YAML 和 Git 属性 / 忽略配置、FVM 配置。行数含空行与注释；`Tests/` 独立计为测试，其余运行时 Swift / Dart / JXA 及各功能业务 zsh（排除构建后启用脚本）、Git 动态代理核心 command 计为业务，根 `Scripts` 安装选择器和其它工具 / 配置计为配置与脚本。此快照包含当前磁盘上的自有源码与并行新增工程，不代表已提交或远端发布。
+依据本仓 `git ls-files -c -o --exclude-standard` 合并候选、按相对路径去重，统计现存普通 UTF-8 文本；包含未提交与未跟踪源码，排除 Markdown、资源、锁文件、第三方、生成代码、`xcuserdata`、`work` 与常规依赖 / 构建目录。纳入 Swift、Dart、JXA、Shell、Ruby、Python、C++ / 头文件、JS/MJS、AppleScript、Xcode / plist / entitlements / Scheme / JSON / YAML 和 Git 属性 / 忽略配置、FVM 配置。行数含空行与注释；`Tests/` 独立计为测试，其余运行时 Swift / Dart / JXA 及各功能业务 zsh（排除构建后启用、项目工具安装管理与旧菜单退役脚本）、Git 动态代理核心 command 计为业务，根 `Scripts` 安装选择器和其它工具 / 配置计为配置与脚本。此快照包含当前磁盘上的自有源码与并行新增工程，不代表已提交或远端发布。
 
 | 类别 | 文件数 | 物理行数 | 行数占比 |
 | --- | --- | --- | --- |
-| 业务代码 | `236` | `45721` | `41.23%` |
-| 测试代码 | `94` | `24639` | `22.22%` |
-| 配置与脚本 | `278` | `40540` | `36.56%` |
-| 纳入合计 | `608` | `110900` | `100.00%` |
+| 业务代码 | `242` | `46912` | `41.23%` |
+| 测试代码 | `97` | `25197` | `22.14%` |
+| 配置与脚本 | `290` | `41684` | `36.63%` |
+| 纳入合计 | `629` | `113793` | `100.00%` |
 
 ```mermaid
 pie showData
-    title 2026-10-24 当前单仓源码物理行数
-    "业务代码" : 45721
-    "测试代码" : 24639
-    "配置与脚本" : 40540
+    title 2026-10-26 当前单仓源码物理行数
+    "业务代码" : 46912
+    "测试代码" : 25197
+    "配置与脚本" : 41684
 ```
 
 ## 八、<span id="direct-dependencies">直接依赖、来源与风险</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-统计日期 **2026-10-24**。28 个 Xcode 工程未声明外部 SPM / Pod 直接源码包，因此构建链接的第三方包数为 `0`；Jobs 工程是自有模块，不当作第三方库。下表列直接调用的外部工具，均为公开官方来源、私库地址不适用；每项按功能条件使用，不将工具自身的传递依赖或目标项目依赖计入包总数。许可证链接核对上游声明，不替代实际分发版本的 LICENSE / NOTICE。
+统计日期 **2026-10-26**。29 个 Xcode 工程未声明外部 SPM / Pod 直接源码包，因此构建链接的第三方包数为 `0`；Jobs 工程是自有模块，不当作第三方库。下表列直接调用的外部工具，均为公开官方来源、私库地址不适用；每项按功能条件使用，不将工具自身的传递依赖或目标项目依赖计入包总数。许可证链接核对上游声明，不替代实际分发版本的 LICENSE / NOTICE。
 
 | 直接工具 | 版本 / 来源 | 许可证 | 用途与仍在使用 |
 | --- | --- | --- | --- |

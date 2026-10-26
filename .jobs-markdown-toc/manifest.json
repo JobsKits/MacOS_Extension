@@ -59,6 +59,9 @@
     "JobsRunAuthorizationRevoker/README.md",
     "JobsRunAuthorizationRevoker/Scripts/README.md",
     "JobsHarmonySimulatorRepairer/README.md",
-    "JobsHarmonySimulatorRepairer/Scripts/README.md"
+    "JobsHarmonySimulatorRepairer/Scripts/README.md",
+    "JobsGitRollback/README.md",
+    "JobsGitRollback/Scripts/README.md",
+    "JobsProjectTools/README.md"
   ]
 }

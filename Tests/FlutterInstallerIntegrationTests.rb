@@ -81,7 +81,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     lines = output.lines.map(&:strip)
     assert_equal all.join(','), lines[0]
     assert_equal all.join(','), lines[1]
-    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure]
+    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier git-proxy-configure]
     projects = independent.map { |key| grouped.include?(key) ? 'project-tools' : key }.uniq
     assert_equal projects + ['terminal_opener', 'ios-tools', 'flutter-tools'], lines[2].split(',')
   end
