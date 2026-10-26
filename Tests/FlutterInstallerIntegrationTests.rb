@@ -81,7 +81,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     lines = output.lines.map(&:strip)
     assert_equal all.join(','), lines[0]
     assert_equal all.join(','), lines[1]
-    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier git-proxy-configure]
+    grouped = %w[android_studio_opener vscode_opener xcode_opener git-sourcetree git-pull git-rollback git_remote git_remote_copier git-proxy-configure]
     desktop = %w[ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair hidden-files-toggle]
     projects = independent.map do |key|
       grouped.include?(key) ? 'project-tools' : (desktop.include?(key) ? 'desktop-tools' : key)

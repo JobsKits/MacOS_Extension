@@ -104,6 +104,16 @@ if name=='pluginkit':
         self.run_script('install', 'xcode_opener', 'git-pull')
         self.assertEqual(self.configured(), {'xcode_opener', 'git-pull'})
 
+    def test_sourcetree_install_and_uninstall_preserve_other_feature_choices(self):
+        self.state.write_text('{}')
+        self.run_script('install', 'xcode_opener', 'git-sourcetree')
+        self.assertEqual(self.configured(), {'xcode_opener', 'git-sourcetree'})
+        self.run_script('uninstall', 'git-sourcetree')
+        self.assertEqual(self.configured(), {'xcode_opener'})
+        self.assertEqual(json.loads(self.state.read_text())[GROUP_ID], '+')
+        self.run_script('install', 'git-sourcetree')
+        self.assertEqual(self.configured(), {'xcode_opener', 'git-sourcetree'})
+
     def test_unknown_feature_has_no_side_effects(self):
         self.run_script('install', 'unknown', success=False)
         self.assertFalse(self.log.exists())

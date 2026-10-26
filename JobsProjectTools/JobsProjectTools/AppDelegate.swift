@@ -7,7 +7,6 @@
 
 import AppKit
 
-@main
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOperations = 0
     private var didFinishLaunching = false
@@ -15,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recentRequests: [String: Date] = [:]
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        NSLog("JobsProjectTools host registering URL handler")
         NSAppleEventManager.shared().setEventHandler(self,
             andSelector: #selector(handleOpenURL(_:withReplyEvent:)),
             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
@@ -49,12 +49,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         recentRequests[key] = now
+        NSLog("JobsProjectTools host dispatch action=%@", request.action.rawValue)
         pendingOperations += 1
         idleGeneration += 1
         do {
             switch request.action {
             case .androidStudio, .vscode, .xcode:
                 try IDEProjectOpener().open(request.action, at: request.fileURL) { self.finish() }
+            case .gitSourcetree:
+                try SourcetreeProjectOpener().open(at: request.fileURL) {
+                    self.finish()
+                }
             case .gitPull:
                 launchInBackground {
                     try GitPullTerminalLauncher().launch(projectURL: request.fileURL)

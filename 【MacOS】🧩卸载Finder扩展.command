@@ -40,7 +40,7 @@ SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
 
-FEATURE_KEYS=(flutter-tools git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull git-rollback flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure git_empty_commit_push terminal_opener ios-tools)
+FEATURE_KEYS=(flutter-tools git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull git-rollback git-sourcetree flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure git_empty_commit_push terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -190,6 +190,15 @@ FEATURE_EXTENSION_ID[git-rollback]="com.jobs.JobsGitRollback.FinderSyncExtension
 FEATURE_REFRESH_MARKER[git-rollback]="/tmp/JobsGitRollbackNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[git-rollback]="/tmp/JobsGitRollback.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-rollback]}]="git-rollback"
+
+FEATURE_TITLE[git-sourcetree]="用 Sourcetree 打开"
+FEATURE_PROJECT_DIR[git-sourcetree]="JobsProjectTools"
+FEATURE_APP_NAME[git-sourcetree]="JobsProjectTools"
+FEATURE_EXTENSION_PROCESS_NAME[git-sourcetree]="JobsProjectToolsFinderSync"
+FEATURE_EXTENSION_ID[git-sourcetree]="com.jobs.JobsProjectTools.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[git-sourcetree]="/tmp/JobsProjectToolsNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[git-sourcetree]="/tmp/JobsProjectTools.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-sourcetree]}]="git-sourcetree"
 
 FEATURE_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
 FEATURE_PROJECT_DIR[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
@@ -692,7 +701,7 @@ uninstall_feature() {
       JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" uninstall "$key" --non-interactive --skip-finder-restart 2>&1 | tee -a "$LOG_FILE"
       return ${pipestatus[1]}
       ;;
-    android_studio_opener|vscode_opener|xcode_opener|git-pull|git-rollback|git_remote|git_remote_copier|git-proxy-configure|git_empty_commit_push)
+    android_studio_opener|vscode_opener|xcode_opener|git-pull|git-rollback|git-sourcetree|git_remote|git_remote_copier|git-proxy-configure|git_empty_commit_push)
       /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "$key" 2>&1 | tee -a "$LOG_FILE"
       return ${pipestatus[1]}
       ;;

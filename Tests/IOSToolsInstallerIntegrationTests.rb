@@ -59,8 +59,8 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
     assert_equal ['ios-tools', 'ios-pod-install,ios-clean-build-artifacts', 'terminal:'], output.lines.map(&:strip)
   end
 
-  def test_all_six_git_actions_share_one_project_without_terminal_dependencies
-    ids = %w[git-pull git-rollback git_remote git_remote_copier git-proxy-configure git_empty_commit_push]
+  def test_all_seven_git_actions_share_one_project_without_terminal_dependencies
+    ids = %w[git-sourcetree git-pull git-rollback git_remote git_remote_copier git-proxy-configure git_empty_commit_push]
     output = run_definitions(INSTALLER, <<~'ZSH', ids.join(','))
       parse_feature_selection "$1" || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"

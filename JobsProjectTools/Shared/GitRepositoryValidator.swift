@@ -12,29 +12,34 @@ struct GitRepositoryValidator {
     private let fileManager = FileManager.default
 
     func isWorkingDirectory(at url: URL) -> Bool {
+        return workingDirectory(at: url) != nil
+    }
+
+    /// 返回最近的有效工作树，避免从子目录打开时选中外层仓库。
+    func workingDirectory(at url: URL) -> URL? {
         guard url.isFileURL,
               let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isAliasFileKey, .isPackageKey]),
               values.isDirectory == true,
               values.isSymbolicLink != true,
               values.isAliasFile != true,
               values.isPackage != true else {
-            return false
+            return nil
         }
         var current = url.standardizedFileURL.resolvingSymlinksInPath()
         while true {
             // Git 元数据目录本身不属于工作树；损坏的内层仓库也不能借外层仓库通过。
             guard current.lastPathComponent != ".git" else {
-                return false
+                return nil
             }
             let marker = current.appendingPathComponent(".git")
             if (try? fileManager.attributesOfItem(atPath: marker.path)) != nil {
-                return validGitDirectory(marker, relativeTo: current)
+                return validGitDirectory(marker, relativeTo: current) ? current : nil
             }
             guard !isBareRepositoryMetadata(current) else {
-                return false
+                return nil
             }
             guard current.path != "/" else {
-                return false
+                return nil
             }
             current.deleteLastPathComponent()
         }

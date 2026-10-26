@@ -13,6 +13,7 @@ enum IDEProjectDirectory {
 }
 struct GitRepositoryValidator { func isWorkingDirectory(at url: URL) -> Bool { false } }
 struct GitRollbackMenuContext { func isWorkingDirectory(at url: URL) -> Bool { false } }
+enum SourcetreeApplication { static func installedURL() -> URL? { nil } }
 '''
 checks = r'''
 var assertions = 0
@@ -31,7 +32,7 @@ let all = Set(ProjectMenuAction.allCases)
 try Data(ProjectMenuAction.allCases.map(\.rawValue).joined(separator: ",").utf8).write(to: realConfiguration)
 try Data("git_remote".utf8).write(to: sandboxConfiguration)
 expect(realConfiguration != sandboxConfiguration, "account and sandbox paths must differ")
-expect(ProjectMenuConfiguration.enabledFeatures(at: realConfiguration) == all, "external account configuration loads all nine selected actions")
+expect(ProjectMenuConfiguration.enabledFeatures(at: realConfiguration) == all, "external account configuration loads all selected actions")
 expect(ProjectMenuConfiguration.enabledFeatures(at: sandboxConfiguration) == [.gitRemote], "sandbox configuration is independent and must not shadow the account configuration")
 try FileManager.default.removeItem(at: sandboxConfiguration)
 expect(ProjectMenuConfiguration.enabledFeatures(at: realConfiguration) == all, "missing sandbox copy does not hide selected actions")

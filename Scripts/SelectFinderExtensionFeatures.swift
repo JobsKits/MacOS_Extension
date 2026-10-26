@@ -21,6 +21,7 @@ struct FeatureOption {
         FeatureOption(identifier: "android_studio_opener", title: "用 Android Studio 打开项目"),
         FeatureOption(identifier: "vscode_opener", title: "用 VSCode 打开项目"),
         FeatureOption(identifier: "xcode_opener", title: "用 Xcode 打开项目"),
+        FeatureOption(identifier: "git-sourcetree", title: "用 Sourcetree 打开"),
         FeatureOption(identifier: "git-pull", title: "拉取 Git 到最新"),
         FeatureOption(identifier: "git-rollback", title: "Git 提交回退"),
         FeatureOption(identifier: "git_remote", title: "打开 Git 远程地址"),
@@ -101,7 +102,7 @@ struct FeatureGroup {
             "android_studio_opener", "vscode_opener", "xcode_opener"
         ]),
         FeatureGroup(identifier: "git", title: "Git 工具", identifiers: [
-            "git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
+            "git-sourcetree", "git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
         ]),
         FeatureGroup(identifier: "general", title: "文件与通用工具", identifiers: [
             "path_copier", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open",

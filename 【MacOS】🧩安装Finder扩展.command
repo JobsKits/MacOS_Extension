@@ -12,6 +12,8 @@
 # 3、IDE/Git：project-tools → JobsProjectTools/Shared/ProjectMenuAction.swift →
 #    JobsProjectToolsFinderSync/FinderSync.swift → AppDelegate.swift；配置在真实账户 Home
 #    的 Library/Application Support/JobsProjectTools/EnabledFeatures.txt。
+#    git-sourcetree → Shared/SourcetreeApplication.swift 检测可用安装，
+#    JobsProjectTools/SourcetreeProjectOpener.swift 由宿主打开所属仓库；未安装时隐藏菜单。
 # 4、桌面：desktop-tools → JobsDesktopTools/Shared/DesktopMenuAction/DesktopMenuAction.swift。
 #    固定顺序：ios-simulator-create → android-simulator-create → harmony-simulator-create →
 #    android-simulator-repair → harmony-simulator-repair → hidden-files-toggle。
@@ -315,7 +317,7 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-sourcetree git-pull git-rollback git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -344,6 +346,8 @@ SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git-rollback]="Git 提交回退"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-rollback]="project-tools"
+SELECTABLE_FUNCTION_TITLE[git-sourcetree]="用 Sourcetree 打开"
+SELECTABLE_FUNCTION_PROJECT_KEY[git-sourcetree]="project-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-run]="从终端运行 Flutter 项目"

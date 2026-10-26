@@ -63,6 +63,8 @@ final class FinderSync: FIFinderSync {
         case .androidStudio: return selected ? #selector(androidSelected(_:)) : #selector(androidContainer(_:))
         case .vscode: return selected ? #selector(vscodeSelected(_:)) : #selector(vscodeContainer(_:))
         case .xcode: return selected ? #selector(xcodeSelected(_:)) : #selector(xcodeContainer(_:))
+        case .gitSourcetree:
+            return selected ? #selector(sourcetreeSelected(_:)) : #selector(sourcetreeContainer(_:))
         case .gitPull: return selected ? #selector(pullSelected(_:)) : #selector(pullContainer(_:))
         case .gitRollback:
             return selected ? #selector(rollbackSelected(_:)) : #selector(rollbackContainer(_:))
@@ -80,6 +82,12 @@ final class FinderSync: FIFinderSync {
     @objc private func vscodeContainer(_ sender: NSMenuItem) { perform(.vscode, .contextualMenuForContainer) }
     @objc private func xcodeSelected(_ sender: NSMenuItem) { perform(.xcode, .contextualMenuForItems) }
     @objc private func xcodeContainer(_ sender: NSMenuItem) { perform(.xcode, .contextualMenuForContainer) }
+    @objc private func sourcetreeSelected(_ sender: NSMenuItem) {
+        perform(.gitSourcetree, .contextualMenuForItems)
+    }
+    @objc private func sourcetreeContainer(_ sender: NSMenuItem) {
+        perform(.gitSourcetree, .contextualMenuForContainer)
+    }
     @objc private func pullSelected(_ sender: NSMenuItem) { perform(.gitPull, .contextualMenuForItems) }
     @objc private func pullContainer(_ sender: NSMenuItem) { perform(.gitPull, .contextualMenuForContainer) }
     @objc private func rollbackSelected(_ sender: NSMenuItem) {

@@ -33,6 +33,10 @@ enum TestWorkspace {
  static var requests: [URL] = []
  static func open(_ url: URL) -> Bool { requests.append(url); return true }
 }
+enum SourcetreeApplication {
+ static var installed = true
+ static func installedURL() -> URL? { installed ? URL(fileURLWithPath: "/Applications/Sourcetree.app") : nil }
+}
 '''
 checks = r'''
 
@@ -72,7 +76,7 @@ try file("submodule/.git", "gitdir: ../repo/.git/modules/child\n")
 try repository("repo/.git/modules/child")
 let finder = FinderSync()
 let controller = FIFinderSyncController.default()
-let git = ["⬇️ 拉取 Git 到最新", "⏪ Git 提交回退", "🌐 打开 Git 远程地址", "🔗 复制 Git 远程地址", "📡 配置 Git 动态代理", "📤 在终端创建空白 Commit 并 Push"]
+let git = ["🌳 用 Sourcetree 打开", "⬇️ 拉取 Git 到最新", "⏪ Git 提交回退", "🌐 打开 Git 远程地址", "🔗 复制 Git 远程地址", "📡 配置 Git 动态代理", "📤 在终端创建空白 Commit 并 Push"]
 let editors = ["🧭 用 Android Studio 打开项目", "📝 用 VSCode 打开项目"]
 let vscode = ["📝 用 VSCode 打开项目"]
 for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", vscode),
@@ -91,7 +95,7 @@ for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", vscode),
   expect(menu.items.map(\.title) == titles, "order/visibility for \(path)")
   let actualGit = menu.items.first(where: { $0.title == "🌿 Git操作" })?.submenu
   if titles.contains("🌿 Git操作") {
-   expect(actualGit?.items.map(\.title) == git, "all six Git actions grouped")
+   expect(actualGit?.items.map(\.title) == git, "all seven Git actions grouped")
   } else {
    expect(actualGit == nil, "Git hidden outside valid directory")
   }
@@ -132,6 +136,21 @@ expect(finder.menu(for: .contextualMenuForContainer) == nil, "unknown container"
 controller.targeted = URL(fileURLWithPath: NSHomeDirectoryForUser(NSUserName())!).appendingPathComponent("Desktop")
 expect(finder.menu(for: .contextualMenuForContainer) == nil, "desktop hidden")
 controller.selected = [root.appendingPathComponent("repo")]
+let installedMenu = finder.menu(for: .contextualMenuForItems)!
+let sourcetreeItem = installedMenu.items.last!.submenu!.items.first!
+SourcetreeApplication.installed = false
+expect(finder.menu(for: .contextualMenuForItems)?.items.last?.submenu?.items.map(\.title) == Array(git.dropFirst()), "uninstalled Sourcetree is hidden, other Git actions remain")
+let beforeUninstalledClick = TestWorkspace.requests.count
+_ = (sourcetreeItem.target as! NSObject).perform(sourcetreeItem.action!, with: sourcetreeItem)
+expect(TestWorkspace.requests.count == beforeUninstalledClick, "uninstalled after menu creation stops dispatch")
+ProjectMenuConfiguration.enabled = [.gitSourcetree]
+expect(finder.menu(for: .contextualMenuForItems) == nil, "unavailable Sourcetree-only group is hidden")
+SourcetreeApplication.installed = true
+expect(finder.menu(for: .contextualMenuForItems)?.items.last?.submenu?.items.map(\.title) == [git.first!], "installing Sourcetree is detected by the next menu")
+expect(GitRepositoryValidator().workingDirectory(at: root.appendingPathComponent("repo/sub")) == root.appendingPathComponent("repo"), "subdirectory resolves to nearest working tree")
+expect(GitRepositoryValidator().workingDirectory(at: root.appendingPathComponent("submodule")) == root.appendingPathComponent("submodule"), "submodule keeps its own root")
+expect(GitRepositoryValidator().workingDirectory(at: root.appendingPathComponent("worktree")) == root.appendingPathComponent("worktree"), "linked worktree keeps its own root")
+ProjectMenuConfiguration.enabled = Set(ProjectMenuAction.allCases)
 let oldMenu = finder.menu(for: .contextualMenuForItems)!
 let oldGit = oldMenu.items.last!.submenu!.items
 controller.selected = [root.appendingPathComponent("flutter")]

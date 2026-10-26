@@ -26,7 +26,7 @@
 
 本目录维护总安装器使用的 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 功能选择窗口。选择器用 [**Swift**](https://www.swift.org/) 调用 [**AppKit**](https://developer.apple.com/documentation/appkit) 创建复选框窗口，只向调用方返回选择结果；构建、注册、启用扩展和保存 Terminal 功能配置由[根目录安装器](../【MacOS】🧩安装Finder扩展.command)负责。
 
-**当前为 52 项可选功能、14 个现行安装工程（2026-10-26 按选择器标识及安装器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。没有任何勾选时，“安装”立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；窗口按控件尺寸选择两列或三列，矮屏收紧间距，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
+**当前为 53 项可选功能、9 个现行安装工程（2026-10-26 按选择器标识及安装器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。没有任何勾选时，“安装”立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；窗口按控件尺寸选择两列或三列，矮屏收紧间距，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
@@ -48,12 +48,12 @@
 
 ## 二、<span id="feature-identifiers">功能标识与工程映射</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-窗口按用途分六组；`JobsProjectTools` 的九项、`JobsTerminalOpener` 的三项与 `JobsIOSTools` 的十一项均可分别勾选，安装器各归并为一次工程构建。Git 六项在实际 Finder 中归入“Git操作”，只对有效 Git 普通文件夹显示。“Git 提交回退”在 Terminal 选择远端快照 soft、历史 soft 或历史 hard；hard 必须精确输入 `YES`，安装器不执行回退。iOS 组前两项相邻显示 `Pod Install`、`Pod Update`，实际命令仍为小写 `pod install` / `pod update`；构建清理也在 iOS 子菜单，该组另含 IPA 重签。Flutter 的十九个可执行叶子菜单均单独勾选，统一映射到 `JobsFlutterTools`，只构建注册一次。旧 `flutter-tools` 标识兼容全部动作；旧打包与体检标识分别展开三平台、两种体检。
+窗口按用途分六组；`JobsProjectTools` 的十项、`JobsTerminalOpener` 的三项与 `JobsIOSTools` 的十一项均可分别勾选，安装器各归并为一次工程构建。Git 七项在实际 Finder 中归入“Git操作”，只对有效 Git 普通文件夹显示。“用 [**Sourcetree**](https://www.sourcetreeapp.com/) 打开”放在 Git 分组首项，仅检测到可运行安装时显示，未安装时隐藏。“Git 提交回退”在 Terminal 选择远端快照 soft、历史 soft 或历史 hard；hard 必须精确输入 `YES`，安装器不执行回退。iOS 组前两项相邻显示 `Pod Install`、`Pod Update`，实际命令仍为小写 `pod install` / `pod update`；构建清理也在 iOS 子菜单，该组另含 IPA 重签。Flutter 的十九个可执行叶子菜单均单独勾选，统一映射到 `JobsFlutterTools`，只构建注册一次。旧 `flutter-tools` 标识兼容全部动作；旧打包与体检标识分别展开三平台、两种体检。
 
 | 用途分组 | 选项数 |
 | --- | --- |
 | IDE 项目打开 | 3 |
-| Git 工具 | 6 |
+| Git 工具 | 7 |
 | 文件与通用工具 | 7 |
 | Flutter 工具 | 19 |
 | iOS / CocoaPods 工具 | 12 |
@@ -61,6 +61,7 @@
 
 | 分组 | 窗口文案 | 返回标识 | 安装工程 |
 | --- | --- | --- | --- |
+| 项目工具 | 用 Sourcetree 打开 | `git-sourcetree` | `JobsProjectTools`；未安装 Sourcetree 时隐藏菜单 |
 | 项目工具 | 打开 [**Git**](https://git-scm.com/) 远程地址 | `git_remote` | `JobsProjectTools` |
 | 项目工具 | 复制 Git 远程地址 | `git_remote_copier` | `JobsProjectTools` |
 | 独立扩展 | 复制绝对路径 | `path_copier` | `JobsPathCopier` |
@@ -190,7 +191,7 @@ ruby ../Tests/FinderFeatureSelectionTests.rb
 | --- | --- | --- |
 | 安装，至少选中一项 | 按选择器源码顺序输出逗号分隔的现行标识 | 解析、校验并安装所选工程。 |
 | 全不选或逐项取消全部勾选 | 不返回结果，窗口继续显示；安装按钮置灰，回车也不能确认 | 等待重新勾选或取消，不执行安装。 |
-| 全选后点击安装 | 全部 52 项现行标识，逗号分隔 | 安装全部 14 个现行工程。 |
+| 全选后点击安装 | 全部 53 项现行标识，逗号分隔 | 安装全部 9 个现行工程。 |
 | 取消或关闭窗口 | `__CANCELLED__` | 提示取消，正常退出，不执行安装。 |
 | 选择器进程执行失败 | 非零进程退出码 | 提示 UI 失败，按该退出码停止。 |
 | 异常返回未选择标记或空文本 | `__NONE__` 或空字符串 | 按未选择功能处理。 |

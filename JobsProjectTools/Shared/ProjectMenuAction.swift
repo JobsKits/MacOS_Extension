@@ -13,6 +13,7 @@ enum ProjectMenuAction: String, CaseIterable {
     case androidStudio = "android_studio_opener"
     case vscode = "vscode_opener"
     case xcode = "xcode_opener"
+    case gitSourcetree = "git-sourcetree"
     case gitPull = "git-pull"
     case gitRollback = "git-rollback"
     case gitRemote = "git_remote"
@@ -22,8 +23,8 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var isGitAction: Bool {
         switch self {
-        /// 有效 Git 工作树下的六项动作。
-        case .gitPull, .gitRollback, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
+        /// 有效 Git 工作树下的七项动作。
+        case .gitSourcetree, .gitPull, .gitRollback, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
             return true
         /// IDE 入口保留一级菜单。
         default:
@@ -42,6 +43,9 @@ enum ProjectMenuAction: String, CaseIterable {
         /// iOS Xcode 项目入口。
         case .xcode:
             return "🛠️ 用 Xcode 打开项目"
+        /// 仅在安装 Sourcetree 后显示。
+        case .gitSourcetree:
+            return "🌳 用 Sourcetree 打开"
         /// 拉取当前仓库。
         case .gitPull:
             return "⬇️ 拉取 Git 到最新"
@@ -87,6 +91,9 @@ enum ProjectMenuAction: String, CaseIterable {
             /// iOS Xcode 项目入口。
             case .xcode:
                 return isXcode
+            /// 应用安装状态随菜单生成和点击实时复核。
+            case .gitSourcetree:
+                return isGit && SourcetreeApplication.installedURL() != nil
             /// Git 菜单沿用独立的工作树门禁。
             case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
                 return isGit

@@ -23,7 +23,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               buildWindow(screenSize: NSSize(width: 1440, height: 900))
               let all = FeatureOption.all.map { $0.identifier }
               let grouped = FeatureGroup.all.flatMap { $0.identifiers }
-              expect(FeatureOption.flutter.count == 19 && all.count == 52, "Flutter exposes all 19 leaf actions alongside the Git rollback action")
+              expect(FeatureOption.flutter.count == 19 && all.count == 53, "Flutter exposes all 19 leaf actions alongside all Git actions")
               expect(!all.contains("flutter-tools") && all.contains("flutter-package-ios") && all.contains("flutter-package-ohos"), "parent menus are not counted as actions")
               expect(all.count >= 29 && FeatureOption.ios.count >= 9, "existing functions plus requested iOS scripts")
               expect(Set(all).count == all.count, "unique function identifiers")
@@ -54,7 +54,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               expect(FeatureOption.flutter.first { $0.identifier == "flutter-run" }?.title == "从终端运行 Flutter 项目", "Flutter run names the terminal")
               expect(FeatureOption.flutter.first { $0.identifier == "flutter-clean-build-artifacts" }?.title == "清理当前 Flutter 项目构建产物", "Flutter cleanup names its scope")
               let git = groupControls.first { $0.group.identifier == "git" }!
-              expect(git.group.identifiers == ["git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"], "all six Git actions remain individually selectable")
+              expect(git.group.identifiers == ["git-sourcetree", "git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"], "all seven Git actions remain individually selectable")
               ios.select.performClick(nil)
               expect(checkedIdentifiers() == all.filter { ios.group.identifiers.contains($0) }, "select one group from global empty")
               expect(checkedIdentifiers().count == ios.group.identifiers.count && installButton?.isEnabled == true, "iOS group includes pod install, IPA signing and ten scripts")
@@ -64,7 +64,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               expect(checkedIdentifiers() == all, "global select restores all groups")
               let flutter = groupControls.first { $0.group.identifier == "flutter" }!
               flutter.clear.performClick(nil)
-              expect(checkedIdentifiers().count == 33, "Flutter clear changes all leaf actions only")
+              expect(checkedIdentifiers().count == 34, "Flutter clear changes all leaf actions only")
               checkboxes.first { $0.option.identifier == "flutter-package-android" }!.button.performClick(nil)
               expect(flutter.summary.stringValue == "已选 1 / 19", "one Flutter submenu can be installed")
               print("group controls and function identifiers passed")
