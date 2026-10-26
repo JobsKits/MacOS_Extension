@@ -22,8 +22,10 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var isGitAction: Bool {
         switch self {
+        /// 有效 Git 工作树下的六项动作。
         case .gitPull, .gitRollback, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
             return true
+        /// IDE 入口保留一级菜单。
         default:
             return false
         }
@@ -31,35 +33,64 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .androidStudio: return "🧭 用 Android Studio 打开项目"
-        case .vscode: return "📝 用 VSCode 打开项目"
-        case .xcode: return "🛠️ 用 Xcode 打开项目"
-        case .gitPull: return "⬇️ 拉取 Git 到最新"
+        /// Android Studio 项目入口。
+        case .androidStudio:
+            return "🧭 用 Android Studio 打开项目"
+        /// VSCode 普通非 iOS 目录入口。
+        case .vscode:
+            return "📝 用 VSCode 打开项目"
+        /// iOS Xcode 项目入口。
+        case .xcode:
+            return "🛠️ 用 Xcode 打开项目"
+        /// 拉取当前仓库。
+        case .gitPull:
+            return "⬇️ 拉取 Git 到最新"
+        /// 提交回退。
         case .gitRollback:
             return "⏪ Git 提交回退"
-        case .gitRemote: return "🌐 打开 Git 远程地址"
-        case .gitRemoteCopy: return "🔗 复制 Git 远程地址"
-        case .gitProxy: return "📡 配置 Git 动态代理"
-        case .gitEmptyCommitPush: return "📤 在终端创建空白 Commit 并 Push"
+        /// 打开远程地址。
+        case .gitRemote:
+            return "🌐 打开 Git 远程地址"
+        /// 复制远程地址。
+        case .gitRemoteCopy:
+            return "🔗 复制 Git 远程地址"
+        /// 配置 Git 代理。
+        case .gitProxy:
+            return "📡 配置 Git 动态代理"
+        /// 创建空白提交。
+        case .gitEmptyCommitPush:
+            return "📤 在终端创建空白 Commit 并 Push"
         }
     }
 
     static func visible(at url: URL, enabled: Set<Self>) -> [Self] {
         guard url.isFileURL,
               let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
-              let isDirectory = values.isDirectory else { return [] }
-        let directory = isDirectory ? url : url.deletingLastPathComponent()
-        let isXcode = XcodeProjectDetector.canOpen(directory)
-            || (["xcodeproj", "xcworkspace"].contains(directory.pathExtension.lowercased())
-                && XcodeProjectDetector.canOpen(directory.deletingLastPathComponent()))
+              let isDirectory = values.isDirectory else {
+            return []
+        }
+        let isXcode = isDirectory && XcodeProjectDetector.canOpen(url)
+        let canOpenAndroid = isDirectory && IDEProjectDirectory.canOpenInAndroidStudio(url)
+        let canOpenVSCode = isDirectory && IDEProjectDirectory.canOpenInVSCode(url)
         let isGit = GitRepositoryValidator().isWorkingDirectory(at: url)
         return allCases.filter { action in
-            guard enabled.contains(action) else { return false }
+            guard enabled.contains(action) else {
+                return false
+            }
             switch action {
-            case .androidStudio, .vscode: return !isXcode
-            case .xcode: return isXcode
+            /// Android Studio 项目入口。
+            case .androidStudio:
+                return canOpenAndroid
+            /// VSCode 普通非 iOS 目录入口。
+            case .vscode:
+                return canOpenVSCode
+            /// iOS Xcode 项目入口。
+            case .xcode:
+                return isXcode
+            /// Git 菜单沿用独立的工作树门禁。
             case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
                 return isGit
+            /// 回退额外核对实际 Git 元数据。
             case .gitRollback:
                 return GitRollbackMenuContext().isWorkingDirectory(at: url)
             }
@@ -135,7 +166,9 @@ struct ProjectMenuRequest {
     let fileURL: URL
 
     var url: URL? {
-        guard fileURL.isFileURL, fileURL.path.hasPrefix("/") else { return nil }
+        guard fileURL.isFileURL, fileURL.path.hasPrefix("/") else {
+            return nil
+        }
         var components = URLComponents()
         components.scheme = "jobsprojecttools"
         components.host = "perform"
@@ -160,7 +193,9 @@ struct ProjectMenuRequest {
               let rawAction = items.first(where: { $0.name == "action" })?.value,
               let action = ProjectMenuAction(rawValue: rawAction),
               let path = items.first(where: { $0.name == "path" })?.value,
-              path.hasPrefix("/"), !path.contains("\0") else { return nil }
+              path.hasPrefix("/"), !path.contains("\0") else {
+            return nil
+        }
         self.init(action: action, fileURL: URL(fileURLWithPath: path).standardizedFileURL)
     }
 }

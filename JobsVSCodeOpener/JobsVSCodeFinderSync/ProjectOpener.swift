@@ -51,8 +51,8 @@ final class ProjectOpener {
                 completion?()
             }
         }
-        guard !Self.isXcodeProject(at: selectedURL, fileManager: fileManager) else {
-            reportFailure("请使用 Xcode 打开项目", "当前目录是 Xcode 项目，请使用 Finder 中的“用 Xcode 打开项目”。")
+        guard Self.canOpen(selectedURL, fileManager: fileManager) else {
+            reportFailure("当前目录不适用于 VSCode 项目入口", "请选择非空的普通非 iOS 项目文件夹；iOS 项目请使用 Xcode。")
             finish()
             return
         }
@@ -98,25 +98,13 @@ final class ProjectOpener {
         }
     }
 
-    /// 文件按所在目录判断，文件夹只检查本层，不递归寻找 iOS 子工程。
+    static func canOpen(_ selectedURL: URL, fileManager: FileManager = .default) -> Bool {
+        return IDEProjectDirectory.canOpenInVSCode(selectedURL, fileManager: fileManager)
+    }
+
+    /// 只检查所选目录本身，不将普通文件或工程包归一为父目录。
     static func isXcodeProject(at selectedURL: URL, fileManager: FileManager = .default) -> Bool {
-        guard selectedURL.isFileURL else {
-            return false
-        }
-        let selectedURL = selectedURL.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory) else {
-            return false
-        }
-        let directoryURL = isDirectory.boolValue ? selectedURL : selectedURL.deletingLastPathComponent()
-        if XcodeProjectDetector.canOpen(directoryURL, fileManager: fileManager) {
-            return true
-        }
-        // 后缀目录仍沿用打开器的父目录归一，防止无效包绕过父目录的 Xcode 判断。
-        if ["xcworkspace", "xcodeproj"].contains(directoryURL.pathExtension.lowercased()) {
-            return XcodeProjectDetector.canOpen(directoryURL.deletingLastPathComponent(), fileManager: fileManager)
-        }
-        return false
+        return XcodeProjectDetector.canOpen(selectedURL, fileManager: fileManager)
     }
 
     /// 忽略 LaunchServices 的过期注册，以及只有 App 外壳而缺失可执行文件的残缺安装。
@@ -140,20 +128,10 @@ final class ProjectOpener {
     }
 
     func projectCandidates(from selectedURL: URL) throws -> [URL] {
-        guard selectedURL.isFileURL else {
-            throw NSError(domain: "JobsVSCodeFinderSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "请选择本地文件或文件夹。"])
+        guard Self.canOpen(selectedURL, fileManager: fileManager) else {
+            return []
         }
-        let selectedURL = selectedURL.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory) else {
-            throw NSError(domain: "JobsVSCodeFinderSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "所选文件或文件夹已不存在。"])
-        }
-        let directoryURL = isDirectory.boolValue ? selectedURL : selectedURL.deletingLastPathComponent()
-        // Finder 将 Xcode 工程显示为文件包；编辑器应该打开它所在的项目目录。
-        if ["xcworkspace", "xcodeproj"].contains(directoryURL.pathExtension.lowercased()) {
-            return [directoryURL.deletingLastPathComponent()]
-        }
-        return [directoryURL]
+        return [selectedURL.standardizedFileURL]
     }
 
     static func chooseProject(_ candidates: [URL]) -> URL? {

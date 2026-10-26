@@ -10,39 +10,41 @@ import AppKit
 @main
 struct ProjectOpenerBehaviorTests {
     static func main() throws {
-        let fileManager = FileManager.default
-        let root = fileManager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("Jobs IDE 中文 空格'\";$-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("Jobs IDE 中文 空格'\";$-\(UUID().uuidString)")
+        try manager.createDirectory(at: root, withIntermediateDirectories: true)
         defer {
-            try? fileManager.removeItem(at: root)
+            try? manager.removeItem(at: root)
         }
-        let project = root.appendingPathComponent("项目 空格'名称", isDirectory: true)
-        try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
+        let project = root.appendingPathComponent("项目 空格'名称")
+        try manager.createDirectory(at: project, withIntermediateDirectories: true)
         let source = project.appendingPathComponent("测试文件.swift")
         try Data("// fixture".utf8).write(to: source)
+        let manifest = project.appendingPathComponent("pubspec.yaml")
+        try Data("dependencies:\n  flutter:\n    sdk: flutter\n".utf8).write(to: manifest)
         let healthyApp = try makeApp(at: root.appendingPathComponent("Healthy.app"), bundleID: "com.microsoft.VSCode", executable: true)
         let brokenApp = try makeApp(at: root.appendingPathComponent("Broken.app"), bundleID: "com.microsoft.VSCode", executable: false)
         let wrongApp = try makeApp(at: root.appendingPathComponent("Other.app"), bundleID: "com.example.other", executable: true)
         var openedTargets: [URL] = []
         var downloads: [URL] = []
-        var chosenCandidates: [[URL]] = []
         var failures: [String] = []
+        var lookups = 0
         let opener = ProjectOpener(
             applicationURLs: {
-                [brokenApp, wrongApp, healthyApp]
+                lookups += 1
+                return [brokenApp, wrongApp, healthyApp]
             },
             openDocument: { target, app, completion in
-                openedTargets.append(target)
                 precondition(app == healthyApp)
+                openedTargets.append(target)
                 completion(nil)
             },
             openDownload: { url in
                 downloads.append(url)
                 return true
             },
-            chooseCandidate: { candidates in
-                chosenCandidates.append(candidates)
-                return candidates.last
+            chooseCandidate: { _ in
+                preconditionFailure("单个目录不需要候选选择")
             },
             reportFailure: { title, _ in
                 failures.append(title)
@@ -51,169 +53,76 @@ struct ProjectOpenerBehaviorTests {
         precondition(opener.usableApplicationURL(in: [brokenApp]) == nil)
         precondition(opener.usableApplicationURL(in: [wrongApp]) == nil)
         precondition(opener.usableApplicationURL(in: [brokenApp, healthyApp]) == healthyApp)
-        try requireEqual(opener.projectCandidates(from: source), [project])
+        try requireEqual(opener.projectCandidates(from: source), [])
         try requireEqual(opener.projectCandidates(from: project), [project])
-        requireSingleMainThreadCompletion {
-            opener.open(source, completion: $0)
+        requireSingleMainThreadCompletion { completion in
+            opener.open(project, completion: completion)
         }
-        precondition(openedTargets == [project])
-        precondition(downloads.isEmpty && failures.isEmpty)
-        let xcodeProject = project.appendingPathComponent("工程.xcodeproj", isDirectory: true)
-        let workspace = project.appendingPathComponent("主工程.xcworkspace", isDirectory: true)
-        try fileManager.createDirectory(at: xcodeProject, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: workspace, withIntermediateDirectories: true)
-        try requireEqual(opener.projectCandidates(from: xcodeProject), [project])
-        try requireEqual(opener.projectCandidates(from: workspace), [project])
-        opener.open(project)
-        precondition(openedTargets.last == project && chosenCandidates.isEmpty)
-        let missingOpener = ProjectOpener(
+        precondition(openedTargets.map(\.path) == [project.path] && downloads.isEmpty && failures.isEmpty)
+        let before = lookups
+        let empty = root.appendingPathComponent("empty")
+        try manager.createDirectory(at: empty, withIntermediateDirectories: true)
+        let link = root.appendingPathComponent("linked")
+        try manager.createSymbolicLink(at: link, withDestinationURL: project)
+        let ios = root.appendingPathComponent("ios")
+        let bundle = ios.appendingPathComponent("App.xcodeproj")
+        try manager.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try Data("SDKROOT = iphoneos;".utf8).write(to: bundle.appendingPathComponent("project.pbxproj"))
+        for rejected in [empty, source, link, ios, bundle, root.appendingPathComponent("missing")] {
+            try requireEqual(opener.projectCandidates(from: rejected), [])
+            requireSingleMainThreadCompletion { completion in
+            opener.open(rejected, completion: completion)
+        }
+        }
+        precondition(lookups == before && downloads.isEmpty && openedTargets.map(\.path) == [project.path], "不适用目标应在查找应用前拒绝")
+        failures.removeAll()
+        let missing = ProjectOpener(
             applicationURLs: {
-                [brokenApp]
+                return [brokenApp]
             },
             openDocument: { _, _, _ in
-                preconditionFailure("缺失或残缺 IDE 不应继续打开项目")
+                preconditionFailure("缺失 IDE 不应打开项目")
             },
             openDownload: { url in
                 downloads.append(url)
                 return true
             },
-            chooseCandidate: { _ in
-                preconditionFailure("缺失 IDE 不应继续解析或选择项目")
-            },
             reportFailure: { title, _ in
                 failures.append(title)
             }
         )
-        requireSingleMainThreadCompletion {
-            missingOpener.open(root.appendingPathComponent("不存在的项目"), completion: $0)
+        requireSingleMainThreadCompletion { completion in
+            missing.open(project, completion: completion)
         }
         precondition(downloads.map(\.absoluteString) == ["https://code.visualstudio.com/download"])
         precondition(failures.isEmpty)
-        let noAppOpener = ProjectOpener(
+        let failing = ProjectOpener(
             applicationURLs: {
-                []
+                return []
             },
             openDocument: { _, _, _ in
-                preconditionFailure("未安装 IDE 不应打开项目")
+                preconditionFailure("没有 IDE 不应打开项目")
             },
             openDownload: { _ in
-                false
+                return false
             },
             reportFailure: { title, _ in
                 failures.append(title)
             }
         )
-        requireSingleMainThreadCompletion {
-            noAppOpener.open(project, completion: $0)
+        requireSingleMainThreadCompletion { completion in
+            failing.open(project, completion: completion)
         }
         precondition(failures.count == 1)
         verifyRequestEncoding()
-        try verifyXcodeProjectExclusion(root: root, healthyApp: healthyApp)
         verifyInvalidPathCompletion(root: root, healthyApp: healthyApp)
         verifyAsyncOpenCompletion(project: project, healthyApp: healthyApp, error: nil)
-        verifyAsyncOpenCompletion(
-            project: project,
-            healthyApp: healthyApp,
-            error: NSError(domain: "JobsVSCodeOpenerTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "测试启动失败"])
-        )
-        print("PASS JobsVSCodeOpener: Xcode 项目互斥、Flutter 子工程边界、特殊路径、应用健康检查、请求编解码及主线程 completion")
-    }
-
-    static func verifyXcodeProjectExclusion(root: URL, healthyApp: URL) throws {
-        let fileManager = FileManager.default
-        let xcodeRoot = root.appendingPathComponent("Xcode 工程目录", isDirectory: true)
-        let project = xcodeRoot.appendingPathComponent("工程.xcodeproj", isDirectory: true)
-        let workspace = xcodeRoot.appendingPathComponent("工作区.xcworkspace", isDirectory: true)
-        try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: workspace, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: project.appendingPathComponent("project.pbxproj"))
-        try Data("<Workspace/>".utf8).write(to: workspace.appendingPathComponent("contents.xcworkspacedata"))
-        let source = xcodeRoot.appendingPathComponent("项目源文件.swift")
-        try Data("// fixture".utf8).write(to: source)
-        let fakeNestedProject = xcodeRoot.appendingPathComponent("无效包.xcodeproj", isDirectory: true)
-        try fileManager.createDirectory(at: fakeNestedProject, withIntermediateDirectories: true)
-
-        let packageRoot = root.appendingPathComponent("Swift Package", isDirectory: true)
-        try fileManager.createDirectory(at: packageRoot, withIntermediateDirectories: true)
-        let manifest = packageRoot.appendingPathComponent("Package.swift")
-        try Data("// swift-tools-version: 5.0".utf8).write(to: manifest)
-
-        let flutterRoot = root.appendingPathComponent("Flutter 项目", isDirectory: true)
-        let iosRoot = flutterRoot.appendingPathComponent("ios", isDirectory: true)
-        let iosProject = iosRoot.appendingPathComponent("Runner.xcodeproj", isDirectory: true)
-        try fileManager.createDirectory(at: iosProject, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: iosProject.appendingPathComponent("project.pbxproj"))
-        let flutterManifest = flutterRoot.appendingPathComponent("pubspec.yaml")
-        try Data("name: fixture\ndependencies:\n  flutter:\n    sdk: flutter\n".utf8).write(to: flutterManifest)
-        let flutterNativeProject = flutterRoot.appendingPathComponent("原生.xcodeproj", isDirectory: true)
-        let flutterWorkspace = flutterRoot.appendingPathComponent("原生.xcworkspace", isDirectory: true)
-        try fileManager.createDirectory(at: flutterNativeProject, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: flutterWorkspace, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: flutterNativeProject.appendingPathComponent("project.pbxproj"))
-        try Data("<Workspace/>".utf8).write(to: flutterWorkspace.appendingPathComponent("contents.xcworkspacedata"))
-        precondition(FlutterProjectValidator().isFlutterProject(at: flutterRoot))
-        precondition(!ProjectOpener.isXcodeProject(at: flutterRoot))
-        precondition(!ProjectOpener.isXcodeProject(at: flutterManifest))
-        var openedFlutterTargets: [URL] = []
-        let flutterOpener = ProjectOpener(
-            applicationURLs: {
-                [healthyApp]
-            },
-            openDocument: { target, app, completion in
-                precondition(target == flutterRoot && app == healthyApp)
-                openedFlutterTargets.append(target)
-                completion(nil)
-            },
-            openDownload: { _ in
-                preconditionFailure("正常 Flutter 项目不应进入下载页")
-            },
-            reportFailure: { _, _ in
-                preconditionFailure("Flutter 根目录即使包含同层原生工程也应允许 VSCode 打开")
-            }
-        )
-        for url in [flutterRoot, flutterManifest] {
-            requireSingleMainThreadCompletion {
-                flutterOpener.open(url, completion: $0)
-            }
-        }
-        precondition(openedFlutterTargets == [flutterRoot, flutterRoot])
-
-        let invalidRoot = root.appendingPathComponent("无效工程标记", isDirectory: true)
-        let fakeProject = invalidRoot.appendingPathComponent("假工程.xcodeproj", isDirectory: true)
-        let fakeWorkspace = invalidRoot.appendingPathComponent("假工作区.xcworkspace", isDirectory: true)
-        try fileManager.createDirectory(at: fakeProject.appendingPathComponent("project.pbxproj"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: fakeWorkspace.appendingPathComponent("contents.xcworkspacedata"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: invalidRoot.appendingPathComponent("Package.swift"), withIntermediateDirectories: true)
-        precondition(!ProjectOpener.isXcodeProject(at: invalidRoot))
-        precondition(!ProjectOpener.isXcodeProject(at: fakeProject))
-        precondition(!ProjectOpener.isXcodeProject(at: fakeWorkspace))
-        precondition(!ProjectOpener.isXcodeProject(at: root.appendingPathComponent("不存在的工程")))
-        precondition(!ProjectOpener.isXcodeProject(at: URL(string: "https://example.com/project")!))
-
-        var failureTitles: [String] = []
-        let opener = ProjectOpener(
-            applicationURLs: {
-                preconditionFailure("Xcode 项目必须在查询 VSCode 安装前终止")
-            },
-            openDocument: { _, _, _ in
-                preconditionFailure("Xcode 项目不应交给 VSCode")
-            },
-            openDownload: { _ in
-                preconditionFailure("Xcode 项目不应打开 VSCode 下载页")
-            },
-            reportFailure: { title, _ in
-                precondition(Thread.isMainThread)
-                failureTitles.append(title)
-            }
-        )
-        let excluded = [xcodeRoot, project, workspace, source, fakeNestedProject, packageRoot, manifest, iosRoot, iosProject]
-        for url in excluded {
-            precondition(ProjectOpener.isXcodeProject(at: url), "必须识别 Xcode 项目：\(url.path)")
-            requireSingleMainThreadCompletion {
-                opener.open(url, completion: $0)
-            }
-        }
-        precondition(failureTitles == Array(repeating: "请使用 Xcode 打开项目", count: excluded.count))
+        verifyAsyncOpenCompletion(project: project, healthyApp: healthyApp, error: NSError(domain: "Test", code: 1))
+        try manager.removeItem(at: manifest)
+        try manager.removeItem(at: source)
+        precondition(!IDEProjectDirectory.isNonempty(project), "文件删完后必须判为空")
+        try requireEqual(opener.projectCandidates(from: project), [])
+        print("PASS JobsVSCodeOpener: 非空目录、iOS排除、普通文件与链接拒绝、应用健康检查、特殊路径、缺失下载及点击复核")
     }
 
     static func verifyRequestEncoding() {
@@ -265,7 +174,7 @@ struct ProjectOpenerBehaviorTests {
         requireSingleMainThreadCompletion {
             opener.open(root.appendingPathComponent("已删除项目"), completion: $0)
         }
-        precondition(failureTitles == ["无法读取项目位置"])
+        precondition(failureTitles == ["当前目录不适用于 VSCode 项目入口"])
     }
 
     static func verifyAsyncOpenCompletion(project: URL, healthyApp: URL, error: Error?) {
@@ -275,7 +184,7 @@ struct ProjectOpenerBehaviorTests {
                 [healthyApp]
             },
             openDocument: { target, app, completion in
-                precondition(target == project && app == healthyApp)
+                precondition(target.path == project.path && app == healthyApp)
                 DispatchQueue.global().async {
                     precondition(!Thread.isMainThread)
                     completion(error)
@@ -315,7 +224,7 @@ struct ProjectOpenerBehaviorTests {
     }
 
     static func requireEqual(_ actual: [URL], _ expected: [URL]) throws {
-        precondition(actual == expected)
+        precondition(actual.map(\.path) == expected.map(\.path), "actual=\(actual) expected=\(expected)")
     }
 
     static func makeApp(at appURL: URL, bundleID: String, executable: Bool) throws -> URL {

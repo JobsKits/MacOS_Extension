@@ -25,8 +25,10 @@
 | --- | --- |
 | 桌面空白右键 | 新建 Android AVD，不要求 Flutter 项目。 |
 | 普通文件夹空白、选中的文件 / 文件夹 | 不显示本菜单。 |
-| [独立安装](./【MacOS】安装Android模拟器Finder扩展.command) | 回车安装；任意非空输入跳过；构建并注册本功能，刷新 Finder。 |
-| [独立卸载](./【MacOS】卸载Android模拟器Finder扩展.command) | 核对注册路径后输入 `YES`，只移除本功能 App / appex；保留 Android SDK、AVD 与系统映像。 |
+| [独立安装](./【MacOS】安装Android模拟器Finder扩展.command) | 回车后由聚合管理器安装本叶，保留其它已选功能；非空输入跳过。 |
+| [独立卸载](./【MacOS】卸载Android模拟器Finder扩展.command) | 回车后只关闭本叶，保留共享 App、其它菜单与全部模拟器数据。 |
+
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `android-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行与依赖</span><!-- jobs-toc:heading-end -->
 
@@ -79,7 +81,7 @@ ANDROID_SIM_PROXY=http://127.0.0.1:7890 /bin/zsh ./Scripts/CreateAndroidSimulato
 | 总面板功能 ID | `android-simulator-create` |
 | 唯一业务 URL | `jobsandroidsimulatorcreator://simulator/create`，不接受外部路径、脚本或附加参数。 |
 
-整目录可以独立拷走构建，不依赖相邻功能或 `JobsCommand@Flutter` 仓库。独立安装的产物在 `./work/DerivedData/`，总安装的产物在上级仓库 `work/JobsAndroidSimulatorCreatorDerivedData/`。系统直接注册对应位置的 App，使用期间保留产物目录；两种安装方式共用 Bundle ID，安装器会核对并注销旧副本。
+原业务核心不依赖 `JobsCommand@Flutter` 仓库；菜单入口统一安装相邻 JobsDesktopTools。实际产物与登记身份见上方聚合说明，安装后保留该 App；旧 App / 资源不删除。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、调用流程与验证</span><!-- jobs-toc:heading-end -->
 

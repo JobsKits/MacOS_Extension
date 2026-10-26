@@ -20,7 +20,7 @@ struct ProjectOpenerBehaviorTests {
         let project = root.appendingPathComponent("项目 空格'名称", isDirectory: true)
         try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
         let source = project.appendingPathComponent("测试文件.swift")
-        try Data("// fixture".utf8).write(to: source)
+        try Data("SDKROOT = iphoneos;".utf8).write(to: source)
         var openedTargets: [URL] = []
         var chosenCandidates: [[URL]] = []
         var failures: [String] = []
@@ -41,24 +41,24 @@ struct ProjectOpenerBehaviorTests {
         try requireEqual(opener.projectCandidates(from: project), [])
         opener.open(source)
         precondition(openedTargets.isEmpty && chosenCandidates.isEmpty)
-        precondition(failures == ["没有可用的 Xcode 项目"])
+        precondition(failures == ["没有可用的 iOS 项目"])
         failures.removeAll()
         let xcodeProject = project.appendingPathComponent("工程.xcodeproj", isDirectory: true)
         let workspace = project.appendingPathComponent("主工程.xcworkspace", isDirectory: true)
         try fileManager.createDirectory(at: xcodeProject, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: workspace, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: xcodeProject.appendingPathComponent("project.pbxproj"))
-        try Data("<Workspace/>".utf8).write(to: workspace.appendingPathComponent("contents.xcworkspacedata"))
+        try Data("SDKROOT = iphoneos;".utf8).write(to: xcodeProject.appendingPathComponent("project.pbxproj"))
+        try Data("<Workspace><FileRef location=\"group:工程.xcodeproj\"/></Workspace>".utf8).write(to: workspace.appendingPathComponent("contents.xcworkspacedata"))
         precondition(XcodeProjectDetector.canOpen(project))
         precondition(!XcodeProjectDetector.canOpen(source))
         try requireEqual(opener.projectCandidates(from: xcodeProject), [xcodeProject])
         try requireEqual(opener.projectCandidates(from: workspace), [workspace])
-        try requireEqual(opener.projectCandidates(from: source), [workspace])
+        try requireEqual(opener.projectCandidates(from: source), [])
         opener.open(project)
         precondition(openedTargets.last?.resolvingSymlinksInPath() == workspace.resolvingSymlinksInPath() && chosenCandidates.isEmpty)
         let secondWorkspace = project.appendingPathComponent("第二工程.xcworkspace", isDirectory: true)
         try fileManager.createDirectory(at: secondWorkspace, withIntermediateDirectories: true)
-        try Data("<Workspace/>".utf8).write(to: secondWorkspace.appendingPathComponent("contents.xcworkspacedata"))
+        try Data("<Workspace><FileRef location=\"group:工程.xcodeproj\"/></Workspace>".utf8).write(to: secondWorkspace.appendingPathComponent("contents.xcworkspacedata"))
         let candidates = try opener.projectCandidates(from: project)
         precondition(Set(candidates.map { $0.resolvingSymlinksInPath() }) == Set([workspace, secondWorkspace].map { $0.resolvingSymlinksInPath() }))
         opener.open(project)
@@ -86,7 +86,7 @@ struct ProjectOpenerBehaviorTests {
                 failures.append(title)
             }
         )
-        failureOpener.open(source)
+        failureOpener.open(project)
         let deadline = Date().addingTimeInterval(1)
         while failures.isEmpty && Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
@@ -95,8 +95,8 @@ struct ProjectOpenerBehaviorTests {
         let countBeforeMissing = openedTargets.count
         opener.open(root.appendingPathComponent("不存在的项目"))
         precondition(openedTargets.count == countBeforeMissing)
-        precondition(failures.last == "无法读取项目位置")
-        print("PASS JobsXcodeOpener: 项目菜单识别、普通/Flutter 目录排除、Swift Package、伪工程排除、直接打开、特殊路径、workspace 优先、多候选选择/取消、系统打开失败与目标缺失")
+        precondition(failures.last == "没有可用的 iOS 项目")
+        print("PASS JobsXcodeOpener: 项目菜单识别、普通/Flutter 目录排除、纯 Swift Package / macOS 工程排除、伪工程排除、直接打开、特殊路径、workspace 优先、多候选选择/取消、系统打开失败与目标缺失")
     }
 
     static func verifyProjectDetection(in root: URL, fileManager: FileManager) throws {
@@ -121,13 +121,13 @@ struct ProjectOpenerBehaviorTests {
         let nestedProject = ios.appendingPathComponent("Runner.xcodeproj", isDirectory: true)
         try fileManager.createDirectory(at: nestedProject, withIntermediateDirectories: true)
         try Data("name: fixture\ndependencies:\n  flutter:\n    sdk: flutter\n".utf8).write(to: flutter.appendingPathComponent("pubspec.yaml"))
-        try Data("// fixture".utf8).write(to: nestedProject.appendingPathComponent("project.pbxproj"))
+        try Data("SDKROOT = iphoneos;".utf8).write(to: nestedProject.appendingPathComponent("project.pbxproj"))
         precondition(!XcodeProjectDetector.canOpen(flutter))
         precondition(XcodeProjectDetector.canOpen(ios))
         precondition(XcodeProjectDetector.canOpen(nestedProject))
         let hybridProject = flutter.appendingPathComponent("同层工程.xcodeproj", isDirectory: true)
         try fileManager.createDirectory(at: hybridProject, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: hybridProject.appendingPathComponent("project.pbxproj"))
+        try Data("SDKROOT = iphoneos;".utf8).write(to: hybridProject.appendingPathComponent("project.pbxproj"))
         precondition(!XcodeProjectDetector.canOpen(flutter))
         precondition(XcodeProjectDetector.canOpen(hybridProject))
         let flutterLink = root.appendingPathComponent("Flutter链接", isDirectory: true)
@@ -142,7 +142,7 @@ struct ProjectOpenerBehaviorTests {
                 preconditionFailure("Flutter 根目录不能进入 Xcode 候选选择")
             },
             reportFailure: { title, _ in
-                precondition(title == "没有可用的 Xcode 项目")
+                precondition(title == "没有可用的 iOS 项目")
                 rejectedFlutterTargets += 1
             }
         )
@@ -156,22 +156,22 @@ struct ProjectOpenerBehaviorTests {
         precondition(!XcodeProjectDetector.canOpen(package))
         try fileManager.removeItem(at: manifest)
         try Data("// swift-tools-version: 5.9".utf8).write(to: manifest)
-        precondition(XcodeProjectDetector.canOpen(package))
+        precondition(!XcodeProjectDetector.canOpen(package))
         precondition(!XcodeProjectDetector.canOpen(manifest))
         try fileManager.removeItem(at: manifest)
         precondition(!XcodeProjectDetector.canOpen(package))
 
         let upperCaseBundle = package.appendingPathComponent("工程.XCODEPROJ", isDirectory: true)
         try fileManager.createDirectory(at: upperCaseBundle, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: upperCaseBundle.appendingPathComponent("project.pbxproj"))
+        try Data("SDKROOT = iphoneos;".utf8).write(to: upperCaseBundle.appendingPathComponent("project.pbxproj"))
         precondition(XcodeProjectDetector.canOpen(package))
         precondition(XcodeProjectDetector.canOpen(upperCaseBundle))
         try verifyFlutterPrecedence(in: package)
         let hiddenRoot = root.appendingPathComponent("隐藏工程", isDirectory: true)
         let hiddenProject = hiddenRoot.appendingPathComponent(".隐藏.xcodeproj", isDirectory: true)
         try fileManager.createDirectory(at: hiddenProject, withIntermediateDirectories: true)
-        try Data("// fixture".utf8).write(to: hiddenProject.appendingPathComponent("project.pbxproj"))
-        precondition(!XcodeProjectDetector.canOpen(hiddenRoot))
+        try Data("SDKROOT = iphoneos;".utf8).write(to: hiddenProject.appendingPathComponent("project.pbxproj"))
+        precondition(XcodeProjectDetector.canOpen(hiddenRoot))
     }
 
     static func verifyFlutterPrecedence(in nativeProject: URL) throws {

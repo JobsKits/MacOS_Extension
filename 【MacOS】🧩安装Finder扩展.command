@@ -5,6 +5,36 @@
 # - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal、Flutter 与 iOS 功能选择，并重启 Finder 刷新右键菜单。
 # - 运行提示：运行后会先打印内置自述；按回车确认后，在原生 UI 中勾选需要安装的右键菜单功能。
 
+# ━━━━━━━━━━ 维护索引：面板 → 叶 ID → 安装单元 → 菜单 → 宿主业务 ━━━━━━━━━━
+# 1、面板来源：Scripts/SelectFinderExtensionFeatures.swift 的 FeatureOption.all 与 FeatureGroup.all。
+# 2、下方 SELECTABLE_FUNCTION_TITLE/PROJECT_KEY 将面板 leaf ID 映射到唯一安装单元；
+#    parse_feature_selection 保留逐叶选择并去重工程，install_feature 负责分发。
+# 3、IDE/Git：project-tools → JobsProjectTools/Shared/ProjectMenuAction.swift →
+#    JobsProjectToolsFinderSync/FinderSync.swift → AppDelegate.swift；配置在真实账户 Home
+#    的 Library/Application Support/JobsProjectTools/EnabledFeatures.txt。
+# 4、桌面：desktop-tools → JobsDesktopTools/Shared/DesktopMenuAction/DesktopMenuAction.swift。
+#    固定顺序：ios-simulator-create → android-simulator-create → harmony-simulator-create →
+#    android-simulator-repair → harmony-simulator-repair → hidden-files-toggle。
+#    JobsDesktopToolsFinderSync/FinderSync.swift 一次生成同一 NSMenu，前三项因此始终相邻；
+#    普通目录背景仅保留隐藏开关，不显示模拟器；不控制本仓以外的菜单插入位置。
+#    JobsDesktopTools/AppDelegate.swift → DesktopActionExecutor → Core 中的原功能启动器，
+#    Resource/ 的五份完整脚本逐字节来源见 SourceManifest.json；隐藏开关使用本包 CFPreferences。
+#    六个旧 leaf ID 和独立安装/卸载入口保持兼容，统一转交 Scripts/ManageDesktopTools.zsh。
+#    配置：真实账户 Home/Library/Application Support/JobsDesktopTools/EnabledFeatures.txt；
+#    首次迁移仅带入 PlugInKit 明确启用的旧叶，安装取并集、卸载只去掉指定项。
+#    产物：JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app，
+#    内嵌 JobsDesktopToolsFinderSync.appex；每次仅构建注册一次，失败恢复配置和旧状态。
+# 5、Flutter：flutter-tools → JobsFlutterToolsFinderSync/FinderSync.swift，按共享动作表分发；
+#    精确选择写 JobsFinderExtensions/flutter-tools-features.conf，不依赖原脚本仓运行。
+# 6、iOS：ios-tools → JobsIOSToolsFinderSync/FinderSync.swift → AppDelegate/IOSToolsLauncher；
+#    脚本位于 JobsIOSTools/Scripts/Tools；Terminal 仍由 terminal_opener 单元承接通用动作。
+# 7、其它单元：FEATURE_PROJECT_DIR/SCHEME/APP/EXTENSION 各表决定工程与身份；
+#    同项目 FinderSync 是菜单文字/资格/置灰入口，宿主 Model/Launcher 与 Scripts 是执行入口。
+#    图标改菜单显示标题，不改 leaf ID/URL/资源名；增加功能同时核对选择器、安装、卸载和测试。
+#    标题未命中时先追 leaf ID/旧别名，再查 PlugInKit 实际登记路径与 Bundle ID，
+#    最后对照 Git 历史；不能仅凭当前文字搜索排除旧安装产物。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 # 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
 jobs_intro_style() {
   local intro_color=0
@@ -52,7 +82,7 @@ TERMINAL_OPENER_ENABLED_FEATURES=""
 IOS_TOOLS_ENABLED_FEATURES=""
 FLUTTER_TOOLS_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(project-tools path_copier run-authorize run-revoke ipa-resign hidden-files-toggle flutter-tools ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair terminal_opener ios-tools)
+FEATURE_KEYS=(project-tools path_copier run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -64,6 +94,15 @@ typeset -A SELECTABLE_FUNCTION_TITLE
 typeset -A SELECTABLE_FUNCTION_PROJECT_KEY
 typeset -A SELECTABLE_FUNCTION_TERMINAL_ACTION
 typeset -A SELECTABLE_FUNCTION_FLUTTER_ACTION
+
+# 桌面六个可选叶共用一个扩展，以单菜单生成固定顺序；旧工程映射保留用于兼容诊断。
+FEATURE_TITLE[desktop-tools]="桌面模拟器与文件显示工具"
+FEATURE_PROJECT_DIR[desktop-tools]="JobsDesktopTools"
+FEATURE_SCHEME[desktop-tools]="JobsDesktopTools"
+FEATURE_APP_NAME[desktop-tools]="JobsDesktopTools"
+FEATURE_APP_ID[desktop-tools]="com.jobs.desktoptools"
+FEATURE_EXTENSION_NAME[desktop-tools]="JobsDesktopToolsFinderSync.appex"
+FEATURE_EXTENSION_ID[desktop-tools]="com.jobs.desktoptools.findersync"
 
 FEATURE_TITLE[project-tools]="IDE 项目工具 / Git操作"
 FEATURE_PROJECT_DIR[project-tools]="JobsProjectTools"
@@ -276,7 +315,7 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -290,7 +329,7 @@ SELECTABLE_FUNCTION_PROJECT_KEY[run-revoke]="run-revoke"
 SELECTABLE_FUNCTION_TITLE[ipa-resign]="IPA 免编译重签"
 SELECTABLE_FUNCTION_PROJECT_KEY[ipa-resign]="ipa-resign"
 SELECTABLE_FUNCTION_TITLE[hidden-files-toggle]="显示 / 隐藏文件"
-SELECTABLE_FUNCTION_PROJECT_KEY[hidden-files-toggle]="hidden-files-toggle"
+SELECTABLE_FUNCTION_PROJECT_KEY[hidden-files-toggle]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[xcode_opener]="用 Xcode 打开项目"
 SELECTABLE_FUNCTION_PROJECT_KEY[xcode_opener]="project-tools"
 SELECTABLE_FUNCTION_TITLE[vscode_opener]="用 VSCode 打开项目"
@@ -316,15 +355,15 @@ SELECTABLE_FUNCTION_PROJECT_KEY[flutter-doctor]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-codegen]="Flutter 自动化生产代码"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-codegen]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[ios-simulator-create]="新建 iOS 模拟器"
-SELECTABLE_FUNCTION_PROJECT_KEY[ios-simulator-create]="ios-simulator-create"
+SELECTABLE_FUNCTION_PROJECT_KEY[ios-simulator-create]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[android-simulator-create]="新建 Android 模拟器"
-SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-create]="android-simulator-create"
+SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-create]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[android-simulator-repair]="Android 模拟器检测与修复"
-SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-repair]="android-simulator-repair"
+SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-repair]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[harmony-simulator-create]="新建 Harmony 模拟器"
-SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-create]="harmony-simulator-create"
+SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-create]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[harmony-simulator-repair]="Harmony 模拟器检测与修复"
-SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-repair]="harmony-simulator-repair"
+SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-repair]="desktop-tools"
 SELECTABLE_FUNCTION_TITLE[git-proxy-configure]="配置 Git 动态代理"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-proxy-configure]="project-tools"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
@@ -1147,6 +1186,15 @@ persist_flutter_feature_selection() {
 # 安装单个 Finder 扩展功能。
 install_feature() {
   local key="$1"
+
+  if [[ "$key" == desktop-tools ]]; then
+    local selected_id="" desktop_features=()
+    for selected_id in "${SELECTED_FUNCTION_IDS[@]}"; do
+      [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_id]}" == desktop-tools ]] && desktop_features+=("$selected_id")
+    done
+    JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" install "${desktop_features[@]}" --non-interactive --skip-finder-restart 2>&1 | tee -a "$LOG_FILE"
+    return ${pipestatus[1]}
+  fi
 
   if [[ "$key" == project-tools ]]; then
     local selected_id="" project_features=()

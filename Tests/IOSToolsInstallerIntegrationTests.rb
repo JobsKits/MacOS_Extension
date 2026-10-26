@@ -31,7 +31,7 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
     option_count, project_count = lines.last.split(':').map(&:to_i)
     assert_equal selector.scan(/FeatureOption\(identifier: "([^"]+)"/).length, option_count
     assert_operator option_count, :>=, 29
-    assert_operator project_count, :>=, 12
+    assert_equal 9, project_count
   end
 
   def test_codesnippets_can_be_installed_alone_without_disabling_existing_ios_tools

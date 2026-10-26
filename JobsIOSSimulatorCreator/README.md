@@ -46,25 +46,27 @@
 | 桌面右键 | 直接体检工具链后进入相同核心，保留已有设备与调试会话，不安装或升级工具。 |
 | 两侧 `--help` / `--check` | 在清场、安装及创建前分流；无 TTY 也可只读运行。 |
 
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `ios-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+
 ## 一、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。也可运行[总安装器](../【MacOS】🧩安装Finder扩展.command)，只勾选“新建 iOS 模拟器”后点击安装。
+两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；安装入口转交相邻聚合包，仅本目录的业务脚本仍可独立运行。也可运行[总安装器](../【MacOS】🧩安装Finder扩展.command)，只勾选“新建 iOS 模拟器”后点击安装。
 
 ### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装iOS模拟器Finder扩展.command](./【MacOS】安装iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 独立构建、注册并启用本工程的“新建 iOS 模拟器”桌面右键扩展。
+> **目的：** 在统一桌面菜单中启用“新建 iOS 模拟器”这一叶。
 
 - 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；只装 Command Line Tools 不够。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。安装过程不创建、不删除任何模拟器或运行时。
-- 首次按系统提示启用 `JobsIOSSimulatorCreator` 的 Finder 扩展；右键后若系统询问控制 Terminal，允许后继续。日志为系统临时目录中的 `JobsIOSSimulatorCreatorInstall.log`。
+- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物使用上方聚合 App 路径，成功后按需刷新 Finder，不打开业务 URL。安装过程不创建、不删除任何模拟器或运行时。
+- 首次按系统提示启用 `JobsDesktopTools` 的 Finder 扩展；右键后若系统询问该宿主控制 Terminal，允许后继续。日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
 
 ### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载iOS模拟器Finder扩展.command](./【MacOS】卸载iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 停用、注销本功能的桌面右键菜单，并移除已登记的自有 App 构建产物。
+> **目的：** 只关闭本叶菜单，最后一叶关闭时停用聚合扩展，保留共享 App 和业务数据。
 
-- 阅读内置自述并回车，展示真实注册路径后必须输入 `YES` 才继续；也可使用总卸载器。
-- 只移除右键扩展及核验过的宿主 App；已创建的模拟器、系统运行时与工程源码保留。
-- 日志为系统临时目录中的 `【MacOS】卸载iOS模拟器Finder扩展.log`。
+- 阅读管理器自述后直接回车关闭本叶；任意非空输入、Ctrl+C 或输入结束停止，也可使用总卸载器。
+- 只关闭本叶；保留聚合 App 的其它功能、已有模拟器、运行时和源码。
+- 安装与卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。
 
 ## 二、<span id="usage">使用方式</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

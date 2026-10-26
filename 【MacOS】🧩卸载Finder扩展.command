@@ -688,6 +688,10 @@ uninstall_feature() {
   local key="$1"
 
   case "$key" in
+    ios-simulator-create|android-simulator-create|harmony-simulator-create|android-simulator-repair|harmony-simulator-repair|hidden-files-toggle)
+      JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" uninstall "$key" --non-interactive --skip-finder-restart 2>&1 | tee -a "$LOG_FILE"
+      return ${pipestatus[1]}
+      ;;
     android_studio_opener|vscode_opener|xcode_opener|git-pull|git-rollback|git_remote|git_remote_copier|git-proxy-configure|git_empty_commit_push)
       /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "$key" 2>&1 | tee -a "$LOG_FILE"
       return ${pipestatus[1]}

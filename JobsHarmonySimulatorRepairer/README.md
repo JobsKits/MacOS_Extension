@@ -23,7 +23,9 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-为 [**macOS**](https://www.apple.com/macos/) 系统桌面空白右键提供 **Harmony 模拟器检测与修复**。独立 App + [**Finder Sync Extension**](https://developer.apple.com/documentation/findersync)，通过可见 Terminal 使用 [**Huawei DevEco Emulator**](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-emulator-command-line) 官方命令处理本机已有实例。核心随 App 打包，拷走本目录也可独立安装。
+为 [**macOS**](https://www.apple.com/macos/) 系统桌面空白右键提供 **Harmony 模拟器检测与修复**。独立 App + [**Finder Sync Extension**](https://developer.apple.com/documentation/findersync)，通过可见 Terminal 使用 [**Huawei DevEco Emulator**](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-emulator-command-line) 官方命令处理本机已有实例。核心随聚合 App 打包，源码安装需保留相邻聚合目录。
+
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `harmony-simulator-repair` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="capabilities">功能与范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -47,17 +49,17 @@
 > **目的：** 独立构建并启用本功能，刷新 Finder。
 
 - 阅读内置自述，直接回车安装；任意非空输入（含空格）跳过，Ctrl+C / 输入结束停止。
-- 检查 Xcode，构建到 `./work/DerivedData/Build/Products/Debug/JobsHarmonySimulatorRepairer.app`，核对 Bundle ID 与签名。
-- 注册和启用该 App 内扩展并刷新 Finder；产物为实际加载位置，安装后保留。
-- 安装日志为系统临时目录的 `JobsHarmonySimulatorRepairerInstall.log`。
+- 检查 Xcode，构建相邻 JobsDesktopTools 并核对聚合 Bundle ID 与签名，仅启用本叶。
+- 统一扩展启用并发布选择成功后停用旧重复菜单；其它已选叶和所有设备数据保留。
+- 安装与卸载日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
 
 ### <span id="jobs-toc-heading-5" data-jobs-toc="v2">[【MacOS】卸载Harmony模拟器检测修复Finder扩展.command](./【MacOS】卸载Harmony模拟器检测修复Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 精确停用并注销本功能，移除身份核对后的已登记 App。
+> **目的：** 只关闭本叶菜单，最后一叶关闭时停用聚合扩展；保留共享 App 和业务数据。
 
-- 阅读自述，预览路径后输入 `YES` 才卸载并刷新 Finder。
-- 只处理 `com.jobs.harmonysimulatorrepairer` 及其 `.findersync` 扩展，保留源码、SDK、镜像、实例、备份和业务日志。
-- 日志位于系统临时目录，与卸载脚本同名、扩展名为 `.log`。
+- 阅读管理器自述后，直接回车只关闭本功能；任意非空输入、Ctrl+C 或输入结束停止。
+- 只移除本叶开关；聚合包的其它功能、源码、SDK、镜像、实例、备份和业务日志保留。
+- 安装与卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。
 
 也可通过[总安装面板](../README.md)勾选本功能，标识为 `harmony-simulator-repair`。首次从右键派发需要允许本 App 控制 Terminal。
 

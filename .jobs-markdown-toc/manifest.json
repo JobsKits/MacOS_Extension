@@ -62,6 +62,8 @@
     "JobsHarmonySimulatorRepairer/Scripts/README.md",
     "JobsGitRollback/README.md",
     "JobsGitRollback/Scripts/README.md",
-    "JobsProjectTools/README.md"
+    "JobsProjectTools/README.md",
+    "JobsDesktopTools/README.md",
+    "JobsDesktopTools/Scripts/README.md"
   ]
 }

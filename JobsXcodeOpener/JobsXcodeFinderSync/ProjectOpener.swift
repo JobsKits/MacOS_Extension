@@ -36,7 +36,7 @@ final class ProjectOpener {
                 if didStartAccessing {
                     selectedURL.stopAccessingSecurityScopedResource()
                 }
-                reportFailure("没有可用的 Xcode 项目", "当前目录需要包含 Xcode 工程、工作区或 Package.swift。")
+                reportFailure("没有可用的 iOS 项目", "请选择含 iPhone 平台 Xcode 工程或工作区的非空目录。macOS 工程、纯 Swift Package 和普通文件不适用。")
                 return
             }
             let chosenURL = candidates.count == 1 ? candidates.first : chooseCandidate(candidates)
@@ -65,16 +65,7 @@ final class ProjectOpener {
     }
 
     func projectCandidates(from selectedURL: URL) throws -> [URL] {
-        guard selectedURL.isFileURL else {
-            throw NSError(domain: "JobsXcodeFinderSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "请选择本地文件或文件夹。"])
-        }
-        let selectedURL = selectedURL.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory) else {
-            throw NSError(domain: "JobsXcodeFinderSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "所选文件或文件夹已不存在。"])
-        }
-        let directoryURL = isDirectory.boolValue ? selectedURL : selectedURL.deletingLastPathComponent()
-        return try XcodeProjectDetector.projectCandidates(in: directoryURL, fileManager: fileManager)
+        return try XcodeProjectDetector.projectCandidates(in: selectedURL.standardizedFileURL, fileManager: fileManager)
     }
 
     static func openWithXcode(_ targetURL: URL, completion: @escaping (Error?) -> Void) {

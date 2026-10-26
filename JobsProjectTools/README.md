@@ -26,9 +26,9 @@
 
 | 顺序 | 操作 | 显示规则 |
 | --- | --- | --- |
-| 1 | 用 Android Studio 打开项目 | 非 Xcode 项目 |
-| 2 | 用 VSCode 打开项目 | 非 Xcode 项目 |
-| 3 | 用 Xcode 打开项目 | 当前目录包含有效 `.xcworkspace`、`.xcodeproj` 或 `Package.swift`，也支持直接选择工程包 |
+| 1 | 🧭 用 Android Studio 打开项目 | 非空的 Android 原生、Flutter 官方或 Flutter 鸿蒙项目根目录 |
+| 2 | 📝 用 VSCode 打开项目 | 非空、非 iOS 项目的普通文件夹；普通非 iOS 目录、macOS 工程和纯 Swift Package 可用 |
+| 3 | 🛠️ 用 Xcode 打开项目 | 非空的 iOS 工程目录或有效 iOS `.xcodeproj` / `.xcworkspace` 工程包 |
 | 4 | Git操作 → 拉取 Git 到最新 | 有效 Git 工作树内的普通文件夹，沿用原拉取脚本的复核和交互流程 |
 | 5 | Git操作 → Git 提交回退 | 同上；独立 Terminal 中选择远端快照 soft、历史 soft 或历史 hard，hard 必须精确输入 `YES` |
 | 6 | Git操作 → 打开 Git 远程地址 | 同上；点击后解析所属仓库并在默认浏览器打开远程网页 |
@@ -36,7 +36,17 @@
 | 8 | Git操作 → 配置 Git 动态代理 | 同上；在 Terminal 安装、只读检查或恢复用户级动态 Git 入口 |
 | 9 | Git操作 → 在终端创建空白 Commit 并 Push | 同上；Terminal 再检查分支、暂存区及远程后创建空白提交并推送 |
 
-Flutter 根目录仍优先交给 Android Studio / VSCode；其 `ios` 子目录按本层 Xcode 工程判断。保留原有 Swift Package 支持。选择文件时按所在目录判断 IDE；Git 子菜单只接受普通文件夹及其内部空白处，支持仓库根、仓库子目录、子模块和 worktree。普通非 Git 目录、文件、目录包、符号链接、多选、工具栏和真实桌面空白处不显示 Git 子菜单；六项均未启用时也不显示空菜单。菜单打开后目标发生变化，点击和宿主仍会重新核验。
+所有 IDE 入口先验证所选对象是可读取的非空目录；仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 时视为空，其余隐藏项（包括 `.git`）仍算内容。普通文件、符号链接、多选、失效路径和不支持的目录包不显示；不把普通文件或无效工程包归一到父目录。菜单生成、点击及宿主派发前共用同一规则，目录被清空或项目类型改变时停止打开，也不先查询 IDE 安装或进入下载页。
+
+Android 原生根目录要求本层存在 `settings.gradle` 或 `settings.gradle.kts`，并在本层 / `app/` 的构建脚本中有 Android 插件声明，或存在本层 / `src/main/` / `app/src/main/` 的 `AndroidManifest.xml`；普通 Gradle 项目不满足。Flutter 官方和 Flutter 鸿蒙根目录均以 `pubspec.yaml` 的有效 `dependencies.flutter.sdk: flutter` 声明识别，并优先于本层原生工程。只检查当前层与明确的 Android 标准路径，不递归向上或向下寻找项目。
+
+iOS 资格要求本层 `.xcodeproj/project.pbxproj` 明确配置 `SDKROOT = iphoneos / iphonesimulator`，或 `SUPPORTED_PLATFORMS` 含 iPhone 平台；`.xcworkspace` 必须通过明确的本地工程引用指向这类项目。纯 macOS 工程、仅有 `Package.swift` 或 `Podfile` 不自动当作 iOS 项目。Flutter 根目录即使包含 `ios/` 子工程仍保留 Android Studio / VSCode；单独进入 `ios/` 才按本层工程判断。
+
+读取 Xcode 元数据时单文件上限为 1 MiB；已存在但不可读、编码 / XML 损坏、超过上限或明确的工程引用无法解析时，按未知类型处理，隐藏 VSCode / Android Studio 项目入口，不把读取失败当作非 iOS。可正常读取的 macOS 工程、SDK 宏以及纯 Swift Package 不因此禁用 VSCode。
+
+Git 子菜单只接受有效 Git 工作树内的普通文件夹及其内部空白处，支持仓库根、子目录、子模块和 worktree；原 Git 身份校验与操作确认保持不变。
+
+识别回归位于 `./Tests/IDEProjectDetectionTests.swift`，菜单 / 点击回归位于 `./Tests/MenuTests.py`；使用临时目录和打开器替身，不启动真实 IDE。
 
 Finder 只控制本扩展内的顺序；整组相对其他扩展的位置由系统决定。
 

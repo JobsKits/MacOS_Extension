@@ -82,7 +82,10 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     assert_equal all.join(','), lines[0]
     assert_equal all.join(','), lines[1]
     grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier git-proxy-configure]
-    projects = independent.map { |key| grouped.include?(key) ? 'project-tools' : key }.uniq
+    desktop = %w[ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair hidden-files-toggle]
+    projects = independent.map do |key|
+      grouped.include?(key) ? 'project-tools' : (desktop.include?(key) ? 'desktop-tools' : key)
+    end.uniq
     assert_equal projects + ['terminal_opener', 'ios-tools', 'flutter-tools'], lines[2].split(',')
   end
 
@@ -327,7 +330,7 @@ def test_missing_flutter_run_project_stops_with_complete_repository_guidance
   assert_missing_project_stops('flutter-run', 'JobsFlutterRunner')
 end
 
-  def test_simulator_selection_uses_its_own_project_and_explicit_bundle_identifiers
+  def test_simulator_selection_uses_aggregate_and_retains_legacy_cleanup_identity
     output = run_definitions(INSTALLER, <<~'ZSH')
       parse_feature_selection 'ios-simulator-create,ios-simulator-create' || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"
@@ -341,7 +344,7 @@ end
       app_bundle_id_for_key flutter_version_manager
       app_bundle_id_for_key flutter-run
     ZSH
-    assert_equal ['ios-simulator-create', '新建 iOS 模拟器', 'JobsIOSSimulatorCreator',
+    assert_equal ['desktop-tools', '新建 iOS 模拟器', 'JobsIOSSimulatorCreator',
                   'JobsIOSSimulatorCreator', 'JobsIOSSimulatorFinderSync.appex',
                   'com.jobs.iossimulatorcreator', 'com.jobs.iossimulatorcreator.findersync',
                   'terminal:', 'com.jobs.JobsFlutterVersionMgr', 'com.jobs.JobsFlutterRunner'], output.lines.map(&:strip)
@@ -469,7 +472,7 @@ end
   end
 
   def test_missing_simulator_project_stops_with_complete_repository_guidance
-    assert_missing_project_stops('ios-simulator-create', 'JobsIOSSimulatorCreator')
+    assert_missing_project_stops('desktop-tools', 'JobsDesktopTools')
   end
 
   def test_run_authorization_selection_uses_one_independent_project

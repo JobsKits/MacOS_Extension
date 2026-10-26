@@ -28,10 +28,12 @@ Jobs 维护的独立 [**Finder**](https://support.apple.com/guide/mac-help/welco
 | --- | --- |
 | 系统桌面空白右键 | 固定请求交给独立 Terminal，执行自包含创建脚本，不要求项目。 |
 | 普通目录背景、任何选中项菜单 | 隐藏本入口；点击旧菜单时重新核对桌面上下文。 |
-| [独立安装](./【MacOS】安装鸿蒙模拟器Finder扩展.command) | 阅读自述，回车安装，任意非空输入跳过；只构建并启用本扩展。 |
-| [独立卸载](./【MacOS】卸载鸿蒙模拟器Finder扩展.command) | 核对已登记路径并输入 `YES`，只移除本功能 App / appex，保留模拟器与镜像。 |
+| [独立安装](./【MacOS】安装鸿蒙模拟器Finder扩展.command) | 回车后由聚合管理器安装本叶，保留其它已选功能；非空输入跳过。 |
+| [独立卸载](./【MacOS】卸载鸿蒙模拟器Finder扩展.command) | 回车后只关闭本叶，保留共享 App、其它菜单与全部模拟器数据。 |
 | 缺少兼容工具 | 首屏回车确认后，从 SDL 免登录镜像补齐 Mac ARM64 工具依赖，校验并复检；不升级健康工具。 |
 | 缺少 Release 系统镜像 | 自动读取官方可下载清单，回车选最新稳定版手机镜像；展示许可并由本人同意后下载，核验就绪再继续。 |
+
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `harmony-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="requirements">平台与官方命令</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -128,7 +130,7 @@ Emulator -start JobsHarmony_phone
 | 总面板功能 ID | `harmony-simulator-create` |
 | 固定请求 | `jobsharmonysimulatorcreator://simulator/create`，不接受外部参数、路径或脚本。 |
 
-安装 / 卸载入口裸露，与本 README 平级。工程为父仓中的普通源码目录，不含独立 Git，不依赖相邻功能。独立安装产物位于 `./work/DerivedData/`，总安装产物位于上级 `work/JobsHarmonySimulatorCreatorDerivedData/`；系统从该位置启动 App / appex，使用期间保留。两种入口核对并注销同 Bundle ID 的旧路径，保留其它应用。
+安装 / 卸载入口裸露，与本 README 平级。原工程为父仓中的普通源码目录，不含独立 Git；菜单入口转交相邻 JobsDesktopTools。实际产物与登记身份见上方聚合说明，旧核心和资源仍可在本目录独立测试。
 
 Finder 监控根目录并按真实 Home/Desktop 白名单筛选，兼容沙盒 Home 重定向、目录元数据不可读及可解析桌面别名。菜单资格由 `contextualMenuForContainer` 表示空白背景；旧 `selectedURLs` 元数据不用于推断菜单类型。所有 `contextualMenuForItems` 均隐藏。宿主每次运行只派发首个合法请求，私有载体目录权限 `700`、文件 `600`，结束后精确清理本次载体，保留业务退出码。
 

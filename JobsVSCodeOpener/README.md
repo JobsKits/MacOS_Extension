@@ -50,15 +50,21 @@
 
 2、构建阶段会注册、启用此扩展并刷新 Finder；宿主 App 也提供“重新启用扩展”“打开扩展设置”和“刷新状态”入口。
 
-3、在 Finder 中选中一个本地文件或文件夹后右键，也可在文件夹空白处右键，点击“用 VSCode 打开项目”。多选多个 Finder 项目或当前目标属于 Xcode 项目时不显示此菜单。
+3、在 Finder 中右键非空、非 iOS 的普通文件夹；包括一般目录、Android、Flutter 官方 / 鸿蒙、macOS 工程及纯 Swift Package，也可在该目录内部空白处右键，点击“📝 用 VSCode 打开项目”。空目录不显示此入口。
 
-4、项目文件夹原样交给编辑器；普通文件归一到其所在目录；无效的 `.xcworkspace` / `.xcodeproj` 同后缀目录沿用父目录归一。目标目录本身是有效工程包，或实际打开目录当前层包含有效工程包 / 普通文件 `Package.swift` 时，只允许使用“用 Xcode 打开项目”。工程包分别核验 `contents.xcworkspacedata` / `project.pbxproj` 为普通文件，不只看后缀。识别到 `pubspec.yaml` 声明 Flutter SDK 依赖的 [**Flutter**](https://flutter.dev/) 根目录时优先保留 VSCode / [**Android Studio**](https://developer.android.com/studio?hl=zh-c) 入口，同层包含原生工程也不显示 Xcode 入口；原生 `ios` 子目录单独判断，不递归把其工程计入 Flutter 根目录。
+4、符合条件的项目文件夹原样交给编辑器。所有 IDE 入口先验证所选对象是可读取的非空目录；仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 时视为空，其余隐藏项（包括 `.git`）仍算内容。普通文件、符号链接、多选、失效路径和不支持的目录包不显示；不把普通文件或无效工程包归一到父目录。菜单生成、点击及宿主派发前共用同一规则，目录被清空或项目类型改变时停止打开，也不先查询 IDE 安装或进入下载页。
+
+   Android 原生根目录要求本层存在 `settings.gradle` 或 `settings.gradle.kts`，并在本层 / `app/` 的构建脚本中有 Android 插件声明，或存在本层 / `src/main/` / `app/src/main/` 的 `AndroidManifest.xml`；普通 Gradle 项目不满足。Flutter 官方和 Flutter 鸿蒙根目录均以 `pubspec.yaml` 的有效 `dependencies.flutter.sdk: flutter` 声明识别，并优先于本层原生工程。只检查当前层与明确的 Android 标准路径，不递归向上或向下寻找项目。
+
+   iOS 资格要求本层 `.xcodeproj/project.pbxproj` 明确配置 `SDKROOT = iphoneos / iphonesimulator`，或 `SUPPORTED_PLATFORMS` 含 iPhone 平台；`.xcworkspace` 必须通过明确的本地工程引用指向这类项目。纯 macOS 工程、仅有 `Package.swift` 或 `Podfile` 不自动当作 iOS 项目。Flutter 根目录即使包含 `ios/` 子工程仍保留 Android Studio / VSCode；单独进入 `ios/` 才按本层工程判断。
+
+读取 Xcode 元数据时单文件上限为 1 MiB；已存在但不可读、编码 / XML 损坏、超过上限或明确的工程引用无法解析时，按未知类型处理，隐藏 VSCode / Android Studio 项目入口，不把读取失败当作非 iOS。可正常读取的 macOS 工程、SDK 宏以及纯 Swift Package 不因此禁用 VSCode。
 
 5、菜单点击只把路径交给宿主 App：扩展进程在沙盒里调用 LaunchServices 启动外部 App 可能静默失败，所以由宿主完成查找 IDE、打开项目和错误提示。菜单冷启动宿主时不显示配置窗口、不进 Dock，处理完自动退出；手动运行宿主仍显示配置界面。完整宿主必须向 LaunchServices 登记，正常构建或安装会登记 `jobsvscodeopener` 唤起通道；通道未登记时可手动运行一次宿主排查，无须每次先打开配置界面。
 
 6、每次点击都通过 LaunchServices 的 Bundle ID 查找所有已登记副本，核验 App 目录、Bundle ID 和可执行文件；支持常规安装、用户应用目录及系统已登记的其它位置，不依赖终端 `PATH` 或固定的 `/Applications` 路径。
 
-7、缺失、注册残留或可执行文件损坏时，直接打开 `https://code.visualstudio.com/download` 并结束，不会再尝试打开项目。已安装应用启动失败时显示错误，供用户处理系统权限、首次启动或应用自身问题。菜单点击和宿主收到请求后都会复查项目类型；Xcode 项目会在查询 VSCode 安装之前被拒绝，也不会进入下载页。
+7、缺失、注册残留或可执行文件损坏时，直接打开 `https://code.visualstudio.com/download` 并结束，不会再尝试打开项目。已安装应用启动失败时显示错误，供用户处理系统权限、首次启动或应用自身问题。菜单点击和宿主收到请求后都会复查项目类型；iOS、空目录或失效目标会在查询 VSCode 安装之前被拒绝，也不会进入下载页。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与卸载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -95,7 +101,7 @@
     CODE_SIGNING_ALLOWED=NO build
   ```
 
-- 行为回归使用 `./Tests/ProjectOpenerBehaviorTests.swift`，通过替身打开器验证 Xcode 项目互斥、Flutter 根目录包含同层原生工程仍可打开及 `ios` 子目录的边界、无效工程标记、目录与特殊路径归一、应用健康检查、缺失应用停止、请求编解码，以及成功和失败时主线程完成回调恰好执行一次。Xcode 拒绝路径同时验证不会查询 VSCode 安装、打开项目或下载页。当前路径归一只产生一个目录，不触发多候选选择或取消；测试不会实际启动 IDE 或浏览器：
+- 行为回归使用 `./Tests/ProjectOpenerBehaviorTests.swift`，通过临时目录和打开器替身验证非空目录、iOS 排除、普通文件 / 链接拒绝、特殊路径、应用健康检查、下载失败及点击时复核；VSCode 同时验证请求编码和主线程完成回调。不会启动真实 IDE 或浏览器：
 
   ```shell
   xcrun swiftc -parse-as-library \
@@ -150,7 +156,7 @@
 
 ## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、排查与实现依据 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-- 菜单未出现：Xcode 项目会隐藏 VSCode 入口；其它目标先在宿主 App 打开扩展设置，确认“用 VSCode 打开项目”已启用，再重新打开 Finder 窗口。
+- 菜单未出现：先排除空目录、iOS 项目、普通文件或符号链接；符合范围的目标再在宿主 App 打开扩展设置，确认“用 VSCode 打开项目”已启用，再重新打开 Finder 窗口。
 - 点击后完全没反应：先确认已重新编译、部署完整 App 并刷新 Finder，再运行一次宿主，让系统登记 `jobsvscodeopener` 唤起通道；查看系统临时目录中的 `JobsVSCodeOpener.log` 是否收到 `open request`。没有记录时，结合宿主启动日志及“控制台”里 `JobsVSCodeFinderSync` 的 `request host` / `handoff` 日志定位请求停在哪一段。
 - 宿主生命周期：纯代码 App 只有 `@main` 时没有显式连接 `AppDelegate`，会导致生命周期和打开请求没有进入代理。`./JobsVSCodeOpener/main.swift` 现在强持有代理、设置 `NSApplication.shared.delegate` 后进入 `NSApplicationMain`；代理在 `applicationWillFinishLaunching` 提前注册 `GURL`，冷启动请求先排队，再于启动完成后处理。入口依据：[Apple NSApplication](https://developer.apple.com/documentation/appkit/nsapplication)。
 - 菜单路径传递：原菜单依赖 `NSMenuItem.representedObject` 保存路径，Finder 转发动作时该值丢失会使动作提前返回。现在选中项和空白处菜单分别使用独立 selector，在点击时实时读取 `selectedItemURLs()` / `targetedURL()`；上下文失效会显示提示。调用时机依据：[Apple selectedItemURLs](<https://developer.apple.com/documentation/findersync/fifindersynccontroller/selecteditemurls()>)。

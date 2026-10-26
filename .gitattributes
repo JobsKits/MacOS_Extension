@@ -62,4 +62,6 @@
 "/JobsGitRollback/README.md" filter=jobs-markdown-toc
 "/JobsGitRollback/Scripts/README.md" filter=jobs-markdown-toc
 "/JobsProjectTools/README.md" filter=jobs-markdown-toc
+"/JobsDesktopTools/README.md" filter=jobs-markdown-toc
+"/JobsDesktopTools/Scripts/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

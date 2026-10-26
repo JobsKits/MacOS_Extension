@@ -30,19 +30,21 @@
 
 独立 <u>[**Swift**](https://www.swift.org/)</u> macOS App + [**Finder Sync Extension**](https://developer.apple.com/documentation/findersync) 工程，为 Finder 增加“用 Xcode 打开项目”。安装 Finder 扩展已以 [**Xcode**](https://developer.apple.com/xcode) 为前提，点击后直接交给系统打开所选项目，不再重复检测 Xcode 安装状态或打开下载页。
 
-只在 Xcode 项目目录或工程包上显示入口；同一目标由 [VSCode](../JobsVSCodeOpener/README.md)、[Android Studio](../JobsAndroidStudioOpener/README.md) 扩展隐藏各自的打开菜单。
+只对非空的 iOS 项目目录或有效 iOS 工程包显示“🛠️ 用 Xcode 打开项目”；同一目标隐藏 Android Studio / VSCode 项目入口。
 
 | 右键目标 | Xcode 入口 | VSCode / Android Studio 入口 |
 | --- | --- | --- |
-| 当前层有 `.xcworkspace` / `.xcodeproj` 的项目目录、工程包本身 | 显示 | 隐藏 |
-| 当前层有 `Package.swift` 文件的 Swift Package 目录 | 显示 | 隐藏 |
-| Flutter 根目录（即使同层也有 Xcode 工程） | 隐藏 | 保留 Android Studio / VSCode |
-| 普通目录 | 隐藏 | 保留原行为 |
-| 普通文件 | 隐藏 | 所在目录为 Xcode 项目时隐藏，否则保留原行为 |
+| 当前层有效 iOS Xcode 工程、明确引用它的工作区，或工程包本身 | 显示 | 隐藏 |
+| 非空 Flutter 官方 / 鸿蒙根目录 | 隐藏 | 两项显示 |
+| 非空 Android 原生根目录 | 隐藏 | 两项显示 |
+| 非空普通目录、macOS 工程、纯 Swift Package | 隐藏 | 只显示 VSCode |
+| 空目录、仅系统目录元数据、普通文件、链接或多选 | 隐藏 | 隐藏 |
 
-工程包必须是目录，并含 `contents.xcworkspacedata` / `project.pbxproj` 文件；空包、同名普通文件或目录形式的 `Package.swift` 不作为项目。只检查当前层，不递归，也不向父目录寻找工程。
+所有 IDE 入口先验证所选对象是可读取的非空目录；仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 时视为空，其余隐藏项（包括 `.git`）仍算内容。普通文件、符号链接、多选、失效路径和不支持的目录包不显示；不把普通文件或无效工程包归一到父目录。菜单生成、点击及宿主派发前共用同一规则，目录被清空或项目类型改变时停止打开，也不先查询 IDE 安装或进入下载页。
 
-Flutter 根目录优先按 `pubspec.yaml` 的 `dependencies.flutter.sdk: flutter` 识别，复用 [Flutter 版本管理器](../JobsFlutterVersionMgr/README.md) 的清单解析；支持块映射和单行 flow 映射，忽略注释及描述字符串中的伪声明。Flutter 根目录只显示 Android Studio / VSCode 打开入口；单独右键它的 `ios/` 原生工程目录或有效工程包时，仍只显示 Xcode。
+iOS 资格要求本层 `.xcodeproj/project.pbxproj` 明确配置 `SDKROOT = iphoneos / iphonesimulator`，或 `SUPPORTED_PLATFORMS` 含 iPhone 平台；`.xcworkspace` 必须通过明确的本地工程引用指向这类项目。纯 macOS 工程、仅有 `Package.swift` 或 `Podfile` 不自动当作 iOS 项目。Flutter 根目录即使包含 `ios/` 子工程仍保留 Android Studio / VSCode；单独进入 `ios/` 才按本层工程判断。
+
+读取 Xcode 元数据时单文件上限为 1 MiB；已存在但不可读、编码 / XML 损坏、超过上限或明确的工程引用无法解析时，按未知类型处理，隐藏 VSCode / Android Studio 项目入口，不把读取失败当作非 iOS。可正常读取的 macOS 工程、SDK 宏以及纯 Swift Package 不因此禁用 VSCode。
 
 **本工程是独立安装单元：工程根目录下双击 `./【MacOS】安装用Xcode打开Finder扩展.command` 即可安装本功能，双击 `./【MacOS】卸载用Xcode打开Finder扩展.command` 只卸载本功能，详见[安装与卸载](#jobs-toc-heading-3)。**
 
@@ -61,9 +63,9 @@ Flutter 根目录优先按 `pubspec.yaml` 的 `dependencies.flutter.sdk: flutter
 
 2、构建阶段会注册、启用此扩展并刷新 Finder；宿主 App 也提供“重新启用扩展”“打开扩展设置”和“刷新状态”入口。
 
-3、在 Finder 中选中一个 Xcode 项目目录或工程包后右键，也可在项目目录空白处右键，点击“用 Xcode 打开项目”。普通文件、非项目目录和多选时不显示此菜单；点击时重新读取原菜单上下文并复核项目类型。
+3、在 Finder 中选中一个非空的 iOS 项目目录或有效 iOS 工程包后右键，也可在项目目录空白处右键，点击“用 Xcode 打开项目”。普通文件、非项目目录和多选时不显示此菜单；点击时重新读取原菜单上下文并复核项目类型。
 
-4、直接选中有效 `.xcworkspace` / `.xcodeproj` 时打开所选工程。目录内先找 `.xcworkspace`，再找 `.xcodeproj`，同一优先级有多个候选时显示选择框，取消后不打开任何项目；仅有 `Package.swift` 时打开 Swift Package 目录。没有候选时停止打开，不再把任意目录交给 Xcode。
+4、直接选中有效 `.xcworkspace` / `.xcodeproj` 时打开所选工程。目录内先找 `.xcworkspace`，再找 `.xcodeproj`，同一优先级有多个候选时显示选择框，取消后不打开任何项目；仅有 `Package.swift` 时不显示或打开 Xcode 项目入口。没有候选时停止打开，不再把任意目录交给 Xcode。
 
 5、每次点击通过 `Process` 启动系统 `/usr/bin/open`，独立参数为 `-a`、`Xcode` 和项目路径。系统负责定位 Xcode，不预查应用 Bundle、不依赖终端 `PATH` 或固定的 `/Applications` 路径。
 

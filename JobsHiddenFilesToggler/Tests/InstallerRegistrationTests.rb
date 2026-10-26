@@ -2,6 +2,7 @@
 # 用系统命令替身验证真实安装脚本；只在临时夹具中读写，不注册扩展或刷新 Finder。
 
 require 'minitest/autorun'
+require_relative '../../JobsDesktopTools/Tests/CompatibilityAssertions'
 require 'open3'
 require 'pty'
 require 'timeout'
@@ -10,6 +11,11 @@ require 'fileutils'
 require 'etc'
 
 class InstallerRegistrationTests < Minitest::Test
+  include LegacyDesktopEntryAssertions
+  def desktop_leaf
+    'hidden-files-toggle'
+  end
+
   ROOT = File.expand_path('..', __dir__)
   INSTALLER = File.join(ROOT, '【MacOS】安装显示隐藏文件Finder扩展.command')
   UNINSTALLER = File.join(ROOT, '【MacOS】卸载显示隐藏文件Finder扩展.command')
@@ -83,114 +89,6 @@ class InstallerRegistrationTests < Minitest::Test
     refute status.success?, output
     assert File.exist?(@marker)
     assert_includes output, 'killall Finder exit=9'
-  end
-
-  def test_independent_install_cleans_exact_old_host_and_extension_before_new_registration
-    wrong_app = create_app('wrong-id', 'com.jobs.unrelated')
-    records = [@old_app, @app, wrong_app].map do |path|
-      "--------------------------------------------------------------------------------\npath: #{path} (0x7f0c)\nidentifier: #{APP_ID}\n"
-    end.join
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks, records: records,
-                                plugin_records: "Path = #{@old_extension}\nPath = #{@extension}\n")
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@old_extension}"
-    refute_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "lsregister|-u|#{@old_app}"
-    refute_includes calls, "lsregister|-u|#{@app}"
-    refute_includes calls, "lsregister|-u|#{wrong_app}"
-    assert_operator calls.index("lsregister|-u|#{@old_app}"), :<, calls.index("lsregister|-f|#{@app}")
-    assert_includes calls, "open|-n|#{@app}|--args|--initialize-finder-extension"
-    assert File.directory?(@old_app), '旧 App 文件只注销登记，保留文件。'
-  end
-
-  def test_independent_install_registration_error_does_not_report_success
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      JOBS_TEST_REGISTER_RESULT=7
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks)
-    refute status.success?, output
-    refute_includes output, '✔ 已请求启用扩展'
-    refute calls.any? { |line| line.start_with?('open|') || line.start_with?('killall|') }
-  end
-
-  def test_independent_uninstall_removes_only_verified_app_and_keeps_finder_preference
-    finder_preference = File.join(@directory, 'user-config/finder-preference')
-    FileUtils.mkdir_p(File.dirname(finder_preference))
-    File.write(finder_preference, 'existing Finder preference')
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      LOG_FILE="$JOBS_TEST_LOG"
-      collect_registered_paths
-      uninstall_extension
-    ZSH
-    output, status = run_source(UNINSTALLER, checks, plugin_records: "Path = #{@extension}\n")
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "rm|-rf|--|#{@app}"
-    assert_equal ["rm|-rf|--|#{@app}", 'rm|-f|--|/tmp/JobsHiddenFilesTogglerNeedsFinderRestart'], calls.grep(/^rm\|/)
-    assert_equal 'existing Finder preference', File.read(finder_preference)
-    refute calls.any? { |line| line.include?('AppleShowAllFiles') }
-  end
-
-  def test_install_skip_refresh_flag_keeps_registration_without_restarting_finder
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      parse_entry_options --install --skip-finder-restart
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks)
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-a|#{@extension}"
-    refute_includes calls, "killall|-u|#{Etc.getpwuid.name}|Finder"
-    refute calls.any? { |line| line.include?('AppleShowAllFiles') }
-  end
-
-  def test_uninstall_skip_refresh_flag_preserves_finder_preference
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      LOG_FILE="$JOBS_TEST_LOG"
-      parse_entry_options --uninstall --skip-finder-restart
-      confirm_uninstall
-      refresh_finder
-    ZSH
-    output, status = run_source(UNINSTALLER, checks)
-    assert status.success?, output
-    refute_includes calls, "killall|-u|#{Etc.getpwuid.name}|Finder"
-    refute calls.any? { |line| line.include?('AppleShowAllFiles') }
-  end
-
-  def test_independent_install_rejects_noninteractive_input_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "\n")
-    refute status.success?, output
-    assert_includes output, '请在可交互终端运行'
-    assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsHiddenFilesTogglerInstall.log'))
-  end
-
-  def test_independent_install_nonempty_input_skips_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "skip\n", interactive: true)
-    assert status.success?, output
-    assert_includes output, '直接回车安装；输入任意字符后回车跳过'
-    assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsHiddenFilesTogglerInstall.log'))
   end
 
   private

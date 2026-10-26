@@ -86,20 +86,9 @@ final class ProjectOpener {
         }
     }
 
-    /// 同时复核所选工程包及实际目录，避免文件归一绕过 Xcode 菜单互斥。
+    /// 先排除空目录，再要求当前层是 Android 或 Flutter 工程。
     func canOpen(_ selectedURL: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        let exists = fileManager.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory)
-        let directoryURL = exists && !isDirectory.boolValue ? selectedURL.deletingLastPathComponent() : selectedURL
-        guard !XcodeProjectDetector.canOpen(directoryURL, fileManager: fileManager) else {
-            return false
-        }
-        guard let directories = try? projectCandidates(from: selectedURL) else {
-            return true
-        }
-        return !directories.contains { directoryURL in
-            XcodeProjectDetector.canOpen(directoryURL, fileManager: fileManager)
-        }
+        return IDEProjectDirectory.canOpenInAndroidStudio(selectedURL, fileManager: fileManager)
     }
 
     /// 忽略 LaunchServices 的过期注册，以及只有 App 外壳而缺失可执行文件的残缺安装。
@@ -123,20 +112,10 @@ final class ProjectOpener {
     }
 
     func projectCandidates(from selectedURL: URL) throws -> [URL] {
-        guard selectedURL.isFileURL else {
-            throw NSError(domain: "JobsAndroidStudioFinderSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "请选择本地文件或文件夹。"])
+        guard canOpen(selectedURL) else {
+            return []
         }
-        let selectedURL = selectedURL.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory) else {
-            throw NSError(domain: "JobsAndroidStudioFinderSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "所选文件或文件夹已不存在。"])
-        }
-        let directoryURL = isDirectory.boolValue ? selectedURL : selectedURL.deletingLastPathComponent()
-        // Finder 将 Xcode 工程显示为文件包；编辑器应该打开它所在的项目目录。
-        if ["xcworkspace", "xcodeproj"].contains(directoryURL.pathExtension.lowercased()) {
-            return [directoryURL.deletingLastPathComponent()]
-        }
-        return [directoryURL]
+        return [selectedURL.standardizedFileURL]
     }
 
     static func chooseProject(_ candidates: [URL]) -> URL? {

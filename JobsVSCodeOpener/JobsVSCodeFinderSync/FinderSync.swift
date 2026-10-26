@@ -17,7 +17,7 @@ final class FinderSync: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer,
               let selectedURL = candidateURL(for: menuKind),
-              !ProjectOpener.isXcodeProject(at: selectedURL) else {
+              ProjectOpener.canOpen(selectedURL) else {
             return nil
         }
 
@@ -62,8 +62,8 @@ private extension FinderSync {
             showFailure("当前菜单上下文已失效，请关闭菜单后重新选择本地文件或文件夹。")
             return
         }
-        guard !ProjectOpener.isXcodeProject(at: selectedURL) else {
-            showFailure("当前目录是 Xcode 项目，请使用“用 Xcode 打开项目”。")
+        guard ProjectOpener.canOpen(selectedURL) else {
+            showFailure("请选择非空的普通非 iOS 项目文件夹；iOS 项目请使用 Xcode。")
             return
         }
         NSLog("JobsVSCodeFinderSync: request host path=%@", selectedURL.path)

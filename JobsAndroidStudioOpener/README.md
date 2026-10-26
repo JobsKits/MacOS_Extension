@@ -47,11 +47,15 @@
 
 2、构建阶段会注册、启用此扩展并刷新 Finder；宿主 App 也提供“重新启用扩展”“打开扩展设置”和“刷新状态”入口。
 
-3、在 Finder 中选中一个本地文件或文件夹后右键，也可在文件夹空白处右键，点击“用 Android Studio 打开项目”。多选多个 Finder 项目时不显示此菜单。实际打开目录属于 Xcode 项目时，隐藏此菜单，只保留“用 Xcode 打开项目”。
+3、在 Finder 中右键非空的 Android 原生、Flutter 官方或 Flutter 鸿蒙项目根目录，也可在该目录内部空白处右键，点击“🧭 用 Android Studio 打开项目”。空目录不显示此入口。
 
-4、项目文件夹原样交给编辑器；普通文件归一到其所在目录；选中 `.xcworkspace` / `.xcodeproj` 文件包时归一到文件包的父目录。
+4、符合条件的项目文件夹原样交给编辑器。所有 IDE 入口先验证所选对象是可读取的非空目录；仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 时视为空，其余隐藏项（包括 `.git`）仍算内容。普通文件、符号链接、多选、失效路径和不支持的目录包不显示；不把普通文件或无效工程包归一到父目录。菜单生成、点击及宿主派发前共用同一规则，目录被清空或项目类型改变时停止打开，也不先查询 IDE 安装或进入下载页。
 
-   Xcode 项目按当前层的有效 `.xcworkspace` / `.xcodeproj` 目录包或普通 `Package.swift` 文件判定；工程包分别要求含 `contents.xcworkspacedata` / `project.pbxproj` 普通文件，不递归扫描子目录。[**Flutter**](https://flutter.dev/) 根目录由 `pubspec.yaml` 中的 Flutter SDK 依赖识别，只显示 Android Studio / [**Visual Studio Code**](https://code.visualstudio.com) 两种 IDE 入口，即使同层有原生工程也不显示 Xcode；直接选中有效原生工程包或进入 `ios/` 原生项目目录时只显示 Xcode。菜单点击与打开器均会再次复核，Xcode 项目在 IDE 健康检查或下载提示前直接结束。
+   Android 原生根目录要求本层存在 `settings.gradle` 或 `settings.gradle.kts`，并在本层 / `app/` 的构建脚本中有 Android 插件声明，或存在本层 / `src/main/` / `app/src/main/` 的 `AndroidManifest.xml`；普通 Gradle 项目不满足。Flutter 官方和 Flutter 鸿蒙根目录均以 `pubspec.yaml` 的有效 `dependencies.flutter.sdk: flutter` 声明识别，并优先于本层原生工程。只检查当前层与明确的 Android 标准路径，不递归向上或向下寻找项目。
+
+   iOS 资格要求本层 `.xcodeproj/project.pbxproj` 明确配置 `SDKROOT = iphoneos / iphonesimulator`，或 `SUPPORTED_PLATFORMS` 含 iPhone 平台；`.xcworkspace` 必须通过明确的本地工程引用指向这类项目。纯 macOS 工程、仅有 `Package.swift` 或 `Podfile` 不自动当作 iOS 项目。Flutter 根目录即使包含 `ios/` 子工程仍保留 Android Studio / VSCode；单独进入 `ios/` 才按本层工程判断。
+
+读取 Xcode 元数据时单文件上限为 1 MiB；已存在但不可读、编码 / XML 损坏、超过上限或明确的工程引用无法解析时，按未知类型处理，隐藏 VSCode / Android Studio 项目入口，不把读取失败当作非 iOS。可正常读取的 macOS 工程、SDK 宏以及纯 Swift Package 不因此禁用 VSCode。
 
 5、每次点击都通过 LaunchServices 的 Bundle ID 查找所有已登记副本，核验 App 目录、Bundle ID 和可执行文件；支持常规安装、用户应用目录及系统已登记的其它位置，不依赖终端 `PATH` 或固定的 `/Applications` 路径。
 
@@ -92,7 +96,7 @@
     CODE_SIGNING_ALLOWED=NO build
   ```
 
-- 行为回归使用 `./Tests/ProjectOpenerBehaviorTests.swift`，通过替身打开器验证目录与特殊路径、Xcode 项目互斥、Flutter 子目录边界、缺失应用停止、多候选选择和取消；不会实际启动 IDE 或浏览器：
+- 行为回归使用 `./Tests/ProjectOpenerBehaviorTests.swift`，通过临时目录和打开器替身验证非空目录、iOS 排除、普通文件 / 链接拒绝、特殊路径、应用健康检查、下载失败及点击时复核；VSCode 同时验证请求编码和主线程完成回调。不会启动真实 IDE 或浏览器：
 
   ```shell
   xcrun swiftc -parse-as-library \

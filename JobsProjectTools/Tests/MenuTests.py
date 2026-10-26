@@ -55,7 +55,7 @@ func repository(_ path: String, bare: Bool = false) throws {
  try fm.createDirectory(at: root.appendingPathComponent(path + "/refs"), withIntermediateDirectories: true)
 }
 try file("普通 ' $(touch NEVER) ; 中文/code.txt")
-try file("ios/App.xcodeproj/project.pbxproj")
+try file("ios/App.xcodeproj/project.pbxproj", "SDKROOT = iphoneos;")
 try file("flutter/pubspec.yaml", "name: fixture\ndependencies:\n  flutter:\n    sdk: flutter\n")
 try file("flutter/lib/main.dart")
 try file("package/Package.swift")
@@ -74,15 +74,15 @@ let finder = FinderSync()
 let controller = FIFinderSyncController.default()
 let git = ["⬇️ 拉取 Git 到最新", "⏪ Git 提交回退", "🌐 打开 Git 远程地址", "🔗 复制 Git 远程地址", "📡 配置 Git 动态代理", "📤 在终端创建空白 Commit 并 Push"]
 let editors = ["🧭 用 Android Studio 打开项目", "📝 用 VSCode 打开项目"]
-for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
+let vscode = ["📝 用 VSCode 打开项目"]
+for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", vscode),
                        ("ios", ["🛠️ 用 Xcode 打开项目"]),
                        ("ios/App.xcodeproj", ["🛠️ 用 Xcode 打开项目"]),
-                       ("flutter", editors), ("package", ["🛠️ 用 Xcode 打开项目"]),
-                       ("repo", editors + ["🌿 Git操作"]), ("repo/sub", editors + ["🌿 Git操作"]),
-                       ("worktree", editors + ["🌿 Git操作"]), ("submodule", editors + ["🌿 Git操作"]),
-                       ("repo/invalid", editors), ("repo/dangling", editors),
-                       ("repo/bare.git", editors), ("repo/.git", editors),
-                       ("repo/sub/code.txt", editors)] {
+                       ("flutter", editors), ("package", vscode),
+                       ("repo", vscode + ["🌿 Git操作"]), ("repo/sub", vscode + ["🌿 Git操作"]),
+                       ("worktree", vscode + ["🌿 Git操作"]), ("submodule", vscode + ["🌿 Git操作"]),
+                       ("repo/invalid", vscode), ("repo/dangling", vscode),
+                       ("repo/bare.git", vscode), ("repo/.git", vscode)] {
  let url = root.appendingPathComponent(path)
  for kind in [FIMenuKind.contextualMenuForItems, .contextualMenuForContainer] {
   controller.selected = kind == .contextualMenuForItems ? [url] : nil
@@ -104,6 +104,24 @@ for (path, titles) in [("普通 ' $(touch NEVER) ; 中文", editors),
   }
  }
 }
+for path in ["repo/sub/code.txt", "missing"] {
+ controller.selected = [root.appendingPathComponent(path)]
+ expect(finder.menu(for: .contextualMenuForItems) == nil, "files and missing paths have no IDE menus")
+}
+try fm.createDirectory(at: root.appendingPathComponent("empty"), withIntermediateDirectories: true)
+try file("only-metadata/.DS_Store")
+for path in ["empty", "only-metadata"] {
+ controller.selected = [root.appendingPathComponent(path)]
+ expect(finder.menu(for: .contextualMenuForItems) == nil, "empty directories have no IDE menus")
+}
+controller.selected = [root.appendingPathComponent("flutter")]
+let previousFlutterMenu = finder.menu(for: .contextualMenuForItems)!
+try fm.removeItem(at: root.appendingPathComponent("flutter/pubspec.yaml"))
+let androidItem = previousFlutterMenu.items.first { $0.title == editors.first }!
+let countBeforeChangedType = TestWorkspace.requests.count
+_ = (androidItem.target as! NSObject).perform(androidItem.action!, with: androidItem)
+expect(TestWorkspace.requests.count == countBeforeChangedType, "Android click rechecks changed project type")
+
 controller.selected = [root, root]
 expect(finder.menu(for: .contextualMenuForItems) == nil, "multi-select")
 controller.selected = nil
@@ -152,3 +170,15 @@ with tempfile.TemporaryDirectory(prefix='project-menu-') as directory:
     source.write_text('\n'.join([stub] + sources + [checks]))
     subprocess.run(['xcrun', 'swiftc', str(source), '-o', str(binary)], check=True)
     subprocess.run([str(binary), directory], check=True)
+
+# The three standalone projects carry identical detection sources for independent builds.
+detectors = [root / f'Jobs{name}Opener/Jobs{name}FinderSync/XcodeProjectDetector.swift'
+             for name in ['AndroidStudio', 'VSCode', 'Xcode']]
+assert len({path.read_text() for path in detectors}) == 1
+with tempfile.TemporaryDirectory(prefix='ide-detection-') as directory:
+    binary = pathlib.Path(directory) / 'test'
+    subprocess.run(['xcrun', 'swiftc',
+                    str(root / 'JobsAndroidStudioOpener/JobsAndroidStudioFinderSync/FlutterProjectValidator.swift'),
+                    str(detectors[0]), str(root / 'JobsProjectTools/Tests/IDEProjectDetectionTests.swift'),
+                    '-o', str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)

@@ -32,8 +32,7 @@ struct FeatureOption {
         FeatureOption(identifier: "hidden-files-toggle", title: "显示 / 隐藏文件"),
         FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器"),
         FeatureOption(identifier: "android-simulator-create", title: "新建 Android 模拟器"),
-        FeatureOption(identifier: "android-simulator-repair", title: "Android 模拟器检测与修复"),
-        FeatureOption(identifier: "harmony-simulator-create", title: "新建 Harmony 模拟器"),
+        FeatureOption(identifier: "harmony-simulator-create", title: "新建 Harmony 模拟器"),        FeatureOption(identifier: "android-simulator-repair", title: "Android 模拟器检测与修复"),
         FeatureOption(identifier: "harmony-simulator-repair", title: "Harmony 模拟器检测与修复"),
         FeatureOption(identifier: "git-proxy-configure", title: "配置 Git 动态代理")
     ]
@@ -115,7 +114,7 @@ struct FeatureGroup {
                 .filter { $0 != "ios-pod-update" }
         ),
         FeatureGroup(identifier: "simulators", title: "模拟器工具", identifiers: [
-            "ios-simulator-create", "android-simulator-create", "android-simulator-repair", "harmony-simulator-create", "harmony-simulator-repair"
+            "ios-simulator-create", "android-simulator-create", "harmony-simulator-create", "android-simulator-repair", "harmony-simulator-repair"
         ])
     ]
 }

@@ -7,6 +7,10 @@ root = pathlib.Path(__file__).resolve().parents[1]
 production = (root / 'Shared/ProjectMenuAction.swift').read_text()
 stubs = '''import Foundation
 enum XcodeProjectDetector { static func canOpen(_ url: URL) -> Bool { false } }
+enum IDEProjectDirectory {
+    static func canOpenInAndroidStudio(_ url: URL) -> Bool { false }
+    static func canOpenInVSCode(_ url: URL) -> Bool { false }
+}
 struct GitRepositoryValidator { func isWorkingDirectory(at url: URL) -> Bool { false } }
 struct GitRollbackMenuContext { func isWorkingDirectory(at url: URL) -> Bool { false } }
 '''

@@ -1,0 +1,72 @@
+[
+  {
+    "source": "../JobsIOSSimulatorCreator/JobsIOSSimulatorCreator/IOSSimulatorTerminalLauncher/IOSSimulatorTerminalLauncher.swift",
+    "target": "Core/IOSSimulatorTerminalLauncher/IOSSimulatorTerminalLauncher.swift",
+    "sha256": "2daf978c3a5a2204a38070ea1e3a0f9e5b14d4487956eedb9a2bc3abf07615ca"
+  },
+  {
+    "source": "../JobsIOSSimulatorCreator/Scripts/CreateIOSSimulator.zsh",
+    "target": "Resource/CreateIOSSimulator.zsh",
+    "sha256": "1ab0c655d3d9d71cf549851696f2d18aa427b6a50e9787cb77fef8c97cfd8ecb"
+  },
+  {
+    "source": "../JobsAndroidSimulatorCreator/JobsAndroidSimulatorCreator/AndroidSimulatorTerminalLauncher/AndroidSimulatorTerminalLauncher.swift",
+    "target": "Core/AndroidSimulatorTerminalLauncher/AndroidSimulatorTerminalLauncher.swift",
+    "sha256": "64c6854017ecc6f7fde395612991401fb5ff79e58c1ca54abca0d17bb2fe696f"
+  },
+  {
+    "source": "../JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh",
+    "target": "Resource/CreateAndroidSimulator.zsh",
+    "sha256": "3356f8b6cab9baf80309be1dfbd71ee04ff6a1065a58f97a251a14cb9b461318"
+  },
+  {
+    "source": "../JobsHarmonySimulatorCreator/JobsHarmonySimulatorCreator/HarmonySimulatorTerminalLauncher/HarmonySimulatorTerminalLauncher.swift",
+    "target": "Core/HarmonySimulatorTerminalLauncher/HarmonySimulatorTerminalLauncher.swift",
+    "sha256": "649816990d2c1db0cdd7c3a74da8ad6877432f781a15bbf7d9853265c6fa63a7"
+  },
+  {
+    "source": "../JobsHarmonySimulatorCreator/Scripts/CreateHarmonySimulator.zsh",
+    "target": "Resource/CreateHarmonySimulator.zsh",
+    "sha256": "6d3f23f6eb32c4b045b5c17da82d693dc271d5a45ef31ffcf0881f6efb4957af"
+  },
+  {
+    "source": "../JobsAndroidSimulatorRepairer/JobsAndroidSimulatorRepairer/AndroidSimulatorRepairTerminalLauncher/AndroidSimulatorRepairTerminalLauncher.swift",
+    "target": "Core/AndroidSimulatorRepairTerminalLauncher/AndroidSimulatorRepairTerminalLauncher.swift",
+    "sha256": "f648c339247716722425caa8510ab6dbc5852bde5cc00962e12e8232a87277f5"
+  },
+  {
+    "source": "../JobsAndroidSimulatorRepairer/Scripts/RepairAndroidSimulator.zsh",
+    "target": "Resource/RepairAndroidSimulator.zsh",
+    "sha256": "f8e3c56d8d6d944268b64fcccf724cca9193653ae424b5ddbc997b72c6de677c"
+  },
+  {
+    "source": "../JobsHarmonySimulatorRepairer/JobsHarmonySimulatorRepairer/HarmonySimulatorRepairTerminalLauncher/HarmonySimulatorRepairTerminalLauncher.swift",
+    "target": "Core/HarmonySimulatorRepairTerminalLauncher/HarmonySimulatorRepairTerminalLauncher.swift",
+    "sha256": "7f1c87d40887f52b3d7041f807ce9928930052a6b89fb0a9d11a8900de2ab846"
+  },
+  {
+    "source": "../JobsHarmonySimulatorRepairer/Scripts/RepairHarmonySimulator.zsh",
+    "target": "Resource/RepairHarmonySimulator.zsh",
+    "sha256": "ef620a79a86601edc92685b827d93a5e236bd773d06f0bd9bc1e51f50b250066"
+  },
+  {
+    "source": "../JobsHiddenFilesToggler/JobsHiddenFilesToggler/FinderHiddenFilesPreferences/FinderHiddenFilesPreferences.swift",
+    "target": "Core/FinderHiddenFilesPreferences/FinderHiddenFilesPreferences.swift",
+    "sha256": "76a62c32f6407dcb01b981b7944206bcfd5311ff61f498e717906339e60d671b"
+  },
+  {
+    "source": "../JobsHiddenFilesToggler/JobsHiddenFilesToggler/HiddenFilesToggleService/HiddenFilesToggleService.swift",
+    "target": "Core/HiddenFilesToggleService/HiddenFilesToggleService.swift",
+    "sha256": "e35271e254b55b154ca6663a08e910a04d631372a164b3cc9adbef9645ceec90"
+  },
+  {
+    "source": "../JobsHiddenFilesToggler/JobsHiddenFilesToggler/FinderRefresher/FinderRefresher.swift",
+    "target": "Core/FinderRefresher/FinderRefresher.swift",
+    "sha256": "21d24eb73b0eeaeef0e0f9e7b54b655db4da64d8e3befd1b12070f1128a97408"
+  },
+  {
+    "source": "../JobsHiddenFilesToggler/JobsHiddenFilesShared/HiddenFilesMenuContext/HiddenFilesMenuContext.swift",
+    "target": "Shared/HiddenFilesMenuContext/HiddenFilesMenuContext.swift",
+    "sha256": "3d781fd79be9f937764bd716f6998f9586f9ff63b0a2240088e8f5f882eec188"
+  }
+]

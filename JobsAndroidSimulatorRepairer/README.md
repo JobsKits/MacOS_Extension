@@ -25,6 +25,8 @@
 
 为 [**macOS**](https://www.apple.com/macos/) 系统桌面空白右键提供 **Android 模拟器检测与修复**。独立 App + [**Finder Sync Extension**](https://developer.apple.com/documentation/findersync)，点击后交给可见 Terminal；只接受已启动的本机 [**Android Emulator**](https://developer.android.com/studio/run/emulator)。核心随 App 打包，不引用原双击脚本或其他扩展目录。
 
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `android-simulator-repair` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+
 ## 一、<span id="quick-look">功能速览</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 操作 | 结果与确认 |
@@ -46,17 +48,17 @@
 > **目的：** 从本目录构建并启用本功能，刷新 Finder。
 
 - 阅读终端自述，**直接回车安装；任意非空输入（包括空格）跳过**，Ctrl+C 或输入结束停止。
-- 检查 Xcode，构建到 `./work/DerivedData/Build/Products/Debug/JobsAndroidSimulatorRepairer.app`，核对 Bundle ID 与签名。
-- 注册、启用该 App 内的扩展并刷新 Finder；产物是系统实际加载位置，安装后应保留。
-- 安装日志为系统临时目录中的 `JobsAndroidSimulatorRepairerInstall.log`。
+- 检查 Xcode，构建相邻 JobsDesktopTools 并核对聚合 Bundle ID 与签名，仅启用本叶。
+- 统一扩展启用并发布选择成功后停用旧重复菜单；其它已选叶和所有设备数据保留。
+- 安装与卸载日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
 
 ### <span id="jobs-toc-heading-5" data-jobs-toc="v2">[【MacOS】卸载Android模拟器检测修复Finder扩展.command](./【MacOS】卸载Android模拟器检测修复Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 停用并注销本功能，移除核对身份后的已登记 App。
+> **目的：** 只关闭本叶菜单，最后一叶关闭时停用聚合扩展；保留共享 App 和业务数据。
 
-- 阅读自述、回车后先预览待处理路径；输入精确 `YES` 才执行卸载和 Finder 刷新。
-- 只处理 `com.jobs.androidsimulatorrepairer` 及其扩展，保留源码、SDK、AVD、修复备份和业务日志。
-- 卸载日志在系统临时目录，文件名与卸载脚本同名、扩展名为 `.log`。
+- 阅读管理器自述后，直接回车只关闭本功能；任意非空输入、Ctrl+C 或输入结束停止。
+- 只移除本叶开关；聚合包的其它功能、源码、SDK、镜像、实例、备份和业务日志保留。
+- 安装与卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。
 
 也可通过[总安装面板](../README.md)选择本功能，功能标识 `android-simulator-repair`。安装后仅在系统桌面空白处显示；首次派发需要允许本 App 控制 Terminal。
 

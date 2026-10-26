@@ -21,6 +21,8 @@
 		01B000000000000000000035 /* HiddenFilesRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* HiddenFilesRequest.swift */; };
 		01B000000000000000000040 /* FinderHiddenFilesPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000040 /* FinderHiddenFilesPreferences.swift */; };
 		01B000000000000000000041 /* FinderRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000041 /* FinderRefresher.swift */; };
+		01B000000000000000000042 /* FinderHiddenFilesPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000040 /* FinderHiddenFilesPreferences.swift */; };
+		01B000000000000000000043 /* HiddenFilesToggleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000023 /* HiddenFilesToggleService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -283,6 +285,8 @@
 				01B000000000000000000011 /* FinderSync.swift in Sources */,
 				01B000000000000000000034 /* HiddenFilesMenuContext.swift in Sources */,
 				01B000000000000000000035 /* HiddenFilesRequest.swift in Sources */,
+				01B000000000000000000042 /* FinderHiddenFilesPreferences.swift in Sources */,
+				01B000000000000000000043 /* HiddenFilesToggleService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
