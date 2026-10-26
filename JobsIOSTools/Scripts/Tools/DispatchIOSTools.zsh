@@ -44,8 +44,9 @@ resolve_request() {
   (( $# == 2 )) || { print -u2 -r -- '✖ 需要固定动作与一个项目目录。'; exit 1; }
   ACTION="$1"
   PROJECT_DIR="$2"
+  [[ "$ACTION" != ios-clean-cache ]] || ACTION=ios-clean-build-artifacts
   case "$ACTION" in
-    ios-clean-cache) SCRIPT_FILE="【MacOS】🧹双击清理iOS缓存.command" ;;
+    ios-clean-build-artifacts) SCRIPT_FILE="CleanBuildArtifacts.zsh" ;;
     ios-disable-sandbox) SCRIPT_FILE="【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command" ;;
     ios-install-cocoapods) SCRIPT_FILE="【MacOS】⚙️双击安装Cocoapods.command" ;;
     ios-pods-source-github) SCRIPT_FILE="【MacOS】⚙️双击更换Cocoapods源[-]CDN[+]Github.command" ;;
@@ -69,6 +70,12 @@ resolve_request() {
     print -u2 -r -- '✖ 本地 Pod 自检仅支持当前目录直接存在 *.podspec。'
     exit 1
   fi
+  if [[ "$ACTION" == ios-clean-build-artifacts ]]; then
+    [[ "$(/bin/zsh -f "$SCRIPT_DIR/CleanBuildArtifacts.zsh" "$PROJECT_DIR" --detect)" == iOS/Xcode ]] || {
+      print -u2 -r -- '✖ 当前目录不是可识别的 iOS/Xcode 构建产物清理目标。'
+      exit 1
+    }
+  fi
   [[ -f "$SCRIPT_DIR/$SCRIPT_FILE" ]] || { print -u2 -r -- '✖ 缺少随包业务脚本，请重新安装。'; exit 1; }
 }
 
@@ -81,7 +88,9 @@ run_business() {
   cd "$PROJECT_DIR" || return 1
   # 通过环境数据传递，禁止 eval、拼接可执行源码或自动喂入确认。
   export JOBS_IOS_PROJECT_DIR="$PROJECT_DIR"
-  if [[ "$ACTION" == ios-code-snippets ]]; then
+  if [[ "$ACTION" == ios-clean-build-artifacts ]]; then
+    /bin/zsh -f "$SCRIPT_DIR/$SCRIPT_FILE" "$PROJECT_DIR"
+  elif [[ "$ACTION" == ios-code-snippets ]]; then
     /bin/zsh -f "$SCRIPT_DIR/$SCRIPT_FILE" --finder "$PROJECT_DIR"
   else
     /bin/zsh -f "$SCRIPT_DIR/$SCRIPT_FILE"

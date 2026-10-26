@@ -31,7 +31,7 @@
 | 系统桌面空白处 | 显示“新建 iOS 模拟器”；桌面上的本仓其它开发菜单全部隐藏。 |
 | 文件夹背景、选中的文件或文件夹 | 不显示“新建 iOS 模拟器”；其它扩展仍按自己的项目条件显示。 |
 | 系统版本与设备 | 完整保留 iPhone / iPad，优先显示有可搭配系统的型号，本机无可搭配系统的型号带“（本机无可搭配系统）”标注；选定型号后只列匹配该型号的系统并打印“已装 N 个 / 匹配 M 个”，确认支持的最新系统排首位，未确认支持的系统带“（未确认支持）”标注，回车采用首项。 |
-| 选择与取消 | 优先复用健康的 fzf，缺失时使用编号选择；取消、EOF 或无交互输入均不会创建。 |
+| 选择与取消 | 使用健康的 fzf；系统版本面板用 `←` 返回型号选择，Esc / Ctrl+C 取消；缺失或不健康的 fzf 明确报错并停止交互，不继续编号选择。 |
 | 创建结果 | 自动命名并避开已有同名设备，创建并启动新设备；失败保留日志和已创建 UDID 便于重试。 |
 
 本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立 `.xcodeproj`、Scheme、Bundle ID、安装与卸载入口；没有独立 Git 或子模块。业务从[原初始化脚本](../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md)整理，脚本随 App 打包，不依赖原脚本仍在磁盘上。不执行原脚本的 Simulator 清场，不影响已有设备。
@@ -70,7 +70,7 @@
 
 宿主是无 Dock 图标的后台转发进程，终端派发完成即退出。
 
-1、在桌面空白处右键“新建 iOS 模拟器”，阅读终端自述并回车，型号和系统均可回车采用首选项，也可手动选择其它项。脚本自动生成设备名，最后回车创建并启动，任意非空输入取消。编号模式同样支持回车选第 1 项，输入 q / Esc 或 EOF 取消；最终仍不兼容时输入 `r` / `R` 才重选。
+1、在桌面空白处右键“新建 iOS 模拟器”，阅读终端自述并回车，型号和系统使用 fzf 选择，初始高亮首选项；系统面板按 `←` 返回型号，Esc / Ctrl+C 取消。脚本自动生成设备名，最后回车创建并启动，任意非空输入或 EOF 取消；最终仍不兼容时输入 `r` / `R` 才重选。
 
 2、创建成功会启动新设备，并打开所选 Xcode 配套的 Simulator 或 Device Hub。Device Hub 中按终端输出的设备名选中设备即可；新建的是 CoreSimulator 设备，不会在桌面生成一个文件夹。窗口启动失败时，终端保留新 UDID，可在 Xcode 中找到该设备。
 
@@ -82,7 +82,7 @@
 | [**Xcode**](https://developer.apple.com/xcode/) | 完整 Xcode、有效开发目录、macOS SDK（构建）和可用 `simctl`（创建）；只装 Command Line Tools 不够。 |
 | [**iOS Simulator**](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices) | 至少一个本机可用 iOS Runtime；缺失时明确提示在 Xcode 的 Components / Platforms 安装，不自动下载。兼容传统 Simulator 与本机 Xcode 27.1 的 Device Hub。 |
 | zsh / osascript / JXA | 系统工具，JSON 通过 JXA 解析，不需要 Python、Node、Ruby 或额外包运行创建流程。Ruby 仅用于开发回归。 |
-| [**fzf**](https://github.com/junegunn/fzf) | 可选，先检查可执行性；没有可用版本时改用编号选择，不自动安装或升级。 |
+| [**fzf**](https://github.com/junegunn/fzf) | 交互创建必需，先检查可执行性；缺失或损坏时安全停止，提示先运行独立入口的依赖自检或人工修复，不自动安装或升级。`--help` / `--check` 不使用选择器。 |
 
 本地依赖链为 `FinderSync → 后台宿主 → Terminal → zsh / JXA → 所选 Xcode simctl → 可用 iOS Runtime`。只查询环境并新增所选设备，不修改 `xcode-select`、代理、Shell 配置、其它设备或运行时。创建新设备会使用磁盘空间，设备数据由 CoreSimulator 管理。
 
@@ -176,7 +176,7 @@ JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 xcodebuild \
 
 桌面路径修复：沙盒中的 `NSHomeDirectoryForUser` 仍可能返回容器 Home，导致只监控 `Data/Desktop` 别名而收不到真实桌面的菜单回调。现用 `getpwuid_r(getuid())` 取得真实 Home，保留系统桌面别名，并监控根目录 `/` 接收 Finder 回调；菜单层按桌面完整路径白名单过滤，普通文件夹背景及所有选中项菜单均隐藏。白名单命中不依赖桌面文件属性读取权限。
 
-验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 57 项 / 429 断言隔离回归，核心块字节一致；覆盖编号 / fzf 首项直接创建兼容组合、仅安装 Duo 系统时优先推荐 Duo 但保留传统机型、未知兼容字段保留、白名单优先级、版本边界、机型“（本机无可搭配系统）”标注、系统“（未确认支持）”标注与确认前风险提示、无可搭配系统时精确 `r` 重选、`catalog-summary` 数量汇总，以及既有取消、失败不重弹、只读分流和独立入口前置等边界。用户日志已经确认旧默认 iPhone 18 Pro / iOS 27.1 被 Xcode 以 403 / `Incompatible device` 拒绝；本机两侧真实只读 `--check` 均保留 88 种机型（其中 63 个已有可搭配系统，25 个本机无可搭配系统；iOS 27.0 支持 62 个机型、27.1 支持 1 个机型），首选组合均为 iPhone 18 Pro / iOS 27.0。此前真实 AppDelegate 配假 Model 的隔离回归已通过 26 条断言，生产宿主相关源码 Swift 类型检查通过；本轮未修改宿主。没有创建或启动真实模拟器，目标机器需重新安装后验收。
+验证日期 **2026-10-21（Asia/Shanghai）**：两侧分别通过同一套 57 项 / 429 断言隔离回归，核心块字节一致；覆盖 fzf 首项直接创建兼容组合、仅安装 Duo 系统时优先推荐 Duo 但保留传统机型、未知兼容字段保留、白名单优先级、版本边界、机型“（本机无可搭配系统）”标注、系统“（未确认支持）”标注与确认前风险提示、无可搭配系统时精确 `r` 重选、`catalog-summary` 数量汇总，以及既有取消、失败不重弹、只读分流和独立入口前置等边界。用户日志已经确认旧默认 iPhone 18 Pro / iOS 27.1 被 Xcode 以 403 / `Incompatible device` 拒绝；本机两侧真实只读 `--check` 均保留 88 种机型（其中 63 个已有可搭配系统，25 个本机无可搭配系统；iOS 27.0 支持 62 个机型、27.1 支持 1 个机型），首选组合均为 iPhone 18 Pro / iOS 27.0。此前真实 AppDelegate 配假 Model 的隔离回归已通过 26 条断言，生产宿主相关源码 Swift 类型检查通过；本轮未修改宿主。没有创建或启动真实模拟器，目标机器需重新安装后验收。
 
 宿主与菜单既有验收：Xcode **27.1 / 27A9275**、macOS arm64 的 Debug 双 target 构建与 ad-hoc 深度签名验证通过；安装注册 10 项 / 66 断言、原生传输与菜单 66 断言、父安装映射 19 项 / 108 断言通过。真实只读 `--check` 已核验同一 Xcode 的 Device Hub。桌面范围回归 `Tests/DesktopFinderMenuTests.rb` 直接执行真实菜单源码，177 条 Swift 菜单断言通过。
 

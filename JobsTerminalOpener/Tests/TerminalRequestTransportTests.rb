@@ -95,13 +95,18 @@ class TerminalRequestTransportTests < Minitest::Test
   end
 
   def test_build_clean_payload_identifies_target_and_cleans_its_own_carrier
-    FileUtils.mkdir_p(File.join(@project, 'build'))
-    File.write(File.join(@project, 'build/artifact'), 'generated')
+    FileUtils.mkdir_p([File.join(@project, 'build/app'), File.join(@project, 'build/ios'), File.join(@project, 'android/app')])
+    File.write(File.join(@project, 'android/settings.gradle.kts'), '')
+    File.write(File.join(@project, 'android/app/build.gradle.kts'), 'plugins { id("com.android.application") }')
+    File.write(File.join(@project, 'build/app/artifact'), 'generated')
+    File.write(File.join(@project, 'build/ios/keep'), 'ios artifact')
     request = fixture('prepare', action: 'clean-build-artifacts')
     output, status = Open3.capture2e(@environment, '/bin/zsh', request.fetch('scriptPath'), stdin_data: "CLEAN\n")
     assert status.success?, output
     assert_includes output, '工程类型：Flutter'
-    refute File.exist?(File.join(@project, 'build'))
+    assert_includes output, '清理范围：Android / OpenHarmony'
+    refute File.exist?(File.join(@project, 'build/app'))
+    assert File.exist?(File.join(@project, 'build/ios/keep'))
     assert File.file?(File.join(@project, 'pubspec.yaml'))
     refute File.exist?(request.fetch('scriptPath'))
     refute File.exist?(request.fetch('runtimeDirectory'))

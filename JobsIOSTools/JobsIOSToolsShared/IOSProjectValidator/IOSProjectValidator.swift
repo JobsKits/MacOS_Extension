@@ -12,7 +12,19 @@ struct IOSProjectValidator {
     private let manager = FileManager.default
 
     func supports(_ action: IOSToolsAction, at url: URL) -> Bool {
-        return isIOSProject(at: url) && (action != .podBuildCheck || hasDirectPodspec(at: url))
+        guard isIOSProject(at: url) else {
+            return false
+        }
+        switch action {
+        case .podInstall:
+            return DependencyProjectValidator().isCocoaPodsProject(at: url)
+        case .cleanBuildArtifacts:
+            return DependencyProjectValidator().buildArtifactProjectKind(at: url) == .ios
+        case .podBuildCheck:
+            return hasDirectPodspec(at: url)
+        default:
+            return true
+        }
     }
 
     func isIOSProject(at url: URL) -> Bool {
@@ -94,7 +106,7 @@ enum IOSFeatureConfiguration {
 
     static func parse(_ value: String) -> Set<IOSToolsAction> {
         return Set(value.components(separatedBy: CharacterSet(charactersIn: ",\n\r")).compactMap {
-            IOSToolsAction(rawValue: $0.trimmingCharacters(in: .whitespacesAndNewlines))
+            IOSToolsAction.compatibleAction(for: $0.trimmingCharacters(in: .whitespacesAndNewlines))
         })
     }
 }

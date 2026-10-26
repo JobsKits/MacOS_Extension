@@ -28,7 +28,7 @@
 
 **菜单范围：桌面空白处不显示本功能；文件夹与项目菜单仍按下文条件显示。桌面上选中的项目文件夹不受此空白菜单规则影响。**
 
-面向 Jobs 与 macOS 开发人员的独立 Finder 扩展：仅在 Flutter 项目根目录显示“运行 Flutter 项目”，设备选择、构建日志和控制操作都在 Terminal 中完成。状态：维护中；负责人：Jobs。关闭 Terminal 只离开日志，Flutter 由当前登录用户会话的 launchd 继续托管。
+面向 Jobs 与 macOS 开发人员的独立 Finder 扩展：仅在 Flutter 项目根目录显示“从终端运行 Flutter 项目”，设备选择、构建日志和控制操作都在 Terminal 中完成。状态：维护中；负责人：Jobs。关闭 Terminal 只离开日志，Flutter 由当前登录用户会话的 launchd 继续托管。
 
 | 项目 | 实际行为 |
 | --- | --- |
@@ -49,9 +49,9 @@
 
 ### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Flutter运行Finder扩展.command](./【MacOS】安装Flutter运行Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 独立构建、注册并启用本工程的“运行 Flutter 项目”Finder 扩展。
+> **目的：** 独立构建、注册并启用本工程的“从终端运行 Flutter 项目”Finder 扩展。
 
-- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；也可使用父仓安装面板勾选“运行 Flutter 项目”。
+- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；也可使用父仓安装面板勾选“从终端运行 Flutter 项目”。
 - 直接回车安装，输入任意字符（包括空格）后回车跳过；安装器会构建、启用本扩展并重启 Finder，确认前显示影响范围。
 - 构建产物固定在 `./work/DerivedData/Build/Products/Debug/`。安装过程不运行目标 Flutter 项目、不安装 SDK；日志为系统临时目录中的 `JobsFlutterRunnerInstall.log`。
 
@@ -67,7 +67,7 @@
 
 需要 macOS 12.0 及以上、完整 [**Xcode**](https://developer.apple.com/xcode/)、可用 Flutter SDK，以及目标设备对应的平台工具。iOS 使用当前 Xcode 的 `xcrun simctl`；不会自动运行 `brew install`、安装 Xcode runtime 或修改 `xcode-select`。Android 设备需已通过 Flutter 自身的工具链检查；AVD 需预先在 Android Studio Device Manager 中配置。
 
-1、在 Finder 右键单个真实 Flutter 项目文件夹，或进入该项目后右键空白处，点击“运行 Flutter 项目”。宿主为 `LSUIElement` 后台进程，不创建管理窗口或 Dock 图标；Terminal 转发完成后退出。
+1、在 Finder 右键单个真实 Flutter 项目文件夹，或进入该项目后右键空白处，点击“从终端运行 Flutter 项目”。宿主为 `LSUIElement` 后台进程，不创建管理窗口或 Dock 图标；Terminal 转发完成后退出。
 
 2、在终端阅读自述后回车继续，非空输入取消；用 `↑/↓` 选择实际设备，回车确认，`Esc` 取消（未安装 fzf 时回退为输入编号）。设备按项目已有的 `ios/`、`android/`、`macos/`、`web/` 等平台目录过滤。设备列表为空时可重新加载；有 `ios/` 才提供 iOS 模拟器入口，有 `android/` 才提供已有 Android AVD 启动入口。iOS 缺 runtime 时按明确提示先在 Xcode 安装，再重新加载。
 

@@ -26,26 +26,26 @@ struct FeatureOption {
         FeatureOption(identifier: "git_remote_copier", title: "复制 Git 远程地址"),
         FeatureOption(identifier: "path_copier", title: "复制绝对路径"),
         FeatureOption(identifier: "run-authorize", title: "运行授权"),
+        FeatureOption(identifier: "run-revoke", title: "解除运行授权"),
         FeatureOption(identifier: "ipa-resign", title: "IPA 免编译重签"),
         FeatureOption(identifier: "hidden-files-toggle", title: "显示 / 隐藏文件"),
-        FeatureOption(identifier: "flutter-tools", title: "Flutter开发相关辅助工具"),
         FeatureOption(identifier: "ios-simulator-create", title: "新建 iOS 模拟器"),
         FeatureOption(identifier: "android-simulator-create", title: "新建 Android 模拟器"),
         FeatureOption(identifier: "android-simulator-repair", title: "Android 模拟器检测与修复"),
         FeatureOption(identifier: "harmony-simulator-create", title: "新建 Harmony 模拟器"),
+        FeatureOption(identifier: "harmony-simulator-repair", title: "Harmony 模拟器检测与修复"),
         FeatureOption(identifier: "git-proxy-configure", title: "配置 Git 动态代理")
     ]
 
     static let terminal: [FeatureOption] = [
         FeatureOption(identifier: "terminal_open", title: "用终端打开"),
         FeatureOption(identifier: "pod_install", title: "Pod Install"),
-        FeatureOption(identifier: "clean_build_artifacts", title: "清理构建产物（按工程类型显示）"),
+        FeatureOption(identifier: "clean_build_artifacts", title: "清理 Android / OpenHarmony 构建产物"),
         FeatureOption(identifier: "codegraph_bootstrap", title: "更新代码地图（.codegraph）"),
         FeatureOption(identifier: "git_empty_commit_push", title: "在终端创建空白 Commit 并 Push")
     ]
 
     static let ios: [FeatureOption] = [
-        FeatureOption(identifier: "ios-clean-cache", title: "清理 iOS 缓存"),
         FeatureOption(identifier: "ios-disable-sandbox", title: "禁用 CocoaPods 构建沙盒"),
         FeatureOption(identifier: "ios-install-cocoapods", title: "安装 CocoaPods"),
         FeatureOption(identifier: "ios-pods-source-github", title: "CocoaPods 源：CDN → GitHub"),
@@ -54,10 +54,34 @@ struct FeatureOption {
         FeatureOption(identifier: "ios-xcode-dependencies", title: "查询 Xcode 工程依赖关系"),
         FeatureOption(identifier: "ios-pod-repo-update", title: "更新 CocoaPods 本地仓库"),
         FeatureOption(identifier: "ios-pod-build-check", title: "检查本地 Pod 能否编译（仅 .podspec 目录）"),
-        FeatureOption(identifier: "ios-code-snippets", title: "安装 / 升级 JobsCodeSnippets")
+        FeatureOption(identifier: "ios-code-snippets", title: "安装 / 升级 JobsCodeSnippets"),
+        FeatureOption(identifier: "ios-clean-build-artifacts", title: "清理 iOS/Xcode 构建产物")
     ]
 
-    static let all: [FeatureOption] = independent + terminal + ios
+    // 每个可执行子菜单独立选择，分组标题不参与安装计数。
+    static let flutter: [FeatureOption] = [
+        FeatureOption(identifier: "flutter-run", title: "从终端运行 Flutter 项目"),
+        FeatureOption(identifier: "flutter-pub-get", title: "拉取 Flutter 第三方依赖"),
+        FeatureOption(identifier: "flutter-extract", title: "提取 Flutter 第三方依赖"),
+        FeatureOption(identifier: "flutter-sdk-version", title: "查看当前 Flutter 项目的 SDK 版本"),
+        FeatureOption(identifier: "flutter-sdk-manage", title: "安装 / 切换 Flutter SDK 版本"),
+        FeatureOption(identifier: "flutter-ohos-sdk-manage", title: "安装 / 切换 Flutter@OpenHarmony SDK"),
+        FeatureOption(identifier: "flutter-java-manage", title: "安装 / 切换 Java 环境"),
+        FeatureOption(identifier: "flutter-codegen", title: "Flutter 自动化生产代码"),
+        FeatureOption(identifier: "flutter-package-ios", title: "打包 iOS"),
+        FeatureOption(identifier: "flutter-package-android", title: "打包 Android"),
+        FeatureOption(identifier: "flutter-package-ohos", title: "打包 OpenHarmony"),
+        FeatureOption(identifier: "flutter-native-doctor", title: "原生 Flutter 项目体检"),
+        FeatureOption(identifier: "flutter-harmony-doctor", title: "OpenHarmony Flutter 环境体检"),
+        FeatureOption(identifier: "flutter-repair-android", title: "修复 Android SDK / platforms 缺失"),
+        FeatureOption(identifier: "flutter-repair-imports", title: "修复 Flutter 项目中文路径"),
+        FeatureOption(identifier: "flutter-repair-namespace", title: "修复 Flutter 插件 namespace"),
+        FeatureOption(identifier: "flutter-repair-package-imports", title: "修复 Dart 相对 import 为 package 引用"),
+        FeatureOption(identifier: "flutter-clean-build-artifacts", title: "清理当前 Flutter 项目构建产物"),
+        FeatureOption(identifier: "flutter-maintenance", title: "依赖与缓存维护")
+    ]
+
+    static let all: [FeatureOption] = independent + terminal + ios + flutter
 }
 
 /// 按用途组织选项；安装工程及输出标识的顺序仍由 FeatureOption.all 决定。
@@ -80,17 +104,17 @@ struct FeatureGroup {
             "git-pull", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
         ]),
         FeatureGroup(identifier: "general", title: "文件与通用工具", identifiers: [
-            "path_copier", "run-authorize", "hidden-files-toggle", "terminal_open",
+            "path_copier", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open",
             "clean_build_artifacts", "codegraph_bootstrap"
         ]),
-        FeatureGroup(identifier: "flutter", title: "Flutter 工具", identifiers: ["flutter-tools"]),
+        FeatureGroup(identifier: "flutter", title: "Flutter 工具 · 子菜单功能", identifiers: FeatureOption.flutter.map { $0.identifier }),
         FeatureGroup(identifier: "ios", title: "iOS / CocoaPods 工具", identifiers:
             ["pod_install", "ios-pod-update", "ipa-resign"] + FeatureOption.ios
                 .map { $0.identifier }
                 .filter { $0 != "ios-pod-update" }
         ),
         FeatureGroup(identifier: "simulators", title: "模拟器工具", identifiers: [
-            "ios-simulator-create", "android-simulator-create", "android-simulator-repair", "harmony-simulator-create"
+            "ios-simulator-create", "android-simulator-create", "android-simulator-repair", "harmony-simulator-create", "harmony-simulator-repair"
         ])
     ]
 }
@@ -171,12 +195,12 @@ private extension FeatureSelectionController {
         }
         header.setFrameSize(NSSize(width: headerWidth, height: headerHeight - (compact ? 6 : 10)))
 
-        let boxes = FeatureGroup.all.map { makeGroupBox(group: $0, spacing: compact ? 4 : 6) }
+        let boxes = FeatureGroup.all.map { makeGroupBox(group: $0, spacing: compact ? 3 : 6) }
         let verticalPadding: CGFloat = compact ? 44 : 72
         let featureList = makeFeatureList(
             boxes: boxes,
             screenSize: screenSize,
-            reservedHeight: header.frame.height + 32 + verticalPadding + 22
+            reservedHeight: header.frame.height + 32 + verticalPadding + 32
         )
         let contentWidth = max(featureList.frame.width, headerWidth)
         let buttonRow = makeButtonRow(width: contentWidth)
@@ -190,7 +214,7 @@ private extension FeatureSelectionController {
         for view in [header, featureList, buttonRow] {
             container.addSubview(view)
         }
-        // 安装窗口不缩放：按控件实际尺寸排列，避免压缩选项或裁掉安装按钮。
+        // 底栏固定；选项超出屏幕时仅滚动中间列表，避免裁掉子菜单和安装按钮。
         buttonRow.frame = NSRect(x: 26, y: compact ? 14 : 20, width: contentWidth, height: buttonHeight)
         featureList.setFrameOrigin(NSPoint(x: 26, y: buttonRow.frame.maxY + (compact ? 8 : 16)))
         header.frame = NSRect(x: 26, y: featureList.frame.maxY + (compact ? 8 : 14), width: contentWidth, height: headerSize.height)
@@ -234,8 +258,8 @@ private extension FeatureSelectionController {
         }
         let columns = layouts.first { columns in
             let size = dimensions(columns)
-            return size.width + 52 <= screenSize.width - 40 && size.height + reservedHeight <= screenSize.height
-        } ?? layouts.filter { dimensions($0).width + 52 <= screenSize.width - 40 }.min {
+            return size.width + 68 <= screenSize.width - 40 && size.height + reservedHeight <= screenSize.height
+        } ?? layouts.filter { dimensions($0).width + 68 <= screenSize.width - 40 }.min {
             dimensions($0).height < dimensions($1).height
         } ?? layouts[0]
         let size = dimensions(columns)
@@ -253,7 +277,18 @@ private extension FeatureSelectionController {
             }
             x += width + gap
         }
-        return list
+        let availableHeight = max(140, screenSize.height - reservedHeight)
+        guard list.frame.height > availableHeight else {
+            return list
+        }
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: size.width + 16, height: availableHeight))
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = false
+        scroll.drawsBackground = false
+        scroll.documentView = list
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: size.height - availableHeight))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        return scroll
     }
 
     func makeGroupBox(group: FeatureGroup, spacing: CGFloat) -> NSBox {

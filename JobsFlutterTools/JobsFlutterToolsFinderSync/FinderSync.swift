@@ -23,46 +23,40 @@ final class FinderSync: FIFinderSync {
               validator.isFlutterProject(at: projectURL) else {
             return nil
         }
+        let enabled = FlutterFeatureConfiguration.enabledFeatures()
+        guard !enabled.isEmpty else {
+            return nil
+        }
         let menu = NSMenu(title: "")
         let development = NSMenu(title: "Flutter开发相关辅助工具")
         for action in FlutterToolsAction.development {
             if action == .package {
-                let packaging = NSMenu(title: action.title)
-                for platform in FlutterToolsAction.packaging {
-                    packaging.addItem(makeItem(platform, menuKind))
-                }
-                let packageItem = NSMenuItem(title: packaging.title, action: nil, keyEquivalent: "")
-                packageItem.submenu = packaging
-                development.addItem(packageItem)
-            } else {
+                addGroup(title: action.title, actions: FlutterToolsAction.packaging, enabled: enabled, kind: menuKind, to: development)
+            } else if enabled.contains(action) {
                 development.addItem(makeItem(action, menuKind))
             }
         }
-        let doctors = NSMenu(title: "Flutter项目体检")
-        for action in FlutterToolsAction.doctors {
-            doctors.addItem(makeItem(action, menuKind))
-        }
-        let doctorItem = NSMenuItem(title: doctors.title, action: nil, keyEquivalent: "")
-        doctorItem.submenu = doctors
-        development.addItem(doctorItem)
+        addGroup(title: "Flutter项目体检", actions: FlutterToolsAction.doctors, enabled: enabled, kind: menuKind, to: development)
+        addGroup(title: "Flutter项目修复", actions: FlutterToolsAction.repairs, enabled: enabled, kind: menuKind, to: development)
+        addGroup(title: "Flutter清理维护工具", actions: FlutterToolsAction.cleaning, enabled: enabled, kind: menuKind, to: development)
         let parent = NSMenuItem(title: development.title, action: nil, keyEquivalent: "")
         parent.submenu = development
         menu.addItem(parent)
-        let repairs = NSMenu(title: "Flutter项目修复")
-        for action in FlutterToolsAction.repairs {
-            repairs.addItem(makeItem(action, menuKind))
-        }
-        let repairItem = NSMenuItem(title: repairs.title, action: nil, keyEquivalent: "")
-        repairItem.submenu = repairs
-        development.addItem(repairItem)
-        let cleaning = NSMenu(title: "Flutter清理维护工具")
-        for action in FlutterToolsAction.cleaning {
-            cleaning.addItem(makeItem(action, menuKind))
-        }
-        let cleaningItem = NSMenuItem(title: cleaning.title, action: nil, keyEquivalent: "")
-        cleaningItem.submenu = cleaning
-        development.addItem(cleaningItem)
         return menu
+    }
+
+    private func addGroup(title: String, actions: [FlutterToolsAction], enabled: Set<FlutterToolsAction>, kind: FIMenuKind, to parent: NSMenu) {
+        let actions = actions.filter { enabled.contains($0) }
+        guard !actions.isEmpty else {
+            return
+        }
+        let submenu = NSMenu(title: title)
+        for action in actions {
+            submenu.addItem(makeItem(action, kind))
+        }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        parent.addItem(item)
     }
 
     private func makeItem(_ action: FlutterToolsAction, _ kind: FIMenuKind) -> NSMenuItem {
@@ -292,7 +286,8 @@ final class FinderSync: FIFinderSync {
 
     private func perform(_ action: FlutterToolsAction, for menuKind: FIMenuKind) {
         // Finder 转发菜单动作时不依赖 representedObject，重新查询本次菜单上下文。
-        guard let projectURL = candidateURL(for: menuKind),
+        guard FlutterFeatureConfiguration.permits(action, enabled: FlutterFeatureConfiguration.enabledFeatures()),
+              let projectURL = candidateURL(for: menuKind),
               validator.isFlutterProject(at: projectURL) else {
             showFailure("当前菜单上下文已失效，或文件夹不再是可识别的 Flutter 项目，请关闭菜单后重新右键。")
             return

@@ -1,7 +1,7 @@
 import pathlib,subprocess,tempfile
 root=pathlib.Path(__file__).resolve().parents[1]
 shared=root/'JobsFlutterToolsShared'
-sources=[(shared/'FlutterToolsRequest/FlutterToolsRequest.swift').read_text(),(shared/'FlutterProjectValidator/FlutterProjectValidator.swift').read_text(),(root/'JobsFlutterTools/FlutterToolsLauncher/FlutterToolsLauncher.swift').read_text()]
+sources=[(shared/'FlutterFeatureConfiguration/FlutterFeatureConfiguration.swift').read_text(),(shared/'FlutterToolsRequest/FlutterToolsRequest.swift').read_text(),(shared/'FlutterProjectValidator/FlutterProjectValidator.swift').read_text(),(root/'JobsFlutterTools/FlutterToolsLauncher/FlutterToolsLauncher.swift').read_text()]
 menu=(root/'JobsFlutterToolsFinderSync/FinderSync.swift').read_text().replace('import FinderSync','').replace('NSWorkspace.shared.open(requestURL)','TestWorkspace.open(requestURL)').replace('let alert = NSAlert()', 'let alert = TestAlert()')
 stub='''import AppKit
 import Foundation
@@ -29,6 +29,10 @@ final class TestAlert {
  func runModal() { TestWorkspace.failures += 1 }
 }
 '''
+# Override only the compiled fixture, so no real user configuration is read or changed.
+config_call='FlutterFeatureConfiguration.enabledFeatures(configurationURL: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("features.conf"))'
+sources=[source.replace('FlutterFeatureConfiguration.enabledFeatures()',config_call) for source in sources]
+menu=menu.replace('FlutterFeatureConfiguration.enabledFeatures()',config_call)
 checks=r'''
 var assertions = 0
 func expect(_ condition: @autoclosure () -> Bool, _ message: String) { assertions += 1; if !condition() { fatalError(message) } }
@@ -59,12 +63,12 @@ for kind in [FIMenuKind.contextualMenuForItems, .contextualMenuForContainer] {
  let menu = provider.menu(for: kind)!
  expect(menu.items.map(\.title) == ["Flutter开发相关辅助工具"], "one root menu")
  let development = menu.items[0].submenu!
- expect(development.items.map(\.title) == ["运行Flutter项目","拉取Flutter第三方依赖","提取Flutter第三方依赖","查看当前Flutter项目的SDK版本","安装/切换Flutter SDK版本","安装/切换 Flutter@OpenHarmony SDK","安装/切换Java环境","Flutter打包","Flutter自动化生产代码","Flutter项目体检","Flutter项目修复","Flutter清理维护工具"], "development fixed order")
- expect(development.items[7].submenu!.items.map(\.title) == ["iOS", "Android", "鸿蒙"], "packaging platforms")
+ expect(development.items.map(\.title) == ["从终端运行 Flutter 项目","拉取Flutter第三方依赖","提取Flutter第三方依赖","查看当前Flutter项目的SDK版本","安装/切换Flutter SDK版本","安装/切换 Flutter@OpenHarmony SDK","安装/切换Java环境","Flutter打包","Flutter自动化生产代码","Flutter项目体检","Flutter项目修复","Flutter清理维护工具"], "development fixed order")
+ expect(development.items[7].submenu!.items.map(\.title) == ["iOS", "Android", "OpenHarmony"], "packaging platforms")
  expect(!(development.items[7].target is FinderSync), "packaging parent does not launch a terminal")
- expect(development.items[9].submenu!.items.map(\.title) == ["原生Flutter项目体检", "鸿蒙Flutter环境体检"], "doctors")
+ expect(development.items[9].submenu!.items.map(\.title) == ["原生Flutter项目体检", "OpenHarmony Flutter 环境体检"], "doctors")
  expect(development.items[10].submenu!.items.map(\.title) == ["修复 Android SDK / platforms 缺失","修复 Flutter 项目中文路径","修复 Flutter 插件 namespace","修复 Dart 相对 import 为 package 引用"], "nested repairs")
- expect(development.items[11].submenu!.items.map(\.title) == ["清理当前项目构建产物", "依赖与缓存维护"], "nested project cleaning and SDK maintenance")
+ expect(development.items[11].submenu!.items.map(\.title) == ["清理当前 Flutter 项目构建产物", "依赖与缓存维护"], "nested project cleaning and SDK maintenance")
  expect(!(development.items[11].target is FinderSync), "cleaning parent does not launch a terminal")
  let leaves = leafItems(menu)
  expect(leaves.count == actions.count, "all actions remain available")
@@ -120,9 +124,70 @@ expect(args == [action.rawValue,project.path],"shell metacharacters remain data"
 expect(!FileManager.default.fileExists(atPath:request.directoryURL.path),"private carrier cleanup")
 expect(!FileManager.default.fileExists(atPath:base.appendingPathComponent("NEVER").path),"no command substitution")
 }
+let config = base.appendingPathComponent("features.conf")
+expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).count == 19, "missing config keeps legacy actions")
+setContext(project, for: .contextualMenuForItems)
+let staleMenu = provider.menu(for: .contextualMenuForItems)!
+let staleRun = leafItems(staleMenu).first!
+try "package-android,repair-package-imports".write(to: config, atomically: true, encoding: .utf8)
+let partial = provider.menu(for: .contextualMenuForItems)!.items[0].submenu!
+expect(partial.items.map(\.title) == ["Flutter打包", "Flutter项目修复"], "empty action groups are hidden")
+expect(leafItems(partial).map(\.title) == ["Android", "修复 Dart 相对 import 为 package 引用"], "selected leaves only")
+let previousRequestCount = TestWorkspace.requests.count
+_ = (staleRun.target as! NSObject).perform(staleRun.action!, with: staleRun)
+expect(TestWorkspace.requests.count == previousRequestCount, "stale menu cannot launch disabled action")
+for action in [FlutterToolsAction.run, .package, .packageIOS, .packageHarmony] {
+ do {
+  let request = try FlutterToolsLauncher().prepare(projectURL: project, action: action, toolsURL: tools)
+  try FileManager.default.removeItem(at: request.directoryURL)
+  fatalError("disabled host action accepted")
+ } catch {
+  expect(true, "host rejects disabled or aggregate platform action")
+ }
+}
+for action in actions {
+ try action.rawValue.write(to: config, atomically: true, encoding: .utf8)
+ let one = leafItems(provider.menu(for: .contextualMenuForItems)!)
+ expect(one.count == 1 && one[0].title == action.title, "each individual selection survives its parent group")
+}
+try "package-android,repair-package-imports".write(to: config, atomically: true, encoding: .utf8)
+let enabledRequest = try FlutterToolsLauncher().prepare(projectURL: project, action: .packageAndroid, toolsURL: tools)
+try FileManager.default.removeItem(at: enabledRequest.directoryURL)
+expect(FlutterFeatureConfiguration.permits(.package, enabled: Set(FlutterToolsAction.packaging)), "legacy package only when every platform is enabled")
+for invalid in ["", "unknown", "run,unknown", "run,run", "run,", "package", "run\u{0000}", String(repeating: "r", count: 8193)] {
+ try invalid.write(to: config, atomically: true, encoding: .utf8)
+ expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).isEmpty, "empty or invalid configuration disables all actions")
+ expect(provider.menu(for: .contextualMenuForItems) == nil, "all disabled hides Flutter root")
+}
+try Data([0xff, 0xfe]).write(to: config)
+expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).isEmpty, "invalid UTF-8 rejected")
+try FileManager.default.removeItem(at: config)
+let other = base.appendingPathComponent("other-features.conf")
+try "run".write(to: other, atomically: true, encoding: .utf8)
+try FileManager.default.createSymbolicLink(at: config, withDestinationURL: other)
+expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).isEmpty, "symlink configuration rejected")
+try FileManager.default.removeItem(at: config)
+try FileManager.default.createDirectory(at: config, withIntermediateDirectories: false)
+expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).isEmpty, "directory configuration rejected")
 print("PASS: \(assertions) menu and transport assertions")
 '''
 with tempfile.TemporaryDirectory(prefix='jobs-flutter-menu-') as temp:
  p=pathlib.Path(temp);(p/'main.swift').write_text(stub+'\n'+'\n'.join(sources)+'\n'+menu+'\n'+checks)
  subprocess.run(['/usr/bin/xcrun','swiftc',str(p/'main.swift'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check'),str(p)],check=True)
+
+# Exercise only the isolated config writer, never the real install/registration entry.
+with tempfile.TemporaryDirectory(prefix='jobs-flutter-feature-install-') as temp:
+ p=pathlib.Path(temp)
+ installer=(root/'【MacOS】安装Flutter开发辅助工具Finder扩展.command').read_text()
+ (p/'library.zsh').write_text(installer.rsplit('main "$@"',1)[0])
+ config=p/'Library/Application Support/JobsFinderExtensions/flutter-tools-features.conf'
+ config.parent.mkdir(parents=True)
+ config.write_text('run')
+ result=subprocess.run(['/bin/zsh','-f','-c','source "$1"; LOG_FILE="$2"; persist_all_flutter_features','fixture',str(p/'library.zsh'),str(p/'install.log')],env={'HOME':temp,'PATH':'/usr/bin:/bin'},capture_output=True,text=True)
+ assert result.returncode == 0,result.stdout+result.stderr
+ selected=config.read_text().split(',')
+ assert len(selected) == len(set(selected)) == 19,selected
+ assert config.stat().st_mode & 0o777 == 0o600
+ assert len(list(config.parent.iterdir())) == 1
+ print('PASS: isolated independent installer enables all 19 actions atomically')

@@ -120,6 +120,7 @@ uninstall_extension() {
     /bin/rm -rf -- "${app_path}" || { log "错误：删除失败 ${app_path}"; exit 1; }
   done
   /bin/rm -f -- '/tmp/JobsFlutterToolsNeedsFinderRestart'
+  /bin/rm -f -- "${HOME}/Library/Application Support/JobsFinderExtensions/flutter-tools-features.conf" || { log '错误：无法删除 Flutter 子功能选择。'; exit 1; }
   log '固定 Finder 扩展已停用；项目源码与 Flutter SDK、FVM 保留。'
 }
 # 刷新 Finder 使已卸载菜单退出显示。

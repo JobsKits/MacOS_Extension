@@ -22,7 +22,6 @@ class DesktopFinderMenuTests < Minitest::Test
     JobsGitRemoteOpener/JobsGitRemoteFinderSync/FinderSync.swift
     JobsGitRemoteCopier/JobsGitRemoteCopyFinderSync/FinderSync.swift
     JobsPathCopier/JobsPathCopyFinderSync/FinderSync.swift
-    JobsTerminalOpener/JobsTerminalFinderSync/FinderSync.swift
   ].freeze
   SIMULATOR = 'JobsIOSSimulatorCreator/JobsIOSSimulatorFinderSync/FinderSync.swift'
   ANDROID_SIMULATOR = 'JobsAndroidSimulatorCreator/JobsAndroidSimulatorFinderSync/FinderSync.swift'
@@ -101,37 +100,63 @@ class DesktopFinderMenuTests < Minitest::Test
         try file("macos/Demo.xcodeproj/project.pbxproj", "SDKROOT = macosx;")
         let controller = FIFinderSyncController.default()
         let finder = FinderSync950()
-        // Flutter 根目录即使混有原生工程标记，也不能回退为原生清理入口。
+        // Flutter 识别优先，混合标记也保持平台限定清理。
         for prefix in flutterPaths {
             try file("\(prefix)/Demo.xcodeproj/project.pbxproj", "SDKROOT = iphoneos;")
             try file("\(prefix)/build.gradle", "plugins { id 'com.android.application' }")
         }
-        for (path, title) in [("android", "清理Android构建产物"), ("ios", "清理iOS/Xcode构建产物"), ("harmony", "清理鸿蒙构建产物"), ("flutter/ohos", "清理鸿蒙构建产物")] {
+        let supportedPaths = ["android", "harmony", "flutter/ohos"] + flutterPaths
+        for path in supportedPaths {
             let selected = root.appendingPathComponent(path)
             controller.selected = [selected]
             let menu = finder.menu(for: .contextualMenuForItems)
-            expect(menu?.items.map(\.title) == [title], "wrong title for \(path)")
+            expect(menu?.items.map(\.title) == ["清理 Android / OpenHarmony 构建产物"], "wrong title for \(path)")
             let item = menu!.items[0]
             _ = (item.target as! NSObject).perform(item.action!, with: item)
             let components = URLComponents(url: TestActions.lastURL!, resolvingAgainstBaseURL: false)!
             expect(components.queryItems?.first(where: { $0.name == "path" })?.value == selected.path, "wrong cleanup target")
             expect(components.queryItems?.first(where: { $0.name == "action" })?.value == "clean-build-artifacts", "stable action identifier")
         }
-        for path in ["unknown", "macos", "flutter/lib", "ios/Demo.xcodeproj", "flutter/pubspec.yaml"] + flutterPaths {
+        for path in ["unknown", "macos", "ios", "flutter/lib", "ios/Demo.xcodeproj", "flutter/pubspec.yaml"] {
             controller.selected = [root.appendingPathComponent(path)]
             expect(finder.menu(for: .contextualMenuForItems) == nil, "unsupported folder/file must hide cleanup")
         }
         controller.selected = [root.appendingPathComponent("flutter"), root.appendingPathComponent("android")]
         expect(finder.menu(for: .contextualMenuForItems) == nil, "multiple selection must hide cleanup")
         controller.selected = []
+        controller.targeted = nil
         expect(finder.menu(for: .contextualMenuForContainer) == nil, "background must hide cleanup")
         FinderMenuFeatureConfiguration.enabled = [.open, .cleanBuildArtifacts]
         for path in flutterPaths {
             controller.selected = [root.appendingPathComponent(path)]
-            expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["用终端打开"], "\(path) keeps generic actions without an outer cleanup entry")
+            expect(finder.menu(for: .contextualMenuForItems)?.items.map(\.title) == ["用终端打开", "清理 Android / OpenHarmony 构建产物"], "\(path) offers terminal and scoped cleanup")
+        }
+        FinderMenuFeatureConfiguration.enabled = [.open, .cleanBuildArtifacts, .codeGraphBootstrap]
+        for path in supportedPaths {
+            let target = root.appendingPathComponent(path)
+            controller.targeted = target
+            controller.selected = [root.appendingPathComponent("ios")]
+            let menu = finder.menu(for: .contextualMenuForContainer)
+            expect(menu?.items.map(\.title) == ["清理 Android / OpenHarmony 构建产物"], "container offers only scoped cleanup")
+            let item = menu!.items[0]
+            _ = (item.target as! NSObject).perform(item.action!, with: item)
+            let components = URLComponents(url: TestActions.lastURL!, resolvingAgainstBaseURL: false)!
+            expect(components.queryItems?.first(where: { $0.name == "path" })?.value == target.path, "container click uses targeted folder instead of stale selection")
+            controller.targeted = root.appendingPathComponent("unknown")
+            let before = TestActions.count
+            _ = (item.target as! NSObject).perform(item.action!, with: item)
+            expect(TestActions.count == before, "changed container target is revalidated before dispatch")
+        }
+        for path in ["unknown", "macos", "ios", "flutter/lib", "ios/Demo.xcodeproj", "flutter/pubspec.yaml"] {
+            controller.targeted = root.appendingPathComponent(path)
+            expect(finder.menu(for: .contextualMenuForContainer) == nil, "unsupported container hides cleanup")
         }
         FinderMenuFeatureConfiguration.enabled = []
         expect(finder.menu(for: .contextualMenuForItems) == nil, "disabled feature must stay hidden")
+        FinderMenuFeatureConfiguration.enabled = [.podInstall, .gitEmptyCommitPush, .cleanBuildArtifacts]
+        controller.selected = [root.appendingPathComponent("ios")]
+        try file("ios/Podfile")
+        expect(finder.menu(for: .contextualMenuForItems) == nil, "migrated iOS and Git actions must not return to the outer menu")
         print("PASS: build artifact menu titles, targets and visibility")
       SWIFT
       source_path = File.join(directory, 'main.swift')
@@ -297,6 +322,77 @@ def test_android_repair_menu_only_uses_the_real_desktop_background
     output, status = Open3.capture2e(binary_path)
     assert status.success?, output
     assert_includes output, 'Android repair desktop menu assertions'
+    puts output.lines.grep(/^PASS:/)
+  end
+end
+
+def test_harmony_repair_menu_only_uses_the_real_desktop_background
+  Dir.mktmpdir('jobs-harmony-repair-desktop-tests-') do |directory|
+    source_path = File.join(directory, 'main.swift')
+    binary_path = File.join(directory, 'harmony-repair-menu-tests')
+    sources = [isolated_source('JobsHarmonySimulatorRepairer/JobsHarmonySimulatorRepairFinderSync/FinderSync.swift', 901)]
+    sources << isolated_source('JobsHarmonySimulatorRepairer/JobsHarmonySimulatorRepairShared/JobsHarmonyRepairFactories.swift', 902)
+    %w[HarmonySimulatorRepairMenuContext HarmonySimulatorRepairRequest].each do |type|
+      source = File.read(File.join(ROOT, "JobsHarmonySimulatorRepairer/JobsHarmonySimulatorRepairShared/#{type}/#{type}.swift"))
+      source = source.gsub('FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)', 'TestSandboxEnvironment.desktopURLs')
+      sources << source
+    end
+    checks = <<~'SWIFT'
+      var assertionCount = 0
+      func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+          assertionCount += 1
+          guard condition() else { fatalError(message) }
+      }
+        func click(_ menu: NSMenu?) {
+            guard let item = menu?.items.first, let target = item.target as? NSObject,
+                  let action = item.action else { expect(false, "missing menu action"); return }
+            _ = target.perform(action, with: item)
+        }
+      let controller = FIFinderSyncController.default()
+      let desktop = URL(fileURLWithPath: String(cString: getpwuid(getuid())!.pointee.pw_dir), isDirectory: true).appendingPathComponent("Desktop", isDirectory: true)
+      let folder = URL(fileURLWithPath: "/fixture/ordinary", isDirectory: true)
+      let extensionMenu = FinderSync901()
+      expect(controller.directoryURLs.contains(URL(fileURLWithPath: "/", isDirectory: true)), "Harmony repair must observe root for real Finder desktop dispatch")
+      controller.targeted = desktop
+      controller.selected = nil
+      let menu = extensionMenu.menu(for: .contextualMenuForContainer)
+      expect(menu?.items.map(\.title) == ["Harmony 模拟器检测与修复"], "Only desktop background may show Harmony repair action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 1, "Desktop click dispatches once")
+        controller.selected = [folder]
+        expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Container callback stays eligible despite stale selection metadata")
+      controller.targeted = folder
+      expect(extensionMenu.menu(for: .contextualMenuForContainer) == nil, "Ordinary folder must hide Harmony repair action")
+      TestActions.count = 0
+        click(menu)
+      expect(TestActions.count == 0, "Stale desktop menu must not dispatch from a folder")
+      controller.targeted = desktop
+      for selected in [[], [desktop], [folder], [desktop, folder]] {
+          controller.selected = selected
+          expect(extensionMenu.menu(for: .contextualMenuForItems) == nil, "All item selections must hide Harmony repair action")
+      }
+      expect(extensionMenu.menu(for: .toolbarItemMenu) == nil, "Toolbar must not add Harmony repair action")
+      controller.targeted = nil
+      controller.selected = nil
+      expect(extensionMenu.menu(for: .contextualMenuForContainer)?.items.count == 1, "Known desktop fallback remains available")
+      expect(HarmonySimulatorRepairRequest.isRepairRequest(HarmonySimulatorRepairRequest.canonicalURL), "Fixed request must pass")
+      expect(!HarmonySimulatorRepairRequest.isRepairRequest(URL(string: "jobsharmonysimulatorrepairer://simulator/repair?command=bad")!), "Extra URL parameters must be rejected")
+      print("PASS: \(assertionCount) Harmony repair desktop menu assertions")
+    SWIFT
+application_stubs = <<~'SWIFT'
+  protocol NSApplicationDelegate: AnyObject {}
+  final class NSApplication {
+      var delegate: NSApplicationDelegate?
+      func activate(ignoringOtherApps: Bool) {}
+  }
+SWIFT
+File.write(source_path, swift_stubs + "\n" + application_stubs + sources.join("\n") + "\n" + checks)
+    output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
+    assert status.success?, output
+    output, status = Open3.capture2e(binary_path)
+    assert status.success?, output
+    assert_includes output, 'Harmony repair desktop menu assertions'
     puts output.lines.grep(/^PASS:/)
   end
 end

@@ -41,7 +41,7 @@ final class IOSToolsModel {
 
 @main
 enum IOSToolsAppDelegateTests {
-    private static let canonicalURL = IOSToolsRequest.url(for: URL(fileURLWithPath: "/tmp/ios-project"), action: .cleanCache)!
+    private static let canonicalURL = IOSToolsRequest.url(for: URL(fileURLWithPath: "/tmp/ios-project"), action: .cleanBuildArtifacts)!
     private static var assertionCount = 0
 
     private enum Receiver: CaseIterable {

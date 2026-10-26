@@ -26,37 +26,35 @@ final class FinderSync: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         let urls = candidateURLs()
         writeLog("menu kind=\(menuKind.rawValue), candidates=\(urls.map(\.path).joined(separator: " | "))")
-        guard menuKind == .contextualMenuForItems, urls.count == 1 else { return nil }
+        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer else {
+            return nil
+        }
+        let isContainer = menuKind == .contextualMenuForContainer
+        let targets = isContainer ? FIFinderSyncController.default().targetedURL().map { [$0] } ?? [] : urls
+        guard targets.count == 1 else {
+            return nil
+        }
 
         let enabledFeatures = enabledFeatures()
         let menu = NSMenu(title: "")
-        if enabledFeatures.contains(.open) {
+        if !isContainer, enabledFeatures.contains(.open) {
             let openItem = NSMenuItem(title: "用终端打开", action: #selector(openInTerminal(_:)), keyEquivalent: "")
             openItem.target = self
             openItem.isEnabled = true
             menu.addItem(openItem)
         }
 
-        let directoryURL = urls[0]
-        if enabledFeatures.contains(.podInstall),
-           dependencyProjectValidator.isCocoaPodsProject(at: directoryURL) {
-            let podInstallItem = NSMenuItem(title: "Pod Install", action: #selector(runPodInstallInTerminal(_:)), keyEquivalent: "")
-            podInstallItem.target = self
-            podInstallItem.isEnabled = true
-            menu.addItem(podInstallItem)
-        }
-
-        // Flutter 操作统一由 JobsFlutterTools 提供，通用清理仅保留原生工程入口。
+        let directoryURL = targets[0]
+        // Flutter 根目录的此入口只清 Android / OpenHarmony，完整清理仍由 Flutter 子菜单负责。
         if enabledFeatures.contains(.cleanBuildArtifacts),
-           !dependencyProjectValidator.isFlutterToolsProject(at: directoryURL),
-           let projectKind = dependencyProjectValidator.buildArtifactProjectKind(at: directoryURL),
-           projectKind != .flutter {
-            let cleanItem = NSMenuItem(title: projectKind.menuTitle, action: #selector(cleanBuildArtifacts(_:)), keyEquivalent: "")
+           dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: directoryURL) {
+            let action = isContainer ? #selector(cleanBuildArtifactsInContainer(_:)) : #selector(cleanBuildArtifacts(_:))
+            let cleanItem = NSMenuItem(title: "清理 Android / OpenHarmony 构建产物", action: action, keyEquivalent: "")
             cleanItem.target = self
             menu.addItem(cleanItem)
         }
 
-        if enabledFeatures.contains(.codeGraphBootstrap),
+        if !isContainer, enabledFeatures.contains(.codeGraphBootstrap),
            dependencyProjectValidator.isCodeGraphTargetFolder(at: directoryURL) {
             let codeGraphItem = NSMenuItem(title: "更新代码地图（.codegraph）", action: #selector(updateCodeGraph(_:)), keyEquivalent: "")
             codeGraphItem.target = self
@@ -64,13 +62,6 @@ final class FinderSync: FIFinderSync {
             menu.addItem(codeGraphItem)
         }
 
-        if enabledFeatures.contains(.gitEmptyCommitPush),
-           dependencyProjectValidator.isGitEmptyCommitPushTargetFolder(at: directoryURL) {
-            let gitEmptyCommitPushItem = NSMenuItem(title: "在终端创建空白 Commit 并 Push", action: #selector(pushEmptyCommitInTerminal(_:)), keyEquivalent: "")
-            gitEmptyCommitPushItem.target = self
-            gitEmptyCommitPushItem.isEnabled = true
-            menu.addItem(gitEmptyCommitPushItem)
-        }
         return menu.items.isEmpty ? nil : menu
     }
 }
@@ -102,6 +93,11 @@ private extension FinderSync {
         performTerminalAction(.cleanBuildArtifacts)
     }
 
+    @objc func cleanBuildArtifactsInContainer(_ sender: Any?) {
+        let urls = FIFinderSyncController.default().targetedURL().map { [$0] } ?? []
+        performTerminalAction(.cleanBuildArtifacts, urls: urls)
+    }
+
     @objc func updateCodeGraph(_ sender: Any?) {
         performTerminalAction(.codeGraphBootstrap)
     }
@@ -110,8 +106,14 @@ private extension FinderSync {
         performTerminalAction(.gitEmptyCommitPush)
     }
 
-    func performTerminalAction(_ action: TerminalAction) {
-        let urls = candidateURLs()
+    func performTerminalAction(_ action: TerminalAction, urls: [URL]? = nil) {
+        let urls = urls ?? candidateURLs()
+        if action == .cleanBuildArtifacts {
+            guard urls.count == 1,
+                  dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: urls[0]) else {
+                return
+            }
+        }
         var messages: [String] = []
         writeLog("action=\(action.rawValue), candidates=\(urls.map(\.path).joined(separator: " | "))")
 

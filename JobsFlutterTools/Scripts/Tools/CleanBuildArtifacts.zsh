@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 清理构建产物：只识别传入目录，不向上寻找工程；先列出范围，再确认删除。
-# Flutter 优先；其次为鸿蒙、Android、iOS/Xcode；菜单识别逻辑见 DependencyProjectValidator.swift。
+# Flutter 优先；其次为 OpenHarmony、Android、iOS/Xcode；菜单识别逻辑见 DependencyProjectValidator.swift。
 # 不执行工程脚本，不清理共享缓存、Pods、锁文件、签名或自定义输出目录。
-# 用法：zsh CleanBuildArtifacts.zsh <工程目录> [--detect|--dry-run|--yes]
+# 用法：zsh CleanBuildArtifacts.zsh <工程目录> [--detect|--dry-run|--yes] [--android-openharmony]
 
 jobs_clean_file() { [[ -f "$1" && ! -L "$1" ]]; }
 jobs_clean_dir() { [[ -d "$1" && ! -L "$1" ]]; }
@@ -305,41 +305,67 @@ jobs_clean_validate() {
 jobs_clean_main() {
   emulate -L zsh
   setopt localoptions pipefail
-  local input="${1:-}" mode="${2:-}" root kind='' target reply android_found=0 derived_data
+  local input="${1:-}" mode='' scope='' argument root kind='' target reply android_found=0 derived_data
   local -a gradle_dirs harmony_dirs candidates existing ios_roots
   local -U candidates
-  [[ $# -ge 1 && $# -le 2 && ( -z "$mode" || "$mode" == --detect || "$mode" == --dry-run || "$mode" == --yes ) ]] || {
-    print -u2 -- '用法：CleanBuildArtifacts.zsh <工程目录> [--detect|--dry-run|--yes]'; return 1
+  [[ $# -ge 1 && $# -le 3 ]] || {
+    print -u2 -- '用法：CleanBuildArtifacts.zsh <工程目录> [--detect|--dry-run|--yes] [--android-openharmony]'; return 1
   }
+  for argument in "${@:2}"; do
+    case "$argument" in
+      --detect|--dry-run|--yes)
+        [[ -z "$mode" ]] || { print -u2 -- '执行模式不能重复指定。'; return 1; }
+        mode="$argument"
+        ;;
+      --android-openharmony)
+        [[ -z "$scope" ]] || { print -u2 -- '清理范围不能重复指定。'; return 1; }
+        scope=android-openharmony
+        ;;
+      *) print -u2 -r -- "未知选项：$argument"; return 1 ;;
+    esac
+  done
   jobs_clean_dir "$input" || { print -u2 -- '目标必须是实际文件夹，不能是文件或符号链接。'; return 1; }
   root="${input:A}"
   derived_data="${HOME:A}/Library/Developer/Xcode/DerivedData"
   [[ "$root" != / && "$root" != "${HOME:A}" ]] || { print -u2 -- '不能清理磁盘或用户主目录。'; return 1; }
   if jobs_clean_flutter "$root"; then
     kind=Flutter
-    candidates+=("$root/build" "$root/.dart_tool")
-    if jobs_clean_android "$root/android"; then jobs_clean_add_android "$root/android"; fi
-    if jobs_clean_ios "$root/ios"; then
-      ios_roots+=("$root/ios")
-      candidates+=("$root/ios/build" "$root/ios/DerivedData" "$root/ios/Flutter/ephemeral")
+    if [[ "$scope" == android-openharmony ]]; then
+      # 两平台入口不删除共享 build/、.dart_tool/，避免连带清理 iOS 和桌面产物。
+      if jobs_clean_android "$root/android"; then
+        jobs_clean_add_android "$root/android"
+        candidates+=("$root/build/app")
+      fi
+      if jobs_clean_harmony_project "$root/ohos"; then
+        jobs_clean_add_harmony "$root/ohos" || return 1
+        candidates+=("$root/build/ohos")
+      fi
+    else
+      candidates+=("$root/build" "$root/.dart_tool")
+      if jobs_clean_android "$root/android"; then jobs_clean_add_android "$root/android"; fi
+      if jobs_clean_ios "$root/ios"; then
+        ios_roots+=("$root/ios")
+        candidates+=("$root/ios/build" "$root/ios/DerivedData" "$root/ios/Flutter/ephemeral")
+      fi
+      for target in windows linux macos; do
+        jobs_clean_dir "$root/$target" && candidates+=("$root/$target/flutter/ephemeral" "${root}/${target}/Flutter/ephemeral")
+      done
+      if jobs_clean_harmony_project "$root/ohos"; then jobs_clean_add_harmony "$root/ohos" || return 1; fi
     fi
-    for target in windows linux macos; do
-      jobs_clean_dir "$root/$target" && candidates+=("$root/$target/flutter/ephemeral" "${root}/${target}/Flutter/ephemeral")
-    done
-    if jobs_clean_harmony_project "$root/ohos"; then jobs_clean_add_harmony "$root/ohos" || return 1; fi
   elif jobs_clean_harmony_project "$root"; then
-    kind=鸿蒙
+    kind=OpenHarmony
     jobs_clean_add_harmony "$root" || return 1
   elif jobs_clean_android "$root"; then
     kind=Android
     candidates=()
     jobs_clean_add_android "$root"
   elif jobs_clean_ios "$root"; then
+    [[ "$scope" != android-openharmony ]] || { print -u2 -- '此入口只清理 Flutter、Android 或 OpenHarmony 工程的 Android / OpenHarmony 产物。'; return 1; }
     kind=iOS/Xcode
     ios_roots+=("$root")
     candidates=("$root/build" "$root/DerivedData")
   else
-    print -u2 -- '未识别为当前层的 iOS/Xcode、Android、Flutter 或鸿蒙工程，未删除任何文件。'
+    print -u2 -- '未识别为当前层的 iOS/Xcode、Android、Flutter 或 OpenHarmony 工程，未删除任何文件。'
     return 1
   fi
   # 只读接口供识别一致性测试及未来调用方使用；不询问、不删除。
@@ -351,6 +377,7 @@ jobs_clean_main() {
   fi
   print -r -- "工程类型：$kind"
   print -r -- "工程目录：$root"
+  [[ "$scope" == android-openharmony ]] && print -- '清理范围：Android / OpenHarmony；保留 iOS、桌面平台与 Flutter 共享缓存。'
   # 整份计划先验证，防止后面的危险路径导致只清理一半才报错。
   for target in "${candidates[@]}"; do
     jobs_clean_validate "$target" || return 1
@@ -367,7 +394,7 @@ jobs_clean_main() {
   case "$kind" in
     Flutter) jobs_clean_flutter "$root" || return 1 ;;
     Android) jobs_clean_android "$root" || return 1 ;;
-    鸿蒙) jobs_clean_harmony_project "$root" || return 1 ;;
+    OpenHarmony) jobs_clean_harmony_project "$root" || return 1 ;;
     iOS/Xcode) jobs_clean_ios "$root" || return 1 ;;
   esac
   for target in "${existing[@]}"; do jobs_clean_validate "$target" || return 1; done

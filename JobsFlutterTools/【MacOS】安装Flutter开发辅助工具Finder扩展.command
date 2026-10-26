@@ -2,7 +2,7 @@
 # 脚本自述：
 # - 脚本名称：【MacOS】安装Flutter开发辅助工具Finder扩展.command
 # - 核心用途：独立构建、注册并启用 Flutter 开发辅助工具 Finder 扩展。
-# - 影响范围：只构建本工程与启用本扩展，成功后重启 Finder；不安装任何工具。
+# - 影响范围：构建本工程、启用全部 Flutter 子动作并重启 Finder；不安装 SDK 或执行项目业务。
 # - 运行提示：直接回车安装，输入任意字符后回车跳过；Ctrl+C 取消。
 
 SCRIPT_DIR=""
@@ -38,7 +38,7 @@ show_script_intro_and_wait() {
   intro_line title '━━━━━━━━━━ 安装 Flutter 开发辅助工具 Finder 扩展 ━━━━━━━━━━'
   intro_line body "1、源码：${PROJECT_ROOT}；构建并注册本工程，不下载第三方依赖。"
   intro_line body "2、产物：${APP_PATH}；请保留该路径供系统启动扩展。"
-  intro_line body '3、影响：启用统一扩展、停用旧 Flutter 菜单并重启 Finder；Flutter 开发辅助工具由项目右键动作在 Terminal 中交互执行。'
+  intro_line body '3、影响：启用全部 Flutter 子动作、停用旧 Flutter 菜单并重启 Finder；需要逐项选择请运行上级总安装器。'
   intro_line body "4、日志：${LOG_FILE}；Ctrl+C 取消。"
   [[ -t 0 ]] || { print -u2 -r -- '错误：请在可交互终端运行。'; exit 1; }
   local answer=""
@@ -78,10 +78,26 @@ build_extension() {
   (( build_result == 0 )) || { log "✖ 构建失败，退出码 ${build_result}。"; exit "$build_result"; }
   [[ -d "$EXTENSION_PATH" ]] || { log '✖ 构建成功但缺少 Finder 扩展产物。'; exit 1; }
 }
+# 独立安装明确启用全部子动作；总安装器负责按本次勾选写入精确清单。
+persist_all_flutter_features() {
+  local config_dir="${HOME}/Library/Application Support/JobsFinderExtensions"
+  local config_path="${config_dir}/flutter-tools-features.conf"
+  local temporary_path=""
+  /bin/mkdir -p "$config_dir" || return 1
+  temporary_path="$(/usr/bin/mktemp "${config_path}.XXXXXX")" || return 1
+  if ! print -nr -- 'run,pub-get,extract,sdk-version,sdk-manage,ohos-sdk-manage,java-manage,package-ios,package-android,package-ohos,codegen,native-doctor,harmony-doctor,repair-android,repair-imports,repair-namespace,repair-package-imports,clean-build-artifacts,maintenance' > "$temporary_path" ||
+     ! /bin/chmod 600 "$temporary_path" || ! /bin/mv -f "$temporary_path" "$config_path"; then
+    /bin/rm -f -- "$temporary_path"
+    log '✖ 无法保存 Flutter 子功能选择。'
+    return 1
+  fi
+  log "✔ 全部 Flutter 子功能已启用：${config_path}"
+}
 # 仅注册固定扩展，在 App 开启后允许系统弹出自动化与扩展权限请求。
 register_extension() {
   /usr/bin/pluginkit -a "$EXTENSION_PATH" 2>&1 | /usr/bin/tee -a "$LOG_FILE" || exit 1
   /usr/bin/pluginkit -e use -i "$EXTENSION_ID" 2>&1 | /usr/bin/tee -a "$LOG_FILE" || exit 1
+  persist_all_flutter_features || exit 1
   /bin/zsh "$PROJECT_ROOT/Scripts/Tools/RetireLegacyFlutterMenus.zsh" || exit 1
   /usr/bin/open "$APP_PATH" || { log '✖ 无法打开宿主 App。'; exit 1; }
   /usr/bin/killall Finder 2>&1 | /usr/bin/tee -a "$LOG_FILE" || log 'ℹ Finder 当前未运行。'

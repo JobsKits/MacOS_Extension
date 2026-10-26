@@ -84,112 +84,29 @@ class InstallerRegistrationTests < Minitest::Test
     assert_includes output, 'killall Finder exit=9'
   end
 
-  def test_independent_install_cleans_exact_old_host_and_extension_before_new_registration
-    wrong_app = create_app('wrong-id', 'com.jobs.unrelated')
-    records = [@old_app, @app, wrong_app].map do |path|
-      "--------------------------------------------------------------------------------\npath: #{path} (0x7f0c)\nidentifier: #{APP_ID}\n"
-    end.join
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks, records: records,
-                                plugin_records: "Path = #{@old_extension}\nPath = #{@extension}\n")
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@old_extension}"
-    refute_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "lsregister|-u|#{@old_app}"
-    refute_includes calls, "lsregister|-u|#{@app}"
-    refute_includes calls, "lsregister|-u|#{wrong_app}"
-    assert_operator calls.index("lsregister|-u|#{@old_app}"), :<, calls.index("lsregister|-f|#{@app}")
-    assert_includes calls, "open|-n|#{@app}|--args|--initialize-finder-extension"
-    assert File.directory?(@old_app), '旧 App 文件只注销登记，保留文件。'
+  def test_legacy_entry_points_forward_only_the_selected_menu_and_cli_flags
+    %w[安装 卸载].each do |operation|
+      directory = File.join(@directory, 'JobsGitProxyConfigurator')
+      group = File.join(@directory, 'JobsProjectTools')
+      FileUtils.mkdir_p([directory, group])
+      entry = File.join(directory, "【MacOS】#{operation}Git动态代理Finder扩展.command")
+      FileUtils.cp(operation == '安装' ? INSTALLER : UNINSTALLER, entry)
+      target = File.join(group, "【MacOS】#{operation}项目工具Finder扩展.command")
+      File.write(target, "#!/bin/zsh\nprint -r -- \"${(j:|:)@}\"\n")
+      flag = operation == '安装' ? '--install' : '--uninstall'
+      output, status = Open3.capture2e('/bin/zsh', entry, flag, '--skip-finder-restart')
+      assert status.success?, output
+      assert_equal "git-proxy-configure|#{flag}|--skip-finder-restart", output.strip
+      assert_empty calls
+    end
   end
 
-  def test_independent_install_registration_error_does_not_report_success
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      JOBS_TEST_REGISTER_RESULT=7
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks)
-    refute status.success?, output
-    refute_includes output, '✔ 已请求启用扩展'
-    refute calls.any? { |line| line.start_with?('open|') || line.start_with?('killall|') }
-  end
-
-  def test_independent_uninstall_removes_only_verified_app_and_keeps_git_configuration
-    git_configuration = File.join(@directory, 'user-config/runtime/bin/git')
-    FileUtils.mkdir_p(File.dirname(git_configuration))
-    File.write(git_configuration, 'existing user Git configuration')
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      LOG_FILE="$JOBS_TEST_LOG"
-      collect_registered_paths
-      uninstall_extension
-    ZSH
-    output, status = run_source(UNINSTALLER, checks, plugin_records: "Path = #{@extension}\n")
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "rm|-rf|--|#{@app}"
-    assert_equal ["rm|-rf|--|#{@app}", 'rm|-f|--|/tmp/JobsGitProxyConfiguratorNeedsFinderRestart'], calls.grep(/^rm\|/)
-    assert_equal 'existing user Git configuration', File.read(git_configuration)
-    refute calls.any? { |line| line.include?('ConfigureGitDynamicProxy.command') }
-  end
-
-  def test_install_skip_refresh_flag_keeps_registration_without_restarting_finder
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      parse_entry_options --install --skip-finder-restart
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks)
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-a|#{@extension}"
-    refute_includes calls, 'killall|Finder'
-    refute calls.any? { |line| line.include?('ConfigureGitDynamicProxy.command') }
-  end
-
-  def test_uninstall_skip_refresh_flag_preserves_git_configuration
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      LOG_FILE="$JOBS_TEST_LOG"
-      parse_entry_options --uninstall --skip-finder-restart
-      confirm_uninstall
-      refresh_finder
-    ZSH
-    output, status = run_source(UNINSTALLER, checks)
-    assert status.success?, output
-    refute_includes calls, 'killall|Finder'
-    refute calls.any? { |line| line.include?('ConfigureGitDynamicProxy.command') }
-  end
-
-  def test_independent_install_rejects_noninteractive_input_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "\n")
+  def test_group_installer_requires_tty_without_explicit_cli_authorization
+    entry = File.join(ROOT, '..', 'JobsProjectTools', '【MacOS】安装项目工具Finder扩展.command')
+    output, status = Open3.capture2e('/bin/zsh', entry, 'git-proxy-configure', stdin_data: "\n")
     refute status.success?, output
     assert_includes output, '请在可交互终端运行'
     assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsGitProxyConfiguratorInstall.log'))
-  end
-
-  def test_independent_install_nonempty_input_skips_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "skip\n", interactive: true)
-    assert status.success?, output
-    assert_includes output, '直接回车安装；输入任意字符后回车跳过'
-    assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsGitProxyConfiguratorInstall.log'))
   end
 
   private

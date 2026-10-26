@@ -34,7 +34,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>在 Terminal 中执行用户选择的 Git 拉取操作。</string>
+	<string>在 Terminal 中执行用户选择的 Git 拉取、动态代理配置或空白提交与推送。</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Jobs. All rights reserved.</string>
 	<key>NSPrincipalClass</key>

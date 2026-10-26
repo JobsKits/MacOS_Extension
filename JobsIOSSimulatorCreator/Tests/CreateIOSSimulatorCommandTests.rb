@@ -76,6 +76,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
       printf '\0' >> "$TEST_TRACE"
       [[ "${TEST_OPEN_FAIL:-0}" == 0 ]] || exit 23
     ZSH
+    make_fzf
     @source = isolated_source(SCRIPT)
     @bootstrap = <<~'ZSH'
       setopt NO_NOMATCH PIPE_FAIL
@@ -336,46 +337,65 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     assert_equal 'iPhone@fixture (3)', output.strip
   end
 
-  # 编号错误只会再次提示，前导零仍按十进制解释。
-  def test_numbered_selection_validates_range_and_accepts_decimal_leading_zero
-    output, status = execute(<<~'ZSH', input: "0\n99\nabc\n02\n")
+  # fzf 返回不属于清单的行时直接失败，不能读取数字或采用首项。
+  def test_unknown_fzf_row_stops_without_numeric_fallback
+    output, status = execute(<<~'ZSH', input: "2\n", env: {'TEST_FZF_UNKNOWN' => '1'})
       sim_choose_row '选择' $'One\tid-one\nTwo\tid-two' || exit $?
       print -r -- "SELECTED|$SIM_SELECTED_ROW"
     ZSH
-    assert status.success?, output
-    assert_includes output, "SELECTED|Two\tid-two"
-    assert_equal 3, output.scan('请输入列表内的编号').length
+    assert_equal 1, status.exitstatus, output
+    assert_includes output, '选择结果不属于当前清单'
+    refute_includes output, 'SELECTED|'
     assert_empty trace
   end
 
-  # 编号回退直接回车采用首项，与健康 fzf 的默认选择一致。
-  def test_numbered_selection_enter_chooses_first_row
-    output, status = execute(<<~'ZSH', input: "\n")
-      sim_choose_row '选择' $'One\tid-one\nTwo\tid-two' || exit $?
-      print -r -- "SELECTED|$SIM_SELECTED_ROW"
-    ZSH
-    assert status.success?, output
-    assert_includes output, "SELECTED|One\tid-one"
+  # 缺少 fzf 即安全停止，输入编号也不能绕过依赖检查。
+  def test_missing_fzf_stops_without_numeric_fallback
+    FileUtils.rm_f(File.join(@bin, 'fzf'))
+    output, status = execute("sim_choose_row '选择' $'One\\tid-one'", input: "1\n")
+    assert_equal 1, status.exitstatus, output
+    assert_includes output, 'fzf 缺失或不可用，已停止交互选择'
+    refute_includes output, '输入编号'
     assert_empty trace
   end
 
-  # 明确取消与输入结束不能选中第一项。
-  def test_cancel_and_eof_never_select_or_create
-    ["q\n", "Q\n", "\e\n", ''].each do |input|
-      output, status = execute("sim_choose_row '选择' $'One\\tid-one'", input: input)
+  # 选择器取消或没有匹配项时不能选中第一项。
+  def test_cancel_and_no_matches_never_select_or_create
+    %w[130 1].each do |result|
+      output, status = execute("sim_choose_row '选择' $'One\\tid-one'", env: {'TEST_FZF_CANCEL_RESULT' => result})
       assert_equal 130, status.exitstatus, output
     end
     assert_empty trace
   end
 
-  # 已安装但损坏的 fzf 自动降级，健康 fzf 按 Esc 可取消。
-  def test_fzf_health_fallback_and_cancellation
+  # 损坏的 fzf 明确失败；健康 fzf 按 Esc 可取消。
+  def test_fzf_health_failure_and_cancellation
     make_fzf
-    output, status = execute('sim_check_environment; print -r -- "FZF|$SIM_FZF"', env: {'TEST_FZF_BAD' => '1'})
-    assert status.success?, output
-    assert_match(/FZF\|\s*\z/, output)
+    output, status = execute('sim_check_selector', env: {'TEST_FZF_BAD' => '1'})
+    assert_equal 1, status.exitstatus, output
+    assert_includes output, 'fzf 缺失或不可用，已停止交互选择'
     output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_choose_row 选择 $\'One\\tid-one\'', env: {'TEST_FZF_CANCEL' => '1'})
     assert_equal 130, status.exitstatus, output
+  end
+
+  # 共享交互路由传播缺失选择器的失败，不读取清单或执行创建。
+  def test_interactive_entry_propagates_missing_fzf_before_catalog_and_creation
+    FileUtils.rm_f(File.join(@bin, 'fzf'))
+    output, status = execute('sim_prepare_context; SIM_MODE=interactive; sim_run_requested_action')
+    assert_equal 1, status.exitstatus, output
+    assert_includes output, 'fzf 缺失或不可用，已停止交互选择'
+    refute trace.any? { |entry| %w[list create boot bootstatus].include?(entry[2]) }
+    refute trace.any? { |entry| entry[0] == 'legacy-wrapper' }
+  end
+
+  # 只读清单检查无需选择器，也不触发依赖安装。
+  def test_read_only_check_without_fzf_remains_available
+    FileUtils.rm_f(File.join(@bin, 'fzf'))
+    output, status = execute('main --check')
+    assert status.success?, output
+    assert_includes output, '只读体检完成'
+    refute trace.any? { |entry| %w[create boot bootstatus].include?(entry[2]) }
+    refute trace.any? { |entry| entry[0] == 'legacy-wrapper' }
   end
 
   # 健康 fzf 的输出必须精确匹配原清单，再交给创建流程。
@@ -513,8 +533,9 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     use_duo_catalog
     @runtimes = [@runtimes.first]
     save_catalog
-    ["2\n\n\n", "2\nyes\n", "2\n \n", "2\n"].each do |input|
-      output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: input)
+    ["\n", "yes\n", " \n", ''].each do |input|
+      output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: input,
+                               env: {'TEST_FZF_ROWS' => '2'})
       refute status.success?, output
       assert_includes output, '没有可搭配的已安装 iOS 系统'
       refute_includes output, '➤ 选择 iOS 系统版本'
@@ -528,7 +549,8 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     use_duo_catalog
     @runtimes = [@runtimes.first]
     save_catalog
-    output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: "2\nr\n1\n\n\n")
+    output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop', input: "r\n\n",
+                             env: {'TEST_FZF_ROWS' => '2 1 1'})
     assert status.success?, output
     assert_includes output, '没有可搭配的已安装 iOS 系统'
     assert_equal 2, output.scan('➤ 选择 iPhone / iPad 型号').length, output
@@ -649,7 +671,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
 
   # 完整选择循环只新增一次，名称包含进程编号以避免同秒并发碰撞。
   def test_complete_selection_flow_creates_once_with_process_suffix
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\n")
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\n")
     assert status.success?, output
     creates = trace.select { |entry| entry[2] == 'create' }
     assert_equal 1, creates.length
@@ -723,6 +745,9 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
         print -ru2 -- 'unexpected inherited fzf default options'
         exit 41
       fi
+      for arg in "$@"; do
+        [[ "$arg" != --expect=left ]] || print -r -- ''
+      done
       /usr/bin/head -n 1
     ZSH
     output, status = execute(<<~'ZSH', input: "\n", env: {'FZF_DEFAULT_OPTS' => '--tac --query=Duo', 'FZF_DEFAULT_OPTS_FILE' => options_file})
@@ -740,8 +765,9 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
 
   # 在选择或最终确认取消均不创建设备。
   def test_complete_selection_flow_cancels_before_mutation
-    ["q\n", "1\nq\n", "1\n1\n \n"].each do |input|
-      output, status = execute('sim_load_catalog && sim_interactive_loop', input: input)
+    [1, 2, 0].each do |cancel_at|
+      output, status = execute('sim_load_catalog && sim_interactive_loop', input: " \n",
+                               env: {'TEST_FZF_CANCEL_AT' => cancel_at.to_s})
       assert status.success?, output
       assert_includes output, '已取消，未创建模拟器'
     end
@@ -752,7 +778,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   def test_incompatible_create_stops_without_explicit_retry
     ["\n", "yes\n", "r \n", " r\n", ''].each do |retry_input|
       output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop',
-                               input: "1\n1\n\n" + retry_input,
+                               input: "\n" + retry_input,
                                env: {'TEST_CREATE_FAIL' => 'Incompatible device'})
       refute status.success?, output
       assert_includes output, '组合不受支持'
@@ -766,8 +792,8 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
   def test_incompatible_create_returns_to_selection_only_after_explicit_retry
     %w[r R].each do |retry_input|
       output, status = execute(': > "$TEST_TRACE"; sim_load_catalog && sim_interactive_loop',
-                               input: "1\n1\n\n#{retry_input}\nq\n",
-                               env: {'TEST_CREATE_FAIL' => 'Incompatible device'})
+                               input: "\n#{retry_input}\n",
+                               env: {'TEST_CREATE_FAIL' => 'Incompatible device', 'TEST_FZF_CANCEL_AT' => '3'})
       assert status.success?, output
       assert_includes output, '组合不受支持'
       assert_includes output, '已取消，未创建模拟器'
@@ -793,7 +819,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
 
   # 泛化创建失败可能来自服务或组件问题，不能把它当成兼容错误重新弹出列表。
   def test_generic_create_error_stops_without_reselection
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\n\n",
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\n\n",
                              env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type iPhone: CoreSimulator service unavailable'})
     refute status.success?, output
     refute_includes output, '组合不受支持'
@@ -805,7 +831,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
 
   # 泛化创建失败即使预留 r 输入，也不得触发兼容性重选。
   def test_generic_create_error_does_not_offer_retry
-    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "1\n1\n\nr\nq\n",
+    output, status = execute('sim_load_catalog && sim_interactive_loop', input: "\nr\n",
                              env: {'TEST_CREATE_FAIL' => 'Unable to create a device for device type'})
     refute status.success?, output
     refute_includes output, '组合不受支持'
@@ -818,6 +844,49 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     output, status = execute('sim_run_to_file "$TEST_ROOT/run/command.out" 0 /bin/sleep 10')
     assert_equal 124, status.exitstatus, output
     assert_includes output, '等待超过'
+  end
+
+  # Runtime 左键返回型号，重新选择只在最终确认后创建一次。
+  def test_runtime_left_returns_to_model_before_any_creation
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             input: "\n", env: {'TEST_FZF_TRACE' => '1', 'TEST_FZF_BACK_ONCE' => '1'})
+    assert status.success?, output
+    assert_includes output, '已返回型号选择，未创建模拟器'
+    selections = trace.select { |entry| entry[0] == 'fzf' }
+    assert_equal 4, selections.length
+    assert_equal 2, selections.count { |entry| entry.include?('--expect=left') }
+    assert_equal 1, trace.count { |entry| entry[2] == 'create' }
+  end
+
+  # 子层返回后在型号层取消，不能执行创建或启动。
+  def test_cancel_after_runtime_left_does_not_create
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             env: {'TEST_FZF_BACK_ONCE' => '1', 'TEST_FZF_CANCEL_AFTER_BACK' => '1'})
+    assert status.success?, output
+    assert_includes output, '已取消，未创建模拟器'
+    refute trace.any? { |entry| %w[create boot bootstatus].include?(entry[2]) }
+  end
+
+  # fzf 在无匹配项时左键会以 1 退出，明确返回键仍应返回型号。
+  def test_runtime_left_with_no_matches_returns_instead_of_cancelling
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             input: "\n", env: {'TEST_FZF_BACK_ONCE' => '1', 'TEST_FZF_BACK_RESULT' => '1'})
+    assert status.success?, output
+    assert_includes output, '已返回型号选择，未创建模拟器'
+    assert_equal 1, trace.count { |entry| entry[2] == 'create' }
+  end
+
+  # 选择器异常保留失败状态，不进入创建，也不伪装成用户取消。
+  def test_fzf_failure_propagates_without_creation
+    make_fzf
+    output, status = execute('SIM_FZF="$TEST_ROOT/bin/fzf"; sim_load_catalog && sim_interactive_loop',
+                             env: {'TEST_FZF_FAILURE' => '42'})
+    assert_equal 42, status.exitstatus, output
+    assert_includes output, '选择器执行失败（退出码 42）'
+    refute trace.any? { |entry| %w[create boot bootstatus].include?(entry[2]) }
   end
 
   private
@@ -954,7 +1023,7 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
     FileUtils.chmod(0o700, path)
   end
 
-  # fzf 的版本探测与 Esc 取消均在私有进程中模拟。
+  # fzf 的版本探测、返回与 Esc 取消均在私有进程中模拟。
   def make_fzf
     write_mock('fzf', <<~'ZSH')
       if [[ "$1" == --version ]]; then
@@ -965,14 +1034,41 @@ class CreateIOSSimulatorCommandTests < Minitest::Test
         printf '%s\0' fzf "$@" >> "$TEST_TRACE"
         printf '\0' >> "$TEST_TRACE"
       fi
+      round=0
+      [[ ! -f "$TEST_ROOT/fzf-round" ]] || round="$(<"$TEST_ROOT/fzf-round")"
+      (( round++ ))
+      print -r -- "$round" > "$TEST_ROOT/fzf-round"
+      [[ -z "${TEST_FZF_CANCEL_RESULT:-}" ]] || exit "$TEST_FZF_CANCEL_RESULT"
+      [[ "${TEST_FZF_CANCEL_AT:-0}" != "$round" ]] || exit 130
       [[ "${TEST_FZF_CANCEL:-0}" == 0 ]] || exit 130
-      /usr/bin/head -n 1
+      [[ "${TEST_FZF_FAILURE:-0}" == 0 ]] || exit "$TEST_FZF_FAILURE"
+      if [[ "${TEST_FZF_UNKNOWN:-0}" == 1 ]]; then
+        print -r -- unknown-row
+        exit 0
+      fi
+      if [[ -f "$TEST_ROOT/fzf-returned" && "${TEST_FZF_CANCEL_AFTER_BACK:-0}" == 1 ]]; then
+        exit 130
+      fi
+      for arg in "$@"; do
+        if [[ "$arg" == --expect=left ]]; then
+          if [[ "${TEST_FZF_BACK_ONCE:-0}" == 1 && ! -f "$TEST_ROOT/fzf-returned" ]]; then
+            : > "$TEST_ROOT/fzf-returned"
+            print -r -- left
+            exit "${TEST_FZF_BACK_RESULT:-0}"
+          fi
+          print -r -- ''
+        fi
+      done
+      row_choices=(${=TEST_FZF_ROWS})
+      row_index="${row_choices[round]:-1}"
+      /usr/bin/sed -n "${row_index}p"
     ZSH
   end
 
   # 执行真实函数正文；设备命令、GUI 及旧入口的清场和安装函数均由夹具隔离。
   def execute(code, input: '', env: {}, source: @source)
     FileUtils.mkdir_p(@run)
+    FileUtils.rm_f([File.join(@root, 'fzf-round'), File.join(@root, 'fzf-returned')])
     Open3.capture2e(@environment.merge(env), '/bin/zsh', '-c', source + "\n" + @bootstrap + "\n" + code,
                    stdin_data: input, chdir: @root)
   end

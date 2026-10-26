@@ -38,9 +38,9 @@ FINAL_EXIT_STATUS=0
 SELECTED_KEYS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
-IOS_FUNCTION_IDS=(ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets)
+IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
 
-FEATURE_KEYS=(flutter-tools git_remote git_remote_copier path_copier run-authorize ipa-resign hidden-files-toggle xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create git-proxy-configure terminal_opener ios-tools)
+FEATURE_KEYS=(flutter-tools git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle xcode_opener vscode_opener android_studio_opener flutter_version_manager flutter_sdk_version git-pull flutter-dependency-extract flutter-run flutter-package flutter-doctor flutter-codegen ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure git_empty_commit_push terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_APP_NAME
@@ -61,7 +61,7 @@ FEATURE_REFRESH_MARKER[flutter-tools]="/tmp/JobsFlutterToolsNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[flutter-tools]="/tmp/JobsFlutterTools.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[flutter-tools]}]="flutter-tools"
 
-FEATURE_TITLE[ios-tools]="iOS / CocoaPods 辅助工具（全部 10 项）"
+FEATURE_TITLE[ios-tools]="iOS / CocoaPods 辅助工具（全部 12 项）"
 FEATURE_PROJECT_DIR[ios-tools]="JobsIOSTools"
 FEATURE_APP_NAME[ios-tools]="JobsIOSTools"
 FEATURE_EXTENSION_PROCESS_NAME[ios-tools]="JobsIOSToolsFinderSync"
@@ -109,6 +109,15 @@ FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtens
 FEATURE_REFRESH_MARKER[run-authorize]="/tmp/JobsRunAuthorizerNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[run-authorize]="/tmp/JobsRunAuthorizer.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[run-authorize]}]="run-authorize"
+
+FEATURE_TITLE[run-revoke]="解除运行授权"
+FEATURE_PROJECT_DIR[run-revoke]="JobsRunAuthorizationRevoker"
+FEATURE_APP_NAME[run-revoke]="JobsRunAuthorizationRevoker"
+FEATURE_EXTENSION_PROCESS_NAME[run-revoke]="JobsRunAuthorizationRevokerFinderSync"
+FEATURE_EXTENSION_ID[run-revoke]="com.jobs.JobsRunAuthorizationRevoker.FinderSyncExtension"
+FEATURE_REFRESH_MARKER[run-revoke]="/tmp/JobsRunAuthorizationRevokerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[run-revoke]="/tmp/JobsRunAuthorizationRevoker.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[run-revoke]}]="run-revoke"
 
 FEATURE_TITLE[ipa-resign]="IPA 免编译重签"
 FEATURE_PROJECT_DIR[ipa-resign]="JobsIPAResigner"
@@ -245,7 +254,16 @@ FEATURE_REFRESH_MARKER[harmony-simulator-create]="/tmp/JobsHarmonySimulatorCreat
 FEATURE_RUNTIME_LOG[harmony-simulator-create]="/tmp/JobsHarmonySimulatorCreator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[harmony-simulator-create]}]="harmony-simulator-create"
 
-FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
+FEATURE_TITLE[harmony-simulator-repair]="Harmony 模拟器检测与修复"
+FEATURE_PROJECT_DIR[harmony-simulator-repair]="JobsHarmonySimulatorRepairer"
+FEATURE_APP_NAME[harmony-simulator-repair]="JobsHarmonySimulatorRepairer"
+FEATURE_EXTENSION_PROCESS_NAME[harmony-simulator-repair]="JobsHarmonySimulatorRepairFinderSync"
+FEATURE_EXTENSION_ID[harmony-simulator-repair]="com.jobs.harmonysimulatorrepairer.findersync"
+FEATURE_REFRESH_MARKER[harmony-simulator-repair]="/tmp/JobsHarmonySimulatorRepairerNeedsFinderRestart"
+FEATURE_RUNTIME_LOG[harmony-simulator-repair]="/tmp/JobsHarmonySimulatorRepairer.log"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[harmony-simulator-repair]}]="harmony-simulator-repair"
+
+FEATURE_TITLE[flutter-run]="从终端运行 Flutter 项目"
 FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
 FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
 FEATURE_EXTENSION_PROCESS_NAME[flutter-run]="JobsFlutterRunFinderSync"
@@ -262,6 +280,13 @@ FEATURE_EXTENSION_ID[git-proxy-configure]="com.jobs.gitproxyconfigurator.finders
 FEATURE_REFRESH_MARKER[git-proxy-configure]="/tmp/JobsGitProxyConfiguratorNeedsFinderRestart"
 FEATURE_RUNTIME_LOG[git-proxy-configure]="/tmp/JobsGitProxyConfigurator.log"
 FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git-proxy-configure]}]="git-proxy-configure"
+
+FEATURE_TITLE[git_empty_commit_push]="在终端创建空白 Commit 并 Push"
+FEATURE_PROJECT_DIR[git_empty_commit_push]="JobsProjectTools"
+FEATURE_APP_NAME[git_empty_commit_push]="JobsProjectTools"
+FEATURE_EXTENSION_PROCESS_NAME[git_empty_commit_push]="JobsProjectToolsFinderSync"
+FEATURE_EXTENSION_ID[git_empty_commit_push]="com.jobs.JobsProjectTools.FinderSyncExtension"
+FEATURE_KEY_BY_TITLE[${FEATURE_TITLE[git_empty_commit_push]}]="git_empty_commit_push"
 
 FEATURE_TITLE[hidden-files-toggle]="显示 / 隐藏文件"
 FEATURE_PROJECT_DIR[hidden-files-toggle]="JobsHiddenFilesToggler"
@@ -654,7 +679,7 @@ uninstall_feature() {
   local key="$1"
 
   case "$key" in
-    android_studio_opener|vscode_opener|xcode_opener|git-pull|git_remote|git_remote_copier)
+    android_studio_opener|vscode_opener|xcode_opener|git-pull|git_remote|git_remote_copier|git-proxy-configure|git_empty_commit_push)
       /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "$key" 2>&1 | tee -a "$LOG_FILE"
       return ${pipestatus[1]}
       ;;

@@ -1,5 +1,7 @@
 # Flutter 菜单实现
 
+安装器的子功能清单位于当前用户应用支持目录 `JobsFinderExtensions/flutter-tools-features.conf`：总安装器按本次勾选覆盖，独立安装启用全部 19 个动作，独立卸载清除清单。脚本资源仍统一打包到 App，禁用动作由 Finder 与宿主在派发前拦截。
+
 菜单、FVM 要求、修复范围与安装流程见 [功能说明](../README.md)。`Tools/DispatchFlutterTools.zsh` 是唯一分发入口；`Tools/FlutterProjectTools.dart` 处理双层体检、两类代码修复与维护；`RepairAndroidSdk.zsh` 复用 `AndroidSdkSupport.zsh` 的组件引导。`RetireLegacyFlutterMenus.zsh` 只在统一扩展已启用后停用旧 Flutter 入口。
 
 `ohos-sdk-manage` 在 FVM 门禁前交给 `Tools/ManageHarmonyFlutterVersion.zsh --project <目录>`，从 CPF-Flutter 源查询发布标签，下载到独立缓存后固定项目 FVM；`java-manage` 同样在门禁前交给 `Tools/ManageProjectJava.zsh --project <目录>`，管理 jEnv 与 `.java-version`。两个脚本均支持 `--check` 只读模式，安装后使用 App 内自包含资源。存在项目 Java 声明时，分发器通过 `pj_bind_project_java` 为普通工具注入本次 `JAVA_HOME`、`PATH` 和 Gradle daemon 参数，失败即停止；静态清理、静态 import 修复和版本管理不依赖 Java 绑定。

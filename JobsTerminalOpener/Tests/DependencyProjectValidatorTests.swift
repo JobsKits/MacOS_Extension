@@ -134,6 +134,7 @@ enum DependencyProjectValidatorTests {
             .write(to: flutter.appendingPathComponent("pubspec.yaml"))
         try expect(validator.isFlutterProject(at: flutter), "Pod 门禁变更不能影响合法 Flutter 工程")
         try expect(validator.buildArtifactProjectKind(at: flutter)?.menuTitle == "清理Flutter构建产物", "Flutter 工程标题应明确")
+        try expect(validator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: flutter), "Flutter 根目录应支持两平台清理入口")
         let flutterManifests = [
             "dependencies: { flutter: { sdk: flutter } }\n",
             "dependencies:\n  flutter: { sdk: 'flutter' }\n",
@@ -155,8 +156,9 @@ enum DependencyProjectValidatorTests {
             try expect(validator.buildArtifactProjectKind(at: candidate) == .flutter, "无 lib 的合法 Flutter 根目录同样不能回退原生类型")
         }
         try expect(!validator.isBuildArtifactTargetFolder(at: child), "未知目录不能出现清理入口")
-        for (kind, title) in [(BuildArtifactProjectKind.ios, "清理iOS/Xcode构建产物"), (.android, "清理Android构建产物"), (.harmony, "清理鸿蒙构建产物")] {
+        for (kind, title) in [(BuildArtifactProjectKind.ios, "清理iOS/Xcode构建产物"), (.android, "清理Android构建产物"), (.harmony, "清理OpenHarmony构建产物")] {
             try expect(kind.menuTitle == title, "清理标题必须明确工程类型")
+            try expect(kind.supportsAndroidOpenHarmonyCleanup == (kind != .ios), "两平台入口不能接收原生 iOS 工程")
         }
         try expect(validator.isCodeGraphTargetFolder(at: child), "普通文件夹仍允许代码地图入口")
         try expect(validator.isGitEmptyCommitPushTargetFolder(at: child), "普通文件夹仍允许 Git 入口")

@@ -10,11 +10,15 @@ import Foundation
 /// 新工程类型必须同时补充菜单识别、终端清理白名单及两端一致性测试。
 enum BuildArtifactProjectKind: String {
     case flutter = "Flutter"
-    case harmony = "鸿蒙"
+    case harmony = "OpenHarmony"
     case android = "Android"
     case ios = "iOS/Xcode"
 
     var menuTitle: String { "清理\(rawValue)构建产物" }
+
+    var supportsAndroidOpenHarmonyCleanup: Bool {
+        self == .flutter || self == .android || self == .harmony
+    }
 }
 
 struct DependencyProjectValidator {
@@ -48,7 +52,7 @@ struct DependencyProjectValidator {
         return isFlutterToolsProject(at: directoryURL)
     }
 
-    /// 统一 Flutter 菜单不要求 lib；用同一边界排除通用清理入口。
+    /// 两平台与完整 Flutter 清理共用清单边界，不要求已创建 lib。
     func isFlutterToolsProject(at directoryURL: URL) -> Bool {
         guard directoryURL.isFileURL,
               let directory = try? directoryURL.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isAliasFileKey]),
@@ -76,6 +80,10 @@ struct DependencyProjectValidator {
 
     func isBuildArtifactTargetFolder(at directoryURL: URL) -> Bool {
         buildArtifactProjectKind(at: directoryURL) != nil
+    }
+
+    func isAndroidOpenHarmonyBuildArtifactTargetFolder(at directoryURL: URL) -> Bool {
+        buildArtifactProjectKind(at: directoryURL)?.supportsAndroidOpenHarmonyCleanup == true
     }
 
     /// 只识别所选目录；Flutter 根目录优先，平台子目录单独选中时按平台识别。

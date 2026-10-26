@@ -32,7 +32,7 @@ enum FlutterToolsAction: String, CaseIterable {
     var title: String {
         switch self {
         case .run:
-            return "运行Flutter项目"
+            return "从终端运行 Flutter 项目"
         case .pubGet:
             return "拉取Flutter第三方依赖"
         case .extract:
@@ -52,15 +52,15 @@ enum FlutterToolsAction: String, CaseIterable {
         case .packageAndroid:
             return "Android"
         case .packageHarmony:
-            return "鸿蒙"
+            return "OpenHarmony"
         case .codegen:
             return "Flutter自动化生产代码"
         case .nativeDoctor:
             return "原生Flutter项目体检"
         case .harmonyDoctor:
-            return "鸿蒙Flutter环境体检"
+            return "OpenHarmony Flutter 环境体检"
         case .cleanBuildArtifacts:
-            return "清理当前项目构建产物"
+            return "清理当前 Flutter 项目构建产物"
         case .maintenance:
             return "依赖与缓存维护"
         case .repairNamespace:

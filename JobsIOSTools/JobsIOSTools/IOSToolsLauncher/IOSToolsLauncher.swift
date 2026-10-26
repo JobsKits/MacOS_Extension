@@ -12,10 +12,15 @@ import Foundation
 struct IOSToolsLauncher {
     struct PreparedRequest {
         let commandLine: String
-        let directoryURL: URL
+        let directoryURL: URL?
     }
 
     func launch(projectURL: URL, action: IOSToolsAction) throws {
+        if action == .podInstall {
+            let request = try prepare(projectURL: projectURL, action: action, toolsURL: projectURL)
+            try dispatch(commandLine: request.commandLine)
+            return
+        }
         guard let toolsURL = Bundle.main.resourceURL?.appendingPathComponent("Tools"),
               FileManager.default.fileExists(atPath: toolsURL.appendingPathComponent("DispatchIOSTools.zsh").path) else {
             throw failure("App 缺少 iOS 工具资源，请重新安装。")
@@ -24,7 +29,9 @@ struct IOSToolsLauncher {
         do {
             try dispatch(commandLine: request.commandLine)
         } catch {
-            try? FileManager.default.removeItem(at: request.directoryURL)
+            if let directory = request.directoryURL {
+                try? FileManager.default.removeItem(at: directory)
+            }
             throw error
         }
     }
@@ -32,6 +39,9 @@ struct IOSToolsLauncher {
     func prepare(projectURL: URL, action: IOSToolsAction, toolsURL: URL) throws -> PreparedRequest {
         guard IOSProjectValidator().supports(action, at: projectURL) else {
             throw failure("请选择合法 iOS 项目根目录。")
+        }
+        if action == .podInstall {
+            return PreparedRequest(commandLine: "cd -- \(shellWord(projectURL.standardizedFileURL.path)) && pod install", directoryURL: nil)
         }
         var template = Array(FileManager.default.temporaryDirectory.appendingPathComponent("JobsIOSTools-XXXXXX").path.utf8CString)
         guard let path = mkdtemp(&template) else {

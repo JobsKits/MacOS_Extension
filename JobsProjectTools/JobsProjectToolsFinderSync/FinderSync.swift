@@ -1,3 +1,10 @@
+//
+//  FinderSync.swift
+//  JobsProjectToolsFinderSync
+//
+//  Created by Jobs on 2026年10月24日，星期六.
+//
+
 import AppKit
 import FinderSync
 
@@ -10,10 +17,20 @@ final class FinderSync: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         guard let url = candidateURL(for: menuKind) else { return nil }
         let menu = NSMenu(title: "")
+        let gitMenu = NSMenu(title: "Git操作")
         for action in ProjectMenuAction.visible(at: url, enabled: ProjectMenuConfiguration.enabledFeatures()) {
             let item = NSMenuItem(title: action.title, action: selector(for: action, kind: menuKind), keyEquivalent: "")
             item.target = self
-            menu.addItem(item)
+            if action.isGitAction {
+                gitMenu.addItem(item)
+            } else {
+                menu.addItem(item)
+            }
+        }
+        if !gitMenu.items.isEmpty {
+            let parent = NSMenuItem(title: "Git操作", action: nil, keyEquivalent: "")
+            parent.submenu = gitMenu
+            menu.addItem(parent)
         }
         return menu.items.isEmpty ? nil : menu
     }
@@ -42,6 +59,8 @@ final class FinderSync: FIFinderSync {
         case .gitPull: return selected ? #selector(pullSelected(_:)) : #selector(pullContainer(_:))
         case .gitRemote: return selected ? #selector(remoteSelected(_:)) : #selector(remoteContainer(_:))
         case .gitRemoteCopy: return selected ? #selector(copySelected(_:)) : #selector(copyContainer(_:))
+        case .gitProxy: return selected ? #selector(proxySelected(_:)) : #selector(proxyContainer(_:))
+        case .gitEmptyCommitPush: return selected ? #selector(commitSelected(_:)) : #selector(commitContainer(_:))
         }
     }
 
@@ -58,6 +77,10 @@ final class FinderSync: FIFinderSync {
     @objc private func remoteContainer(_ sender: NSMenuItem) { perform(.gitRemote, .contextualMenuForContainer) }
     @objc private func copySelected(_ sender: NSMenuItem) { perform(.gitRemoteCopy, .contextualMenuForItems) }
     @objc private func copyContainer(_ sender: NSMenuItem) { perform(.gitRemoteCopy, .contextualMenuForContainer) }
+    @objc private func proxySelected(_ sender: NSMenuItem) { perform(.gitProxy, .contextualMenuForItems) }
+    @objc private func proxyContainer(_ sender: NSMenuItem) { perform(.gitProxy, .contextualMenuForContainer) }
+    @objc private func commitSelected(_ sender: NSMenuItem) { perform(.gitEmptyCommitPush, .contextualMenuForItems) }
+    @objc private func commitContainer(_ sender: NSMenuItem) { perform(.gitEmptyCommitPush, .contextualMenuForContainer) }
 
     private func perform(_ action: ProjectMenuAction, _ kind: FIMenuKind) {
         guard let url = candidateURL(for: kind),

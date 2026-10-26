@@ -60,7 +60,7 @@
 
 5、授权失败显示原始错误和真实退出码；成功与失败日志均保留。`--check` 只读检查目标并显示当前权限、`umask`，不创建日志或改变权限；`--help` 显示用法。
 
-增加执行权限不会保证文件可信、格式可执行或依赖齐全；本入口仅完成权限修改。当前用户不能修改的目标直接失败，不自动提权。
+增加执行权限不会保证文件可信、格式可执行或依赖齐全；本入口仅完成权限修改。当前用户不能修改的目标直接失败，不自动提权。配对的[解除运行授权](../../JobsRunAuthorizationRevoker/README.md)通过独立菜单清除全部执行位，不更改此脚本的 `chmod +x` 与 `umask` 语义。
 
 ## 三、<span id="registration">构建后注册与安装入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

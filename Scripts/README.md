@@ -26,7 +26,7 @@
 
 本目录维护总安装器使用的 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 功能选择窗口。选择器用 [**Swift**](https://www.swift.org/) 调用 [**AppKit**](https://developer.apple.com/documentation/appkit) 创建复选框窗口，只向调用方返回选择结果；构建、注册、启用扩展和保存 Terminal 功能配置由[根目录安装器](../【MacOS】🧩安装Finder扩展.command)负责。
 
-**当前为 31 项可选功能、13 个现行安装工程（按选择器标识及安装器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。没有任何勾选时，“安装”立即置灰且回车无法提交，重新勾选后实时恢复。全部选项和底栏固定显示，中间区域不滚动；窗口按控件尺寸选择两列或三列，矮屏收紧间距。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
+**当前为 51 项可选功能、14 个现行安装工程（2026-10-24 按选择器标识及安装器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。没有任何勾选时，“安装”立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；窗口按控件尺寸选择两列或三列，矮屏收紧间距，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
@@ -48,16 +48,16 @@
 
 ## 二、<span id="feature-identifiers">功能标识与工程映射</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-窗口按用途分六组；`JobsTerminalOpener` 的五项与 `JobsIOSTools` 的十项辅助功能均可分别勾选，安装器各归并为一次工程构建。iOS 组前两项相邻显示 `Pod Install`、`Pod Update`，实际终端命令仍为小写 `pod install` / `pod update`；该组还包含 IPA 重签。Flutter 的七个旧标识仅列在下表供兼容查阅，窗口统一提供 `flutter-tools`；旧 Flutter 安装入口转交统一包。
+窗口按用途分六组；`JobsProjectTools` 的八项、`JobsTerminalOpener` 的三项与 `JobsIOSTools` 的十一项均可分别勾选，安装器各归并为一次工程构建。Git 五项在实际 Finder 中归入“Git操作”，只对有效 Git 普通文件夹显示。iOS 组前两项相邻显示 `Pod Install`、`Pod Update`，实际命令仍为小写 `pod install` / `pod update`；构建清理也在 iOS 子菜单，该组另含 IPA 重签。Flutter 的十九个可执行叶子菜单均单独勾选，统一映射到 `JobsFlutterTools`，只构建注册一次。旧 `flutter-tools` 标识兼容全部动作；旧打包与体检标识分别展开三平台、两种体检。
 
 | 用途分组 | 选项数 |
 | --- | --- |
 | IDE 项目打开 | 3 |
 | Git 工具 | 5 |
-| 文件与通用工具 | 6 |
-| Flutter 工具 | 1 |
+| 文件与通用工具 | 7 |
+| Flutter 工具 | 19 |
 | iOS / CocoaPods 工具 | 12 |
-| 模拟器工具 | 4 |
+| 模拟器工具 | 5 |
 
 | 分组 | 窗口文案 | 返回标识 | 安装工程 |
 | --- | --- | --- | --- |
@@ -65,6 +65,7 @@
 | 项目工具 | 复制 Git 远程地址 | `git_remote_copier` | `JobsProjectTools` |
 | 独立扩展 | 复制绝对路径 | `path_copier` | `JobsPathCopier` |
 | 独立扩展 | 运行授权 | `run-authorize` | `JobsRunAuthorizer` |
+| 独立扩展 | 解除运行授权 | `run-revoke` | `JobsRunAuthorizationRevoker` |
 | 独立扩展 | 显示 / 隐藏文件 | `hidden-files-toggle` | `JobsHiddenFilesToggler` |
 | 项目工具 | 用 [**Xcode**](https://developer.apple.com/xcode) 打开项目 | `xcode_opener` | `JobsProjectTools` |
 | 项目工具 | 用 [**Visual Studio Code**](https://code.visualstudio.com/) 打开项目，窗口写作 `VSCode` | `vscode_opener` | `JobsProjectTools` |
@@ -74,22 +75,23 @@
 | 旧标识 | 提取 Flutter 第三方依赖 | `flutter-dependency-extract` | `JobsFlutterDependencyExtractor`（安装转交统一包） |
 | 旧标识 | 查看当前 Flutter SDK 版本 | `flutter_sdk_version` | `JobsFlutterSdkInspector`（安装转交统一包） |
 | 旧标识 | Flutter打包 | `flutter-package` | `JobsFlutterPackager`（安装转交统一包） |
-| 旧标识 | 运行 Flutter 项目 | `flutter-run` | `JobsFlutterRunner`（安装转交统一包） |
+| Flutter 子功能 | 从终端运行 Flutter 项目 | `flutter-run` | `JobsFlutterTools` |
 | 旧标识 | Flutter 项目体检 | `flutter-doctor` | `JobsFlutterDoctor`（安装转交统一包） |
-| 旧标识 | Flutter 自动化生产代码 | `flutter-codegen` | `JobsFlutterCodegen`（安装转交统一包） |
+| Flutter 子功能 | Flutter 自动化生产代码 | `flutter-codegen` | `JobsFlutterTools` |
 | 独立扩展 | 新建 [**iOS**](https://developer.apple.com/ios/) 模拟器 | `ios-simulator-create` | `JobsIOSSimulatorCreator` |
 | 独立扩展 | 新建 [**Android**](https://developer.android.com/) 模拟器 | `android-simulator-create` | `JobsAndroidSimulatorCreator` |
 | 独立扩展 | Android 模拟器检测与修复 | `android-simulator-repair` | `JobsAndroidSimulatorRepairer` |
 | 独立扩展 | 新建 Harmony 模拟器 | `harmony-simulator-create` | `JobsHarmonySimulatorCreator` |
-| 独立扩展 | 配置 Git 动态代理 | `git-proxy-configure` | `JobsGitProxyConfigurator` |
+| 独立扩展 | Harmony 模拟器检测与修复 | `harmony-simulator-repair` | `JobsHarmonySimulatorRepairer` |
+| 项目工具 | 配置 Git 动态代理 | `git-proxy-configure` | `JobsProjectTools` |
 | Terminal 内含 | 用终端打开 | `terminal_open` | `JobsTerminalOpener` |
-| iOS / CocoaPods | Pod Install，在 Terminal 直接执行 `pod install` 安装项目 [**CocoaPods**](https://cocoapods.org/) 依赖 | `pod_install` | `JobsTerminalOpener` |
+| iOS / CocoaPods | Pod Install，在 Terminal 直接执行 `pod install` 安装项目 [**CocoaPods**](https://cocoapods.org/) 依赖 | `pod_install` | `JobsIOSTools`；内部动作 `ios-pod-install` |
 | iOS / CocoaPods | IPA 免编译重签 | `ipa-resign` | `JobsIPAResigner` |
-| 统一 Flutter 子菜单 | 拉取第三方依赖与 Flutter 清理维护（含无需 SDK 的项目产物清理） | `flutter-tools`（同一安装单元） | `JobsFlutterTools` |
-| Terminal 内含 | 清理构建产物（iOS/Xcode、Android、鸿蒙；Flutter 根目录隐藏，使用统一子菜单） | `clean_build_artifacts` | `JobsTerminalOpener` |
+| Flutter 子功能 | SDK、依赖、打包、体检、修复、清理维护，逐项见下表 | `flutter-<动作>` | `JobsFlutterTools` |
+| Terminal 内含 | 清理 Android / OpenHarmony 构建产物；仅 Flutter、Android、OpenHarmony 工程文件夹及内部空白菜单 | `clean_build_artifacts` | `JobsTerminalOpener` |
 | Terminal 内含 | 更新代码地图（`.codegraph`），使用 [**CodeGraph**](https://github.com/colbymchenry/codegraph) | `codegraph_bootstrap` | `JobsTerminalOpener` |
-| Terminal 内含 | 在终端创建空白 Commit 并 Push | `git_empty_commit_push` | `JobsTerminalOpener` |
-| iOS 辅助工具 | 清理 iOS 缓存 | `ios-clean-cache` | `JobsIOSTools` |
+| 项目工具 | 在终端创建空白 Commit 并 Push | `git_empty_commit_push` | `JobsProjectTools` |
+| iOS 辅助工具 | 清理 iOS/Xcode 构建产物 | `ios-clean-build-artifacts` | `JobsIOSTools` |
 | iOS 辅助工具 | 禁用 CocoaPods 构建沙盒 | `ios-disable-sandbox` | `JobsIOSTools` |
 | iOS 辅助工具 | 安装 CocoaPods | `ios-install-cocoapods` | `JobsIOSTools` |
 | iOS 辅助工具 | CocoaPods 源：CDN → GitHub | `ios-pods-source-github` | `JobsIOSTools` |
@@ -100,9 +102,33 @@
 | iOS 辅助工具 | 检查本地 Pod 能否编译（仅同层 `.podspec`） | `ios-pod-build-check` | `JobsIOSTools` |
 | iOS 辅助工具 | 安装 / 升级 JobsCodeSnippets | `ios-code-snippets` | `JobsIOSTools`；固定处理当前用户 Xcode 代码片段目录，所选工程只用于菜单资格校验 |
 
-选择器不判断目标项目是否满足各项右键功能的条件，也不会执行 Pod、Flutter、代码地图、Git 推送、运行授权、代理配置或模拟器创建。各工程负责运行时检查与实际动作；模拟器检测修复只处理模拟器，安装菜单不运行诊断、卸载或容量修改；“运行授权”只在选中单个本地普通文件时显示，点击后到 Terminal 确认执行 `chmod +x`，文件夹、目录包、多选及空白处隐藏；“新建 iOS 模拟器”“新建 Android 模拟器”“Android 模拟器检测与修复”“新建 Harmony 模拟器”和“配置 Git 动态代理”分别是独立扩展，仅在系统桌面空白处使用，无须 Flutter 项目。Git 代理宿主注册时只初始化扩展，点击菜单后才打开配置流程。Android 入口使用本机 SDK、Java / JBR 与架构匹配系统映像，安装选择器不安装或接受这些组件的许可证。Harmony 入口要求 Mac ARM 与官方 Emulator 创建能力，缺工具从 SDL 补齐，缺镜像由官方 CLI 下载，许可原文展示后由本人回车同意；安装选择器不创建实例或接受许可。详见[仓库功能说明](../README.md)与 [Android 工程依赖](../JobsAndroidSimulatorCreator/README.md)。
+Flutter 子功能以本次勾选精确替换，配置保存在当前用户应用支持目录 `JobsFinderExtensions/flutter-tools-features.conf`，每次新建右键菜单及点击都会校验；没有选中 Flutter 时保留现有安装。独立 Flutter 安装启用全部子功能，卸载清理配置。安装窗口仍默认全选，不读取已有配置。
 
-“Flutter打包”已归入统一的 `JobsFlutterTools` 安装单元，仅在真实 Flutter 项目根目录显示；Finder 子菜单选择 iOS / Android / 鸿蒙，Terminal 仅选择 Android APK / AAB 或鸿蒙 HAP / APP。安装选择器不检查或安装鸿蒙 SDK，工具链与平台检查由[打包业务脚本](../JobsFlutterPackager/Scripts/README.md)负责。
+| Flutter 子菜单功能 | 窗口返回标识 | 配置动作 |
+| --- | --- | --- |
+| 从终端运行 Flutter 项目 | `flutter-run` | `run` |
+| 拉取 Flutter 第三方依赖 | `flutter-pub-get` | `pub-get` |
+| 提取 Flutter 第三方依赖 | `flutter-extract` | `extract` |
+| 查看当前 Flutter 项目的 SDK 版本 | `flutter-sdk-version` | `sdk-version` |
+| 安装 / 切换 Flutter SDK 版本 | `flutter-sdk-manage` | `sdk-manage` |
+| 安装 / 切换 Flutter@OpenHarmony SDK | `flutter-ohos-sdk-manage` | `ohos-sdk-manage` |
+| 安装 / 切换 Java 环境 | `flutter-java-manage` | `java-manage` |
+| Flutter 自动化生产代码 | `flutter-codegen` | `codegen` |
+| 打包 iOS | `flutter-package-ios` | `package-ios` |
+| 打包 Android | `flutter-package-android` | `package-android` |
+| 打包 OpenHarmony | `flutter-package-ohos` | `package-ohos` |
+| 原生 Flutter 项目体检 | `flutter-native-doctor` | `native-doctor` |
+| OpenHarmony Flutter 环境体检 | `flutter-harmony-doctor` | `harmony-doctor` |
+| 修复 Android SDK / platforms 缺失 | `flutter-repair-android` | `repair-android` |
+| 修复 Flutter 项目中文路径 | `flutter-repair-imports` | `repair-imports` |
+| 修复 Flutter 插件 namespace | `flutter-repair-namespace` | `repair-namespace` |
+| 修复 Dart 相对 import 为 package 引用 | `flutter-repair-package-imports` | `repair-package-imports` |
+| 清理当前 Flutter 项目构建产物 | `flutter-clean-build-artifacts` | `clean-build-artifacts` |
+| 依赖与缓存维护 | `flutter-maintenance` | `maintenance` |
+
+选择器不判断目标项目是否满足各项右键功能的条件，也不会执行 Pod、Flutter、代码地图、Git 推送、运行授权、代理配置或模拟器创建。各工程负责运行时检查与实际动作；模拟器检测修复只处理模拟器，安装菜单不运行诊断、卸载或容量修改；“运行授权”只在选中单个本地普通文件时显示，点击后到 Terminal 确认执行 `chmod +x`；配对“解除运行授权”由独立工程通过 `chmod a-x` 清除全部执行位，同样只接受单个普通文件，文件夹、目录包、多选及空白处隐藏；“新建 iOS 模拟器”“新建 Android 模拟器”“Android 模拟器检测与修复”“新建 Harmony 模拟器”和“Harmony 模拟器检测与修复”分别是独立扩展，仅在系统桌面空白处使用，无须 Flutter 项目。Git 代理配置现行入口位于“Git操作”，点击后才打开配置流程，菜单安装和登记不执行代理业务。Android 入口使用本机 SDK、Java / JBR 与架构匹配系统映像，安装选择器不安装或接受这些组件的许可证。Harmony 创建入口要求 Mac ARM 与官方 Emulator 创建能力，缺工具从 SDL 补齐，缺镜像由官方 CLI 下载，许可原文展示后由本人回车同意；安装选择器不创建实例或接受许可。Harmony 检测修复入口只使用已有工具，按实例启动或冷启动；失效 SDK 路径先完整备份再修复，操作均在业务终端确认。详见[仓库功能说明](../README.md)与 [Android 工程依赖](../JobsAndroidSimulatorCreator/README.md)。
+
+“Flutter打包”已归入统一的 `JobsFlutterTools` 安装单元，仅在真实 Flutter 项目根目录显示；Finder 子菜单选择 iOS / Android / OpenHarmony，Terminal 仅选择 Android APK / AAB 或鸿蒙 HAP / APP。安装选择器不检查或安装鸿蒙 SDK，工具链与平台检查由[打包业务脚本](../JobsFlutterPackager/Scripts/README.md)负责。
 
 “显示 / 隐藏文件”是独立安装单元，标识为 `hidden-files-toggle`，仅在系统桌面和任意文件夹空白处出现；点击直接反转当前用户 Finder 的显示偏好并刷新 Finder，不打开 Terminal。安装器通过 `--initialize-finder-extension` 初始化宿主，不切换显示状态；卸载仅移除菜单。详见 [独立功能说明](../JobsHiddenFilesToggler/README.md)。
 
@@ -163,7 +189,7 @@ ruby ../Tests/FinderFeatureSelectionTests.rb
 | --- | --- | --- |
 | 安装，至少选中一项 | 按选择器源码顺序输出逗号分隔的现行标识 | 解析、校验并安装所选工程。 |
 | 全不选或逐项取消全部勾选 | 不返回结果，窗口继续显示；安装按钮置灰，回车也不能确认 | 等待重新勾选或取消，不执行安装。 |
-| 全选后点击安装 | 全部 31 项现行标识，逗号分隔 | 安装全部 13 个现行工程。 |
+| 全选后点击安装 | 全部 51 项现行标识，逗号分隔 | 安装全部 14 个现行工程。 |
 | 取消或关闭窗口 | `__CANCELLED__` | 提示取消，正常退出，不执行安装。 |
 | 选择器进程执行失败 | 非零进程退出码 | 提示 UI 失败，按该退出码停止。 |
 | 异常返回未选择标记或空文本 | `__NONE__` 或空字符串 | 按未选择功能处理。 |

@@ -1,6 +1,6 @@
 #!/bin/zsh
 # 脚本自述：
-# - 脚本名称：运行 Flutter 项目。
+# - 脚本名称：从终端运行 Flutter 项目。
 # - 核心用途：终端选择设备，独立后台运行 Flutter，并查看日志及控制热重载。
 # - 影响范围：Flutter 构建可更新项目依赖和构建目录；按需创建、启动所选 iOS 模拟器。
 # - 运行提示：先回车确认；关闭终端只离开日志，输入 s 才停止后台任务。
@@ -36,7 +36,7 @@ intro_line() {
 }
 
 show_script_intro_and_wait() {
-  intro_line title '运行 Flutter 项目'
+  intro_line title '从终端运行 Flutter 项目'
   intro_line body '1、选择设备后构建、运行当前 Flutter 项目；沿用项目 FVM SDK 或终端 Flutter。'
   intro_line body '2、Flutter 由当前登录会话的 launchd 托管，关闭 Terminal 不影响运行。'
   intro_line body '3、iOS 可选择已有模拟器；没有时内置选择型号、系统版本、创建及启动流程。'

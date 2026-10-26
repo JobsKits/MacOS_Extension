@@ -1,3 +1,10 @@
+//
+//  FlutterToolsLauncher.swift
+//  JobsFlutterTools
+//
+//  Created by Jobs on 2026年10月22日，星期四.
+//
+
 import Foundation
 import Darwin
 
@@ -14,6 +21,9 @@ struct FlutterToolsLauncher {
         catch { try? FileManager.default.removeItem(at: request.directoryURL); throw error }
     }
     func prepare(projectURL: URL, action: FlutterToolsAction, toolsURL: URL) throws -> PreparedRequest {
+        guard FlutterFeatureConfiguration.permits(action, enabled: FlutterFeatureConfiguration.enabledFeatures()) else {
+            throw failure("此 Flutter 功能未安装或选择配置已变化，请重新运行总安装器勾选。")
+        }
         guard FlutterProjectValidator().isFlutterProject(at: projectURL) else { throw failure("请选择合法 Flutter 项目根目录。") }
         var template = Array(FileManager.default.temporaryDirectory.appendingPathComponent("JobsFlutterTools-XXXXXX").path.utf8CString)
         guard let path = mkdtemp(&template) else { throw failure("无法建立私有载体。") }

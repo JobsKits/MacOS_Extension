@@ -38,7 +38,7 @@ intro_line() {
 show_script_intro_and_wait() {
   prepare_display_context
   intro_line title "================ 【MacOS】卸载Flutter运行Finder扩展.command ================"
-  intro_line body "1、核心用途：禁用、注销‘运行 Flutter 项目’右键菜单。"
+  intro_line body "1、核心用途：禁用、注销‘从终端运行 Flutter 项目’右键菜单。"
   intro_line body "2、影响范围：只删除 Bundle ID 为 ${APP_ID} 的已登记 App；保留源码与 Flutter SDK、项目文件和后台运行会话。"
   intro_line body "3、执行策略：回车后先显示待处理路径；输入 YES 才卸载并重启 Finder，其它输入取消。"
   intro_line body "4、取消方式：按 Ctrl+C；非交互输入会退出。"

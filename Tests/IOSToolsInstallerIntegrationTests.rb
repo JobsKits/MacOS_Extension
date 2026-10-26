@@ -9,8 +9,9 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
   UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
-  IDS = %w[ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github
-           ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets].freeze
+  IDS = %w[ios-disable-sandbox ios-install-cocoapods ios-pods-source-github
+           ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts].freeze
+  ACTION_IDS = (IDS.take(4) + ['ios-pod-install'] + IDS.drop(4)).freeze
 
   def test_ios_options_are_unique_and_map_to_one_project
     selector = File.read(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
@@ -48,6 +49,36 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
     end
   end
 
+  def test_pod_install_and_ios_build_cleanup_are_independent_ios_actions
+    output = run_definitions(INSTALLER, <<~'ZSH')
+      parse_feature_selection 'pod_install,ios-clean-build-artifacts,pod_install' || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "$IOS_TOOLS_ENABLED_FEATURES"
+      print -r -- "terminal:$TERMINAL_OPENER_ENABLED_FEATURES"
+    ZSH
+    assert_equal ['ios-tools', 'ios-pod-install,ios-clean-build-artifacts', 'terminal:'], output.lines.map(&:strip)
+  end
+
+  def test_all_five_git_actions_share_one_project_without_terminal_dependencies
+    ids = %w[git-pull git_remote git_remote_copier git-proxy-configure git_empty_commit_push]
+    output = run_definitions(INSTALLER, <<~'ZSH', ids.join(','))
+      parse_feature_selection "$1" || exit 1
+      print -r -- "${(j:,:)SELECTED_KEYS}"
+      print -r -- "terminal:$TERMINAL_OPENER_ENABLED_FEATURES"
+      print -r -- "ios:$IOS_TOOLS_ENABLED_FEATURES"
+    ZSH
+    assert_equal ['project-tools', 'terminal:', 'ios:'], output.lines.map(&:strip)
+    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT, *ids, replacements: {'/bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh"' => 'jobs_record_git_uninstall'})
+      WORKSPACE_DIR="$1"
+      shift
+      jobs_record_git_uninstall() { print -r -- "delegate:${(j:|:)@}"; }
+      for key in "$@"; do
+        uninstall_feature "$key" || exit 1
+      done
+    ZSH
+    assert_equal ids.map { |id| "delegate:uninstall|#{id}" }, output.lines.map(&:strip)
+  end
+
   def test_independent_install_and_uninstall_share_the_complete_fixed_action_list
     %w[安装 卸载].each do |operation|
       path = File.join(ROOT, "JobsIOSTools/【MacOS】#{operation}iOS辅助工具Finder扩展.command")
@@ -56,7 +87,7 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
         print -r -- "${(j:,:)ALL_FEATURES}"
         print -r -- "${(j:,:)REQUESTED_FEATURES}"
       ZSH
-      assert_equal [IDS.join(','), 'ios-code-snippets'], output.lines.map(&:strip)
+      assert_equal [ACTION_IDS.join(','), 'ios-code-snippets'], output.lines.map(&:strip)
     end
   end
 
@@ -96,10 +127,19 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
         persist_ios_feature_selection ios-tools || exit 1
         print -r -- "configured:$(<"$IOS_FEATURE_CONFIG_PATH")"
       ZSH
-      assert_includes output.lines.map(&:strip), 'configured:ios-clean-cache,ios-pod-update,ios-pod-build-check'
-      assert_equal 'ios-clean-cache,ios-pod-update,ios-pod-build-check', File.read(config)
+      assert_includes output.lines.map(&:strip), 'configured:ios-pod-update,ios-pod-build-check,ios-clean-build-artifacts'
+      assert_equal 'ios-pod-update,ios-pod-build-check,ios-clean-build-artifacts', File.read(config)
       assert_empty Dir.glob(File.join(File.dirname(config), '.features.*'))
     end
+  end
+
+  def test_legacy_cache_selection_maps_to_the_single_build_cleanup_action
+    output = run_definitions(INSTALLER, <<~'ZSH')
+      parse_feature_selection 'ios-clean-cache,ios-clean-build-artifacts' || exit 1
+      print -r -- "${(j:,:)SELECTED_FUNCTION_IDS}"
+      print -r -- "$IOS_TOOLS_ENABLED_FEATURES"
+    ZSH
+    assert_equal ['ios-clean-build-artifacts', 'ios-clean-build-artifacts'], output.lines.map(&:strip)
   end
 
   def test_first_install_or_empty_configuration_only_enables_selected_tools
@@ -162,7 +202,7 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
       done
       uninstall_feature ios-tools || exit 1
     ZSH
-    assert_includes output, "delegate:--features|#{IDS.join(',')}|--non-interactive"
+    assert_includes output, "delegate:--features|#{ACTION_IDS.join(',')}|--non-interactive"
     assert_includes output, 'phase:remove_local_deriveddata_dir:ios-tools'
     assert_includes output, 'phase:reset_election_and_unregister_extension:ios-tools'
   end

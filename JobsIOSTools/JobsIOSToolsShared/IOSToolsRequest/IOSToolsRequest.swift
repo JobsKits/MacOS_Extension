@@ -8,21 +8,20 @@
 import Foundation
 
 enum IOSToolsAction: String, CaseIterable {
-    case cleanCache = "ios-clean-cache"
     case disableSandbox = "ios-disable-sandbox"
     case installCocoapods = "ios-install-cocoapods"
     case sourceGithub = "ios-pods-source-github"
     case extractPods = "ios-extract-pods"
+    case podInstall = "ios-pod-install"
     case podUpdate = "ios-pod-update"
     case dependencies = "ios-xcode-dependencies"
     case repoUpdate = "ios-pod-repo-update"
     case podBuildCheck = "ios-pod-build-check"
     case codeSnippets = "ios-code-snippets"
+    case cleanBuildArtifacts = "ios-clean-build-artifacts"
 
     var title: String {
         switch self {
-        case .cleanCache:
-            return "清理 iOS 缓存"
         case .disableSandbox:
             return "禁用 Xcode 脚本沙盒"
         case .installCocoapods:
@@ -31,6 +30,8 @@ enum IOSToolsAction: String, CaseIterable {
             return "CocoaPods 源：CDN → GitHub"
         case .extractPods:
             return "提取项目中所有 Pod 相关文件"
+        case .podInstall:
+            return "Pod Install"
         case .podUpdate:
             return "Pod Update"
         case .dependencies:
@@ -42,7 +43,17 @@ enum IOSToolsAction: String, CaseIterable {
         /// 安装或升级当前用户 Xcode 的 Jobs 代码片段。
         case .codeSnippets:
             return "安装 / 升级 JobsCodeSnippets"
+        case .cleanBuildArtifacts:
+            return "清理 iOS/Xcode 构建产物"
         }
+    }
+
+    static func compatibleAction(for identifier: String) -> IOSToolsAction? {
+        // 旧清理入口与现有产物清理重叠，保留旧链接和已保存选择。
+        if identifier == "ios-clean-cache" {
+            return .cleanBuildArtifacts
+        }
+        return IOSToolsAction(rawValue: identifier)
     }
 }
 
@@ -64,12 +75,12 @@ enum IOSToolsRequest {
         guard projectURL(from: requestURL) != nil, let host = requestURL.host else {
             return nil
         }
-        return IOSToolsAction(rawValue: host)
+        return IOSToolsAction.compatibleAction(for: host)
     }
 
     static func projectURL(from requestURL: URL) -> URL? {
         guard let c = URLComponents(url: requestURL, resolvingAgainstBaseURL: false),
-              c.scheme?.lowercased() == scheme, let host = c.host, IOSToolsAction(rawValue: host) != nil,
+              c.scheme?.lowercased() == scheme, let host = c.host, IOSToolsAction.compatibleAction(for: host) != nil,
               c.user == nil, c.password == nil, c.port == nil, c.path.isEmpty, c.fragment == nil,
               let items = c.queryItems, items.count == 1, items[0].name == "path",
               let path = items[0].value, path.hasPrefix("/"), !path.utf8.contains(0) else {

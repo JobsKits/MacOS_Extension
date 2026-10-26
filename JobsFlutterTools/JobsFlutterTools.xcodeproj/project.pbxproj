@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        01B000000000000000000046 /* FlutterFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000046 /* FlutterFeatureConfiguration.swift */; };
+        01B000000000000000000047 /* FlutterFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000046 /* FlutterFeatureConfiguration.swift */; };
 		01B000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000001 /* AppDelegate.swift */; };
 		01B000000000000000000027 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000027 /* main.swift */; };
 		01B000000000000000000003 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000009 /* FinderSync.framework */; };
@@ -47,6 +49,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        01A000000000000000000046 /* FlutterFeatureConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FlutterFeatureConfiguration/FlutterFeatureConfiguration.swift"; sourceTree = "<group>"; };
 		01A000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		01A000000000000000000027 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		01A000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -142,6 +145,7 @@
             children = (
                 01A000000000000000000024 /* FlutterProjectValidator.swift */,
                 01A000000000000000000025 /* FlutterToolsRequest.swift */,
+                01A000000000000000000046 /* FlutterFeatureConfiguration.swift */,
             );
             path = JobsFlutterToolsShared;
             sourceTree = "<group>";
@@ -273,6 +277,7 @@
 				01B000000000000000000023 /* FlutterToolsLauncher.swift in Sources */,
 				01B000000000000000000024 /* FlutterProjectValidator.swift in Sources */,
 				01B000000000000000000025 /* FlutterToolsRequest.swift in Sources */,
+                01B000000000000000000046 /* FlutterFeatureConfiguration.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -284,6 +289,7 @@
 				01B000000000000000000011 /* FinderSync.swift in Sources */,
 				01B000000000000000000034 /* FlutterProjectValidator.swift in Sources */,
 				01B000000000000000000035 /* FlutterToolsRequest.swift in Sources */,
+                01B000000000000000000047 /* FlutterFeatureConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -6,7 +6,7 @@
 
 ```text
 Flutter开发相关辅助工具
-├─ 运行Flutter项目
+├─ 从终端运行 Flutter 项目
 ├─ 拉取Flutter第三方依赖
 ├─ 提取Flutter第三方依赖
 ├─ 查看当前Flutter项目的SDK版本
@@ -16,20 +16,24 @@ Flutter开发相关辅助工具
 ├─ Flutter打包
 │  ├─ iOS
 │  ├─ Android
-│  └─ 鸿蒙
+│  └─ OpenHarmony
 ├─ Flutter自动化生产代码
 ├─ Flutter项目体检
 │  ├─ 原生Flutter项目体检
-│  └─ 鸿蒙Flutter环境体检
+│  └─ OpenHarmony Flutter 环境体检
 ├─ Flutter项目修复
 │  ├─ 修复 Android SDK / platforms 缺失
 │  ├─ 修复 Flutter 项目中文路径
 │  ├─ 修复 Flutter 插件 namespace
 │  └─ 修复 Dart 相对 import 为 package 引用
 └─ Flutter清理维护工具
-   ├─ 清理当前项目构建产物
+   ├─ 清理当前 Flutter 项目构建产物
    └─ 依赖与缓存维护
 ```
+
+上级[总安装器](../【MacOS】🧩安装Finder扩展.command)会把上述 **19 个可执行子功能** 分别列为复选框，按开发、打包、体检、修复、清理维护展开，支持组内及全局全选 / 全不选。打包可分别选择 iOS、Android、鸿蒙；只安装需要的体检或修复也可保留对应父菜单，全部子项关闭的父菜单自动隐藏。重新选择并安装时，Flutter 子功能以本次勾选为准，未勾选的已有动作会关闭；总安装器中完全不勾选 Flutter 则不改已装 Flutter 配置。
+
+选择保存在当前用户应用支持目录 `JobsFinderExtensions/flutter-tools-features.conf`。Finder 展示、菜单点击及宿主执行前都会检查该配置；直接打开旧 URL 不能绕过关闭的动作。旧安装没有配置时保持全部动作，空配置关闭全部，损坏配置停止显示。独立安装入口默认启用全部 19 项，独立卸载同时清除此清单；两者均不执行 SDK 安装、打包、清理或项目修复。
 
 后续 Flutter 动作应增加到本包的固定动作表和对应分组，不再新增独立的顶层扩展。修复组位于开发辅助组内，排在体检之后、清理维护之前；Finder 顶层只显示一个开发辅助入口。
 
@@ -41,7 +45,7 @@ Flutter开发相关辅助工具
 
 “安装/切换Java环境”通过 [jEnv](https://github.com/jenv/jenv) 管理当前项目 `.java-version`，支持复用已安装 JDK，或安装指定主版本后绑定。jEnv 负责版本切换；缺失 JDK 使用现有 Homebrew 安装，不主动升级健康组件。首次确认前说明来源与影响，切换前备份原声明，失败保留或恢复原状态；不会修改 `jenv global`、Shell 启动文件或全局 Flutter JDK 配置。原有 `17` 声明可直接识别。
 
-带 `.java-version` 的右键运行、Android / 鸿蒙打包、体检和 Android SDK 修复会为本次进程解析 Java，设置 `JAVA_HOME` / `PATH`，并用 `GRADLE_OPTS` 固定 Gradle daemon 的 JDK；后台运行会保留这些变量。Flutter 自身仍可能优先采用 Android Studio JDK，`flutter doctor` 显示的 Java 不等于实际 Gradle daemon 的 Java。项目存在 `android/gradle/gradle-daemon-jvm.properties` 时，该 Gradle 配置优先，工具会停止并提示先处理冲突，避免静默使用另一套 JDK。IDE 独立启动及普通终端需自行启用 jEnv 或配置项目 Gradle JDK。查询 SDK、依赖解析、iOS 直达打包和静态操作不强制 Java 环境。JDK 的真实安装路径支持空格和中文，但拒绝各代 Gradle wrapper 解释不一致的美元符、反引号、双引号、反斜杠和控制字符；Flutter 项目路径不受此 JDK 路径限制。
+带 `.java-version` 的右键运行、Android / OpenHarmony打包、体检和 Android SDK 修复会为本次进程解析 Java，设置 `JAVA_HOME` / `PATH`，并用 `GRADLE_OPTS` 固定 Gradle daemon 的 JDK；后台运行会保留这些变量。Flutter 自身仍可能优先采用 Android Studio JDK，`flutter doctor` 显示的 Java 不等于实际 Gradle daemon 的 Java。项目存在 `android/gradle/gradle-daemon-jvm.properties` 时，该 Gradle 配置优先，工具会停止并提示先处理冲突，避免静默使用另一套 JDK。IDE 独立启动及普通终端需自行启用 jEnv 或配置项目 Gradle JDK。查询 SDK、依赖解析、iOS 直达打包和静态操作不强制 Java 环境。JDK 的真实安装路径支持空格和中文，但拒绝各代 Gradle wrapper 解释不一致的美元符、反引号、双引号、反斜杠和控制字符；Flutter 项目路径不受此 JDK 路径限制。
 
 两个新安装入口都无需先有 FVM 绑定。在本包目录只读检查（替换项目路径），不联网、不安装、不写日志或项目配置：
 
@@ -57,7 +61,7 @@ Flutter开发相关辅助工具
 
 ## 打包平台与产物
 
-从 `Flutter开发相关辅助工具 → Flutter打包 → iOS / Android / 鸿蒙` 选择平台。文件夹右键和项目内空白处右键的行为一致。平台通过固定动作 `package-ios`、`package-android`、`package-ohos` 传给分发脚本，再转成 `PackageFlutter.zsh --platform ios|android|ohos`，终端不再询问平台。
+从 `Flutter开发相关辅助工具 → Flutter打包 → iOS / Android / OpenHarmony` 选择平台。文件夹右键和项目内空白处右键的行为一致。平台通过固定动作 `package-ios`、`package-android`、`package-ohos` 传给分发脚本，再转成 `PackageFlutter.zsh --platform ios|android|ohos`，终端不再询问平台。
 
 iOS 直接构建 IPA，无需 fzf；Android 仍用 fzf 选择 APK / AAB / 两者，鸿蒙选择 HAP / APP / 两者。直接调用脚本可用 `--target apk|appbundle|all`、`--ohos-target hap|app|all` 预设产物，全部预设时无需 fzf。未指定 `--platform` 的旧 CLI 调用保留平台选择。非法、缺值或重复的平台参数会在构建前拒绝。
 
@@ -65,7 +69,7 @@ iOS 直接构建 IPA，无需 fzf；Android 仍用 fzf 选择 APK / AAB / 两者
 
 ## FVM 与体检
 
-“清理当前项目构建产物”和“修复 Dart 相对 import 为 package 引用”是无需 SDK 的静态操作；原生 / OpenHarmony SDK 安装切换与 Java 管理使用各自引导流程。其余执行入口要求项目 `.fvmrc`（或旧 `.fvm/fvm_config.json`）及 `.fvm/flutter_sdk`。缺失时提示先安装/切换项目版本，不会调用全局 Flutter。不执行 `fvm global`、不把 Flutter 写入全局 PATH 或 Shell 配置。其余体检、修复及依赖缓存维护引擎使用该 SDK 内的 Dart 3+，无需额外安装 Dart 包。
+“清理当前 Flutter 项目构建产物”和“修复 Dart 相对 import 为 package 引用”是无需 SDK 的静态操作；原生 / OpenHarmony SDK 安装切换与 Java 管理使用各自引导流程。其余执行入口要求项目 `.fvmrc`（或旧 `.fvm/fvm_config.json`）及 `.fvm/flutter_sdk`。缺失时提示先安装/切换项目版本，不会调用全局 Flutter。不执行 `fvm global`、不把 Flutter 写入全局 PATH 或 Shell 配置。其余体检、修复及依赖缓存维护引擎使用该 SDK 内的 Dart 3+，无需额外安装 Dart 包。
 
 原生体检检查 FVM、Flutter 版本声明与实际版本、同源 Dart 及 `flutter doctor -v`。基础 doctor 的警告、错误或无法判定的输出都不能算健康。
 
@@ -92,7 +96,7 @@ Harmony Flutter 是适配分支，普通 Flutter 安装并不会自动带来 Har
 
 | 操作 | 执行内容 | SDK 与确认 |
 | --- | --- | --- |
-| 清理当前项目构建产物 | 直接删除当前 Flutter 项目的已识别产物，不运行工程脚本或构建命令。 | 无需 Flutter / FVM；先列出实际路径，输入 `CLEAN` 才清理，回车取消。 |
+| 清理当前 Flutter 项目构建产物 | 直接删除当前 Flutter 项目的已识别产物，不运行工程脚本或构建命令。 | 无需 Flutter / FVM；先列出实际路径，输入 `CLEAN` 才清理，回车取消。 |
 | 依赖与缓存维护 | 保留原维护编号菜单：依赖刷新、`clean + pub get`、主动升级、Pub 缓存修复及所选缓存清理。 | 使用项目 FVM；编号回车取消，命令二次确认，缓存删除要求 `CLEAN`。旧 `maintenance` URL 动作保持兼容。 |
 
 项目产物清理沿用原 `JobsTerminalOpener` 白名单：根目录 `build/`、`.dart_tool/`，以及已识别 `android/`、`ios/`、`ohos/` 的构建和中间产物、桌面 Flutter ephemeral；Xcode 默认 DerivedData 只删除 `info.plist` 的 `WorkspacePath` 精确归属当前 `ios/` 工程的 `Build/`。保留源码、锁文件、Pods、`oh_modules`、`node_modules`、签名、FVM SDK、共享缓存和无关项目产物，不推断自定义输出。整份计划先校验，目标或其父路径是符号链接时停止。入口仅接受 Flutter 根目录，不向父目录寻找工程。
@@ -101,7 +105,7 @@ Harmony Flutter 是适配分支，普通 Flutter 安装并不会自动带来 Har
 
 ## 迁移
 
-安装本包后停用旧 Flutter 独立菜单，包括 Terminal 的旧 pub-get 项。Terminal 的 Flutter 根目录清理入口归入本包，原生 iOS/Xcode、Android、鸿蒙工程清理保留在原菜单。旧 Flutter 安装入口会转到本包；旧源代码、运行数据及卸载入口保留供兼容和排查。卸载统一组不会重新启用已停用的旧菜单。
+安装本包后停用旧 Flutter 独立菜单，包括 Terminal 的旧 pub-get 项。本包的“清理当前 Flutter 项目构建产物”负责 Flutter 全平台产物；Terminal 的“清理 Android / OpenHarmony 构建产物”同时适用于 Flutter 根目录和两类原生工程，只清对应平台产物。iOS/Xcode 清理位于 iOS 辅助菜单。旧 Flutter 安装入口会转到本包；旧源代码、运行数据及卸载入口保留供兼容和排查。卸载统一组不会重新启用已停用的旧菜单。
 
 现有运行、依赖提取、SDK 查询/管理、打包和代码生成流程复用本仓库对应工具；这些入口及附带 worker 都约束到项目 FVM。静态产物清理在 FVM 检查前分发，包内 `Tools/CleanBuildArtifacts.zsh` 与 `JobsTerminalOpener/Scripts/CleanBuildArtifacts.zsh` 保持逐字节一致，安装后不依赖 Terminal 包或源码仓库。更新这些工具时应同步本包资源并运行回归测试。Mac / Windows 共用的 `FlutterProjectTools.dart` 必须保持逐字节一致。
 

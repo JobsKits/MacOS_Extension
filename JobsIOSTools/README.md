@@ -21,28 +21,31 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-在 [**Finder**](https://support.apple.com/zh-cn/102339) 中右键一个 iOS 项目文件夹，打开“iOS / CocoaPods 辅助工具”子菜单，在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 执行下表十项工具。十项可在[总安装面板](../【MacOS】🧩安装Finder扩展.command)分别勾选，共用一个 App 与 Finder Sync Extension；安装菜单不会执行工具业务。
+在 [**Finder**](https://support.apple.com/zh-cn/102339) 中右键一个 iOS 项目文件夹，打开“iOS / CocoaPods 辅助工具”子菜单，在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 执行下表十一项工具。十一项可在[总安装面板](../【MacOS】🧩安装Finder扩展.command)分别勾选，共用一个 App 与 Finder Sync Extension；安装菜单不会执行工具业务。
 
 | 菜单 | 功能标识 | 当前功能 |
 | --- | --- | --- |
-| 清理 iOS 缓存 | `ios-clean-cache` | 删除项目 Pods、Podfile.lock 和当前用户 Xcode DerivedData；Flutter 分支还处理其 iOS / Dart 缓存。保留原回车及 `y/yes` 清理确认；没有 Podfile 的原生项目由脚本提示不支持。 |
 | 禁用 Xcode 脚本沙盒 | `ios-disable-sandbox` | 为目标工程设置 `ENABLE_USER_SCRIPT_SANDBOXING = NO`，未找到 `.xcodeproj` 时保留拖入工程交互。 |
 | 安装 CocoaPods | `ios-install-cocoapods` | 保留原 CocoaPods / Ruby / Homebrew / fzf 体检、安装与可选升级交互，影响当前用户工具环境。 |
 | CocoaPods 源：CDN → GitHub | `ios-pods-source-github` | 运行原 Specs 源切换流程，影响 CocoaPods 仓库配置。 |
 | 提取项目中所有 Pod 相关文件 | `ios-extract-pods` | 提取 podspec、关联 JobsPodspecKit.rb 与根 Podfile 系列到桌面时间戳目录；保留可选 ZIP 交互。 |
+| Pod Install | `ios-pod-install` | 仅同层有普通 `Podfile` 和 `*.xcodeproj` 时显示；直接进入 Terminal 现有交互 Shell 执行 `pod install`，不包裹输入输出或自动回答 Podfile 提示。 |
 | Pod Update | `ios-pod-update` | 执行原 `pod update`，Apple Silicon 保留 Rosetta 分支；成功后可创建桌面 workspace 链接，修改依赖及锁文件。 |
 | 查询 Xcode 工程依赖关系 | `ios-xcode-dependencies` | 生成原 Markdown / 图形依赖报告，Graphviz 环境检查与安装升级保留原确认；没有 podspec 时报告可为空。 |
 | 更新 CocoaPods 本地仓库 | `ios-pod-repo-update` | 原脚本实际执行 `pod install --repo-update`，同时刷新 Specs 与安装项目依赖；保留为当前目录普通文件增加执行权限的原行为。 |
 | 自检当前本地 Pod 能否编译 | `ios-pod-build-check` | 只对同层普通 `*.podspec` 文件显示；多个时选择一个，从父目录发现兄弟依赖，保留智能依赖 / 兼容重试及源码编译与 lint 结果区分。 |
 | 安装 / 升级 JobsCodeSnippets | `ios-code-snippets` | 对齐当前用户 Xcode 代码片段目录，首次安装或保护本地内容后升级。 |
+| 清理 iOS/Xcode 构建产物 | `ios-clean-build-artifacts` | 只对识别为 iOS 的工程显示；预览白名单产物，精确输入 `CLEAN` 后清理当前工程 `build/`、`DerivedData/` 与归属明确的默认 DerivedData `Build/`。保留 Pods、锁文件、源码及其它工程产物。 |
 
-`pod install` 由 `JobsTerminalOpener` 提供，IPA 重签由 `JobsIPAResigner` 提供；它们在总安装面板同属 iOS 分组，运行边界分别见[总说明](../README.md)。
+清理入口仅保留“清理 iOS/Xcode 构建产物”：先预览当前工程白名单，输入 `CLEAN` 才删除。旧 `ios-clean-cache` 功能配置、安装 / 卸载参数与 URL 自动映射到此动作，不再提供单独缓存清理菜单或调用依赖重置脚本；不删除 Pods、锁文件或其它工程的 DerivedData。
+
+`Pod Install` 与 `Pod Update` 相邻，构建产物清理也归入此子菜单；不再从 `JobsTerminalOpener` 添加这两项外层菜单。总面板中的 Pod Install 仍使用 `pod_install` 选择标识，安装时映射为本包动作；IPA 重签由 `JobsIPAResigner` 独立提供。
 
 ## 一、<span id="project-scope">菜单显示范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 只接受一个普通本地项目文件夹，或该文件夹内部空白处；当前层须直接存在 `*.xcodeproj`、`*.xcworkspace`、`Podfile`、`Package.swift` 或普通 `*.podspec` 文件之一。系统桌面空白、普通文件、目录包、符号链接、多选和不匹配目录不显示本包菜单。目录识别不递归查找父子工程。
 
-本地 Pod 编译自检另要求同层普通 `*.podspec` 文件；子目录中的 `.podspec` 与 `.podspec.json` 不满足该项条件。其余九项按一般 iOS 工程条件显示。Finder 菜单、宿主和 Terminal 分发器分别复核目标，菜单打开后项目变化时停止。
+本地 Pod 编译自检另要求同层普通 `*.podspec` 文件；子目录中的 `.podspec` 与 `.podspec.json` 不满足该项条件。`Pod Install` 要求同层普通 `Podfile` 和至少一个 `*.xcodeproj` 目录包，不要求已有 workspace；构建产物清理额外识别 Xcode 工程内的 iOS 平台配置，并排除 Flutter 根目录。其余八项按一般 iOS 工程条件显示。Finder 菜单、宿主和 Terminal 分发器分别复核目标，菜单打开后项目变化时停止。
 
 工程标记扩展按表中大小写精确匹配；隐藏的 `.Current.podspec` 普通文件同样有效，名称以 `.podspec` 结尾的目录不算 Pod 定义。菜单出现后，每个原脚本继续核验自身所需的 Podfile、工具链及配置。本地 Pod 自检从 Finder 启动时不修补其它仓库的 `x.command` 文案。
 
@@ -62,7 +65,7 @@
 
 ## 三、<span id="installation">安装、选择与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-需要完整 Xcode、macOS SDK、当前用户图形桌面与本工程源码。优先运行[根安装器](../【MacOS】🧩安装Finder扩展.command)，在 iOS 分组逐项选择。也可在本目录独立安装全部十项：
+需要完整 Xcode、macOS SDK、当前用户图形桌面与本工程源码。优先运行[根安装器](../【MacOS】🧩安装Finder扩展.command)，在 iOS 分组逐项选择。也可在本目录独立安装全部十一项：
 
 ```shell
 /bin/zsh ./【MacOS】安装iOS辅助工具Finder扩展.command
@@ -75,11 +78,11 @@
   --features ios-code-snippets
 ```
 
-`--features` 接受逗号分隔的固定标识，省略时选择全部十项，未知标识停止。安装与已有功能配置取并集，不关闭未选但已启用的功能；仅构建成功后保存。当前用户应用支持目录 `JobsIOSTools/EnabledFeatures.txt` 保存选择，不改写已签名 App 资源。
+`--features` 接受逗号分隔的固定标识，省略时选择全部十一项，未知标识停止。例如只安装 Pod Install 和产物清理，传入 `--features ios-pod-install,ios-clean-build-artifacts`。安装与已有功能配置取并集，不关闭未选但已启用的功能；仅构建成功后保存。当前用户应用支持目录 `JobsIOSTools/EnabledFeatures.txt` 保存选择，不改写已签名 App 资源。
 
 同样支持 `--features=...` 和环境变量 `JOBS_INSTALL_FEATURES`，参数优先。宿主和扩展优先读取真实用户的 `Library/Application Support/JobsIOSTools/EnabledFeatures.txt`，已有空配置表示全部关闭，读取失败也保守关闭；无用户配置时才采用随包缺省值。最低部署目标为 macOS 12，Swift 语言模式 5.0（依据工程配置，2026-10-23）。
 
-卸载全部十项：
+卸载全部十一项：
 
 ```shell
 /bin/zsh ./【MacOS】卸载iOS辅助工具Finder扩展.command
@@ -132,7 +135,7 @@ ruby ../Tests/IOSToolsCodeSnippetsTests.rb
 
 源码映射、Shell 语法及临时假业务验证不替代重新安装后的 Finder 菜单、Terminal 自动化权限与真实远端更新验收。
 
-本目录隔离回归覆盖九个原动作、隐藏 / 普通 Pod 定义门禁、配置合并 / 逐项移除、严格 URL 解析、两种系统 URL 回调去重和中文 / 引号 / 换行路径传递；Debug 构建与签名验证独立完成。验证不会执行清理、CocoaPods 安装、依赖更新或 Pod 编译。
+本目录隔离回归覆盖各随包动作、旧清理标识迁移、隐藏 / 普通 Pod 定义门禁、配置合并 / 逐项移除、严格 URL 解析、两种系统 URL 回调去重和中文 / 引号 / 换行路径传递；Debug 构建与签名验证独立完成。验证不会执行清理、CocoaPods 安装、依赖更新或 Pod 编译。
 
 ## 五、<span id="flow">模块与业务流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

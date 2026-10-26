@@ -65,13 +65,13 @@ class BuildArtifactCleanerTests < Minitest::Test
     end
   end
 
-  def run_clean(mode = '--yes', input = '', target = @root)
+  def run_clean(mode = '--yes', input = '', target = @root, scope = nil)
     # 用相同磁盘夹具核对真实 Finder 检测器与终端脚本，防止标题和删除范围分歧。
     kind, swift_status = Open3.capture2e(self.class.detector, '--build-artifact-kind', target)
     assert swift_status.success?, kind
-    detected, detect_status = Open3.capture2e({ 'HOME' => @home }, '/bin/zsh', SCRIPT, target, '--detect')
+    detected, detect_status = Open3.capture2e({ 'HOME' => @home }, '/bin/zsh', SCRIPT, target, '--detect', *[scope].compact)
     assert_equal kind.strip, detect_status.success? ? detected.strip : 'unknown', detected
-    Open3.capture2e({ 'HOME' => @home }, '/bin/zsh', SCRIPT, target, *[mode].compact, stdin_data: input)
+    Open3.capture2e({ 'HOME' => @home }, '/bin/zsh', SCRIPT, target, *[mode, scope].compact, stdin_data: input)
   end
 
   def test_harmony_native_multimodule_preserves_dependencies_signing_and_nested_projects
@@ -93,7 +93,7 @@ class BuildArtifactCleanerTests < Minitest::Test
     File.write(global, 'global cache')
     output, status = run_clean
     assert status.success?, output
-    assert_includes output, '工程类型：鸿蒙'
+    assert_includes output, '工程类型：OpenHarmony'
     outputs.each { |p| refute File.exist?(File.join(@root, p)), p }
     (preserved + %w[independent/entry/build/keep vendored/entry/build/keep generated_flutter/entry/build/keep]).each { |p| assert File.exist?(File.join(@root, p)), p }
     assert File.exist?(global)
@@ -107,7 +107,7 @@ class BuildArtifactCleanerTests < Minitest::Test
     file('ohos/entry/libs/flutter.har')
     output, status = run_clean('--yes', '', File.join(@root, 'ohos'))
     assert status.success?, output
-    assert_includes output, '工程类型：鸿蒙'
+    assert_includes output, '工程类型：OpenHarmony'
     assert File.exist?(File.join(@root, 'build/ohos/artifact'))
     assert File.exist?(File.join(@root, '.dart_tool/artifact'))
     outputs.each { |p| file(p + '/artifact') }
@@ -124,7 +124,7 @@ class BuildArtifactCleanerTests < Minitest::Test
     file('features/chat/build/keep')
     output, status = run_clean('--yes', '', File.join(@root, 'entry'))
     assert status.success?, output
-    assert_includes output, '工程类型：鸿蒙'
+    assert_includes output, '工程类型：OpenHarmony'
     assert File.exist?(File.join(@root, 'features/chat/build/keep'))
     flutter
     file('ohos/build/keep')
@@ -189,6 +189,47 @@ class BuildArtifactCleanerTests < Minitest::Test
     outputs.each { |p| refute File.exist?(File.join(@root, p)), p }
     assert File.exist?(File.join(@root, 'independent/build/keep'))
     assert File.exist?(File.join(@root, 'gradle/wrapper/gradle-wrapper.properties'))
+  end
+
+  def test_flutter_android_openharmony_scope_preserves_ios_desktop_and_shared_artifacts
+    flutter
+    android('android')
+    harmony('ohos')
+    ios('ios')
+    outputs = %w[android/build android/.gradle android/.kotlin android/app/build android/feature/chat/.cxx build/app build/ohos ohos/build ohos/.hvigor ohos/entry/build]
+    preserved = %w[build/ios/artifact build/windows/artifact build/shared/artifact .dart_tool/artifact ios/build/artifact ios/DerivedData/artifact ios/Flutter/ephemeral/artifact windows/flutter/ephemeral/artifact pubspec.lock ohos/entry/libs/flutter.har]
+    outputs.each { |path| file(path + '/artifact') }
+    preserved.each { |path| file(path) }
+
+    output, status = run_clean('--dry-run', '', @root, '--android-openharmony')
+    assert status.success?, output
+    assert_includes output, '清理范围：Android / OpenHarmony'
+    outputs.each { |path| assert File.exist?(File.join(@root, path)), path }
+    output, status = run_clean(nil, "CLEAN\n", @root, '--android-openharmony')
+    assert status.success?, output
+    outputs.each { |path| refute File.exist?(File.join(@root, path)), path }
+    preserved.each { |path| assert File.exist?(File.join(@root, path)), path }
+  end
+
+  def test_flutter_android_openharmony_scope_is_empty_without_recognized_platforms
+    flutter
+    %w[build/app/keep build/ohos/keep android/build/keep ohos/build/keep .dart_tool/keep].each { |path| file(path) }
+    output, status = run_clean('--yes', '', @root, '--android-openharmony')
+    assert status.success?, output
+    assert_includes output, '没有可清理'
+    assert File.exist?(File.join(@root, 'build/app/keep'))
+    assert File.exist?(File.join(@root, 'ohos/build/keep'))
+    assert File.exist?(File.join(@root, '.dart_tool/keep'))
+  end
+
+  def test_android_openharmony_scope_rejects_native_ios_and_unknown_flags_before_deleting
+    ios
+    file('build/keep')
+    [['--yes', '--android-openharmony'], ['--yes', '--unknown'], ['--yes', '--dry-run']].each do |arguments|
+      output, status = Open3.capture2e({ 'HOME' => @home }, '/bin/zsh', SCRIPT, @root, *arguments)
+      refute status.success?, output
+      assert File.exist?(File.join(@root, 'build/keep'))
+    end
   end
 
   def test_android_version_catalog_project_uses_manifest_evidence

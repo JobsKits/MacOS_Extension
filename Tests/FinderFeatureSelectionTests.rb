@@ -23,6 +23,8 @@ class FinderFeatureSelectionTests < Minitest::Test
               buildWindow(screenSize: NSSize(width: 1440, height: 900))
               let all = FeatureOption.all.map { $0.identifier }
               let grouped = FeatureGroup.all.flatMap { $0.identifiers }
+              expect(FeatureOption.flutter.count == 19 && all.count == 51, "Flutter exposes all 19 leaf actions")
+              expect(!all.contains("flutter-tools") && all.contains("flutter-package-ios") && all.contains("flutter-package-ohos"), "parent menus are not counted as actions")
               expect(all.count >= 29 && FeatureOption.ios.count >= 9, "existing functions plus requested iOS scripts")
               expect(Set(all).count == all.count, "unique function identifiers")
               expect(Set(grouped) == Set(all) && grouped.count == all.count, "every function in exactly one group")
@@ -46,6 +48,13 @@ class FinderFeatureSelectionTests < Minitest::Test
               let ios = groupControls.first { $0.group.identifier == "ios" }!
               expect(Array(ios.group.identifiers.prefix(2)) == ["pod_install", "ios-pod-update"], "Pod Install and Pod Update are adjacent")
               expect(ios.group.options[0].title == "Pod Install" && ios.group.options[1].title == "Pod Update", "Pod titles use initial capitals")
+              expect(ios.group.identifiers.contains("ios-clean-build-artifacts"), "iOS cleanup belongs to the iOS group")
+              expect(!all.contains("ios-clean-cache"), "overlapping iOS cleanup is not a second option")
+              expect(FeatureOption.all.allSatisfy { !$0.title.contains("鸿蒙") }, "visible platform names use English")
+              expect(FeatureOption.flutter.first { $0.identifier == "flutter-run" }?.title == "从终端运行 Flutter 项目", "Flutter run names the terminal")
+              expect(FeatureOption.flutter.first { $0.identifier == "flutter-clean-build-artifacts" }?.title == "清理当前 Flutter 项目构建产物", "Flutter cleanup names its scope")
+              let git = groupControls.first { $0.group.identifier == "git" }!
+              expect(git.group.identifiers == ["git-pull", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"], "all five Git actions remain individually selectable")
               ios.select.performClick(nil)
               expect(checkedIdentifiers() == all.filter { ios.group.identifiers.contains($0) }, "select one group from global empty")
               expect(checkedIdentifiers().count == ios.group.identifiers.count && installButton?.isEnabled == true, "iOS group includes pod install, IPA signing and ten scripts")
@@ -53,6 +62,11 @@ class FinderFeatureSelectionTests < Minitest::Test
               expect(ios.summary.stringValue == "已选 \(ios.group.identifiers.count - 1) / \(ios.group.identifiers.count)" && ios.select.isEnabled, "individual checkbox updates group")
               selectAllButton?.performClick(nil)
               expect(checkedIdentifiers() == all, "global select restores all groups")
+              let flutter = groupControls.first { $0.group.identifier == "flutter" }!
+              flutter.clear.performClick(nil)
+              expect(checkedIdentifiers().count == 32, "Flutter clear changes all leaf actions only")
+              checkboxes.first { $0.option.identifier == "flutter-package-android" }!.button.performClick(nil)
+              expect(flutter.summary.stringValue == "已选 1 / 19", "one Flutter submenu can be installed")
               print("group controls and function identifiers passed")
           }
 
@@ -65,17 +79,31 @@ class FinderFeatureSelectionTests < Minitest::Test
               for checkbox in checkboxes {
                   let rect = checkbox.button.convert(checkbox.button.bounds, to: content)
                   expect(rect.width > 0 && rect.height > 0, "checkbox has size: \(checkbox.option.identifier), rect \(rect), parent \(checkbox.button.superview!.frame), content \(content.frame)")
-                  expect(content.bounds.contains(rect), "checkbox visible in content: \(checkbox.option.identifier) \(rect), bounds \(content.bounds), screen \(screen)")
+                  let scroll = content.subviews.compactMap { $0 as? NSScrollView }.first
+                  if let scroll, let document = scroll.documentView {
+                      expect(document.bounds.contains(checkbox.button.convert(checkbox.button.bounds, to: document)), "every option fits scroll document")
+                  } else {
+                      expect(content.bounds.contains(rect), "checkbox visible in content: \(checkbox.option.identifier)")
+                  }
                   expect(rect.width >= checkbox.button.fittingSize.width - 1, "checkbox label is not clipped")
               }
               for controls in groupControls {
                   for button in [controls.select, controls.clear] {
                       let rect = button.convert(button.bounds, to: content)
-                      expect(content.bounds.contains(rect), "group controls visible")
+                      let scroll = content.subviews.compactMap { $0 as? NSScrollView }.first
+                      expect(scroll != nil || content.bounds.contains(rect), "group controls fit content or scroll document")
                   }
               }
               let rect = installButton!.convert(installButton!.bounds, to: content)
               expect(content.bounds.contains(rect), "install visible")
+              if let scroll = content.subviews.compactMap({ $0 as? NSScrollView }).first {
+                  expect(content.bounds.contains(scroll.frame), "scroll viewport fits content")
+                  expect(scroll.hasVerticalScroller && scroll.documentView!.frame.height > scroll.contentView.bounds.height, "overflow remains reachable")
+                  scroll.contentView.scroll(to: .zero)
+                  let bottom = checkboxes.last!.button
+                  bottom.scrollToVisible(bottom.bounds)
+                  expect(scroll.documentView!.visibleRect.contains(bottom.convert(bottom.bounds, to: scroll.documentView)), "last checkbox reachable by scrolling")
+              }
               print("layout \(Int(screen.width))x\(Int(screen.height)): \(Int(window!.frame.width))x\(Int(window!.frame.height)) passed")
           }
       }

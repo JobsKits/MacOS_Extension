@@ -291,9 +291,9 @@ fp_select() {
 fp_select_platform() {
     local selection="" selection_ec=0
     if [[ -z "$FP_PLATFORM" ]]; then
-        selection="$(fp_select '打包平台' 'Android' 'iOS' 'HarmonyOS（鸿蒙）')" || selection_ec=$?
+        selection="$(fp_select '打包平台' 'Android' 'iOS' 'OpenHarmony')" || selection_ec=$?
         (( selection_ec == 0 )) || return "$selection_ec"
-        case "$selection" in Android) FP_PLATFORM=android ;; iOS) FP_PLATFORM=ios ;; 'HarmonyOS（鸿蒙）') FP_PLATFORM=ohos ;; *) fp_error 'fzf 返回了无效平台'; return 2 ;; esac
+        case "$selection" in Android) FP_PLATFORM=android ;; iOS) FP_PLATFORM=ios ;; 'OpenHarmony') FP_PLATFORM=ohos ;; *) fp_error 'fzf 返回了无效平台'; return 2 ;; esac
     fi
     if [[ "$FP_PLATFORM" == android && -z "$FP_ANDROID_TARGET" ]]; then
         selection="$(fp_select 'Android 产物' 'APK' 'AAB' 'APK + AAB')" || return $?

@@ -208,7 +208,7 @@ class PackagingShellTests < Minitest::Test
   end
 
   def ohos_interactive(*arguments, env: {}, input: "\n")
-    interactive('--project', @project, *arguments, env: { 'FP_TEST_PLATFORM' => 'HarmonyOS（鸿蒙）' }.merge(env), input: input)
+    interactive('--project', @project, *arguments, env: { 'FP_TEST_PLATFORM' => 'OpenHarmony' }.merge(env), input: input)
   end
 
   def ohos_shell(body, env: {})
@@ -576,7 +576,7 @@ class PackagingShellTests < Minitest::Test
 
   def test_harmony_menu_contains_all_platforms_and_each_ohos_output_type
     { 'HAP' => 'hap', 'APP' => 'app', 'HAP + APP' => 'all' }.each do |choice, expected|
-      out, err, status = shell(<<~'ZSH', env: { 'FP_TEST_PLATFORM' => 'HarmonyOS（鸿蒙）', 'FP_TEST_OHOS_TARGET' => choice })
+      out, err, status = shell(<<~'ZSH', env: { 'FP_TEST_PLATFORM' => 'OpenHarmony', 'FP_TEST_OHOS_TARGET' => choice })
         fp_select_platform || exit $?
         print -r -- "CHOSEN=$FP_PLATFORM|$FP_OHOS_TARGET"
       ZSH
@@ -584,7 +584,7 @@ class PackagingShellTests < Minitest::Test
       assert_includes out, "CHOSEN=ohos|#{expected}"
     end
     trace = File.read(File.join(@root, 'trace'))
-    ['Android', 'iOS', 'HarmonyOS（鸿蒙）', 'HAP', 'APP', 'HAP + APP'].each do |label|
+    ['Android', 'iOS', 'OpenHarmony', 'HAP', 'APP', 'HAP + APP'].each do |label|
       assert_includes trace, "fzf-row|#{label}\n"
     end
     assert_equal 6, trace.scan('fzf|').length
@@ -595,13 +595,13 @@ class PackagingShellTests < Minitest::Test
     assert status.success?, out
     assert_includes out, '已取消平台 / 产物选择'
     assert_empty flutter_calls
-    out, err, status = shell('fp_select_platform', env: { 'FP_TEST_PLATFORM' => 'HarmonyOS（鸿蒙）', 'FP_TEST_OHOS_TARGET' => 'APK' })
+    out, err, status = shell('fp_select_platform', env: { 'FP_TEST_PLATFORM' => 'OpenHarmony', 'FP_TEST_OHOS_TARGET' => 'APK' })
     assert_equal 2, status.exitstatus, out + err
     assert_empty flutter_calls
   end
 
   def test_harmony_target_override_skips_only_the_secondary_menu
-    out, err, status = shell(<<~'ZSH', env: { 'FP_TEST_PLATFORM' => 'HarmonyOS（鸿蒙）' })
+    out, err, status = shell(<<~'ZSH', env: { 'FP_TEST_PLATFORM' => 'OpenHarmony' })
       fp_parse --ohos-target app || exit $?
       fp_select_platform || exit $?
       print -r -- "CHOSEN=$FP_PLATFORM|$FP_OHOS_TARGET"

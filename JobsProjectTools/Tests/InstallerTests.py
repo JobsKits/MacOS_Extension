@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-FEATURES = ['android_studio_opener', 'vscode_opener', 'xcode_opener', 'git-pull', 'git_remote', 'git_remote_copier']
+FEATURES = ['android_studio_opener', 'vscode_opener', 'xcode_opener', 'git-pull', 'git_remote', 'git_remote_copier', 'git-proxy-configure', 'git_empty_commit_push']
 APPS = ['JobsAndroidStudioOpener', 'JobsVSCodeOpener', 'JobsXcodeOpener', 'JobsGitPuller', 'JobsGitRemoteOpener', 'JobsGitRemoteCopier']
 GROUP_ID = 'com.jobs.JobsProjectTools.FinderSyncExtension'
 
@@ -17,13 +17,17 @@ class InstallerTests(unittest.TestCase):
         self.base = pathlib.Path(self.temp.name)
         self.config = self.base / 'config/EnabledFeatures.txt'
         self.state = self.base / 'state.json'
-        self.state.write_text(json.dumps({f'com.jobs.{app}.FinderSyncExtension': '+' for app in APPS}))
+        self.state.write_text(json.dumps({**{f'com.jobs.{app}.FinderSyncExtension': '+' for app in APPS}, 'com.jobs.gitproxyconfigurator.findersync': '+', 'com.jobs.JobsTerminalOpener.FinderSyncExtension': '+'}))
+        self.terminal = self.base / 'terminal/EnabledFinderMenuFeatures.txt'
+        self.terminal.parent.mkdir()
+        self.terminal.write_text('open,pod-install,git-empty-commit-push,unknown')
         self.log = self.base / 'calls.log'
         self.extension = self.base / 'work/DerivedData/Build/Products/Debug/JobsProjectTools.app/Contents/PlugIns/JobsProjectToolsFinderSync.appex'
         self.extension.mkdir(parents=True)
         source = (ROOT / 'JobsProjectTools/Scripts/ManageProjectTools.zsh').read_text()
         source = source.replace('PROJECT_ROOT="${0:A:h:h}"', f'PROJECT_ROOT="{self.base}"')
         source = source.replace('CONFIG_DIR="${HOME}/Library/Application Support/JobsProjectTools"', f'CONFIG_DIR="{self.config.parent}"')
+        source = source.replace('TERMINAL_CONFIG_PATH="${HOME}/Library/Application Support/JobsTerminalOpener/EnabledFinderMenuFeatures.txt"', f'TERMINAL_CONFIG_PATH="{self.terminal}"')
         shim = self.base / 'shim.py'
         shim.write_text(f'''#!/usr/bin/env python3
 import json,pathlib,sys
@@ -71,6 +75,8 @@ if name=='pluginkit':
         self.assertEqual(self.configured(), set(FEATURES))
         state = json.loads(self.state.read_text())
         self.assertEqual(state[GROUP_ID], '+')
+        self.assertEqual(state['com.jobs.gitproxyconfigurator.findersync'], '-')
+        self.assertEqual(self.terminal.read_text(), 'open,pod-install,unknown')
         self.assertTrue(all(state[f'com.jobs.{app}.FinderSyncExtension'] == '-' for app in APPS))
         self.run_script('uninstall', 'git_remote')
         self.assertEqual(self.configured(), set(FEATURES) - {'git_remote'})
@@ -109,6 +115,30 @@ if name=='pluginkit':
         state = json.loads(self.state.read_text())
         self.assertEqual(state['com.jobs.JobsGitRemoteOpener.FinderSyncExtension'], '-')
         self.assertEqual(state['com.jobs.JobsVSCodeOpener.FinderSyncExtension'], '+')
+
+    def test_existing_group_migrates_once_and_preserves_other_terminal_entries(self):
+        self.config.parent.mkdir()
+        self.config.write_text('vscode_opener')
+        self.run_script('install', 'git_remote')
+        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'git-proxy-configure', 'git_empty_commit_push'})
+        self.run_script('uninstall', 'git-proxy-configure', 'git_empty_commit_push')
+        self.run_script('install', 'xcode_opener')
+        self.assertEqual(self.configured(), {'vscode_opener', 'git_remote', 'xcode_opener'})
+        self.assertEqual(self.terminal.read_text(), 'open,pod-install,unknown')
+
+    def test_uninstalling_ide_before_migration_preserves_legacy_git_choice(self):
+        self.config.parent.mkdir()
+        self.config.write_text('vscode_opener')
+        self.run_script('uninstall', 'vscode_opener')
+        self.assertEqual(self.terminal.read_text(), 'open,pod-install,git-empty-commit-push,unknown')
+        self.assertFalse((self.config.parent / 'GitMenuMigrationVersion.txt').exists())
+        self.run_script('install', 'xcode_opener')
+        self.assertIn('git_empty_commit_push', self.configured())
+
+    def test_explicit_empty_commit_uninstall_only_removes_its_legacy_menu(self):
+        self.run_script('uninstall', 'git_empty_commit_push')
+        self.assertEqual(self.terminal.read_text(), 'open,pod-install,unknown')
+        self.assertFalse(self.config.exists())
 
     def test_all_entry_points_route_to_the_group(self):
         installer = (ROOT / '【MacOS】🧩安装Finder扩展.command').read_text()

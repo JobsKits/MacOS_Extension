@@ -1,12 +1,5 @@
 [
   {
-    "feature": "ios-clean-cache",
-    "file": "【MacOS】🧹双击清理iOS缓存.command",
-    "source": "其他/【MacOS】🧹双击清理iOS缓存.command/【MacOS】🧹双击清理iOS缓存.command",
-    "sourceSHA256": "1d478afb871bf8b89a8aa8f059ea126cbaaf4737495c85f82bd3367e69bd30a4",
-    "bundledSHA256": "c301bd90500c3be2adb72e1124c957ea0d02ce66ed6950537c4c9a7dec2286e6"
-  },
-  {
     "feature": "ios-disable-sandbox",
     "file": "【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command",
     "source": "Cocoapods/【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command/【MacOS】⚙️双击禁用沙盒保证Cocoapods构建流程.command",

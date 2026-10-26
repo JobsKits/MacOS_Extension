@@ -21,6 +21,11 @@
 		01B000000000000000000019 /* GitPullTerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000019 /* GitPullTerminalLauncher.swift */; };
 		01B000000000000000000020 /* PullGitRepository.zsh in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000020 /* PullGitRepository.zsh */; };
 		01B000000000000000000021 /* ProjectOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000021 /* ProjectOpener.swift */; };
+		01B000000000000000000022 /* GitRepositoryValidator.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000022 /* GitRepositoryValidator.swift */; };
+		01B000000000000000000023 /* GitProxyTerminalLauncher.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000023 /* GitProxyTerminalLauncher.swift */; };
+		01B000000000000000000024 /* ConfigureGitDynamicProxy.command */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* ConfigureGitDynamicProxy.command */; };
+		01B000000000000000000025 /* TerminalOpener.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* TerminalOpener.swift */; };
+		01B000000000000000000026 /* DependencyProjectValidator.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000026 /* DependencyProjectValidator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +71,11 @@
 		01A000000000000000000019 /* GitPullTerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsGitPuller/JobsGitPuller/GitPullTerminalLauncher/GitPullTerminalLauncher.swift"; sourceTree = SOURCE_ROOT; };
 		01A000000000000000000020 /* PullGitRepository.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "../JobsGitPuller/Scripts/PullGitRepository.zsh"; sourceTree = SOURCE_ROOT; };
 		01A000000000000000000021 /* ProjectOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsXcodeOpener/JobsXcodeFinderSync/ProjectOpener.swift"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000022 /* GitRepositoryValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/GitRepositoryValidator.swift"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000023 /* GitProxyTerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsGitProxyConfigurator/JobsGitProxyConfigurator/GitProxyTerminalLauncher/GitProxyTerminalLauncher.swift"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000024 /* ConfigureGitDynamicProxy.command */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "../JobsGitProxyConfigurator/Scripts/ConfigureGitDynamicProxy.command"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000025 /* TerminalOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsTerminalOpener/JobsTerminalFinderSync/TerminalOpener.swift"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000026 /* DependencyProjectValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsTerminalOpener/JobsTerminalShared/DependencyProjectValidator.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +108,11 @@
 				01A000000000000000000019 /* GitPullTerminalLauncher.swift */,
 				01A000000000000000000020 /* PullGitRepository.zsh */,
 				01A000000000000000000021 /* ProjectOpener.swift */,
+				01A000000000000000000022 /* GitRepositoryValidator.swift */,
+				01A000000000000000000023 /* GitProxyTerminalLauncher.swift */,
+				01A000000000000000000024 /* ConfigureGitDynamicProxy.command */,
+				01A000000000000000000025 /* TerminalOpener.swift */,
+				01A000000000000000000026 /* DependencyProjectValidator.swift */,
 				01G000000000000000000013 /* Frameworks */,
 				01G000000000000000000014 /* Products */,
 			);
@@ -224,7 +239,7 @@
         01D000000000000000000015 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (01B000000000000000000020 /* PullGitRepository.zsh */, );
+            files = (01B000000000000000000020 /* PullGitRepository.zsh */, 01B000000000000000000024 /* ConfigureGitDynamicProxy.command */, );
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */
@@ -243,6 +258,10 @@
 				01B000000000000000000018 /* GitRemoteResolver.swift in Sources */,
 				01B000000000000000000019 /* GitPullTerminalLauncher.swift */,
 				01B000000000000000000021 /* ProjectOpener.swift in Sources */,
+				01B000000000000000000026 /* DependencyProjectValidator.swift */,
+				01B000000000000000000025 /* TerminalOpener.swift */,
+				01B000000000000000000023 /* GitProxyTerminalLauncher.swift */,
+				01B000000000000000000022 /* GitRepositoryValidator.swift */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -251,6 +270,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				01B000000000000000000022 /* GitRepositoryValidator.swift */,
 				01B000000000000000000011 /* FinderSync.swift in Sources */,
 				01B000000000000000000012 /* ProjectMenuAction.swift in Sources */,
 				01B000000000000000000015 /* XcodeProjectDetector.swift in Sources */,

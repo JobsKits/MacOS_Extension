@@ -2,7 +2,7 @@
 # 脚本自述：
 # - 脚本名称：【MacOS】🧩安装Finder扩展.command
 # - 核心用途：用分组复选框 UI 选择并安装 Finder Sync Extension 功能，各组和全部功能均支持全选与全不选。
-# - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal 与 iOS 功能选择，并重启 Finder 刷新右键菜单。
+# - 影响范围：会构建、注册并启用选中的 Finder 扩展，保存 Terminal、Flutter 与 iOS 功能选择，并重启 Finder 刷新右键菜单。
 # - 运行提示：运行后会先打印内置自述；按回车确认后，在原生 UI 中勾选需要安装的右键菜单功能。
 
 # 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
@@ -40,6 +40,8 @@ TERMINAL_FEATURE_CONFIG_DIR=""
 TERMINAL_FEATURE_CONFIG_PATH=""
 IOS_FEATURE_CONFIG_DIR=""
 IOS_FEATURE_CONFIG_PATH=""
+FLUTTER_FEATURE_CONFIG_DIR=""
+FLUTTER_FEATURE_CONFIG_PATH=""
 FINAL_EXIT_STATUS=0
 SELECTED_KEYS=()
 SELECTED_FUNCTION_IDS=()
@@ -48,8 +50,9 @@ FAILED_FEATURES=()
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 IOS_TOOLS_ENABLED_FEATURES=""
+FLUTTER_TOOLS_ENABLED_FEATURES=""
 
-FEATURE_KEYS=(project-tools path_copier run-authorize ipa-resign hidden-files-toggle flutter-tools ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create git-proxy-configure terminal_opener ios-tools)
+FEATURE_KEYS=(project-tools path_copier run-authorize run-revoke ipa-resign hidden-files-toggle flutter-tools ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -60,8 +63,9 @@ typeset -A FEATURE_EXTENSION_ID
 typeset -A SELECTABLE_FUNCTION_TITLE
 typeset -A SELECTABLE_FUNCTION_PROJECT_KEY
 typeset -A SELECTABLE_FUNCTION_TERMINAL_ACTION
+typeset -A SELECTABLE_FUNCTION_FLUTTER_ACTION
 
-FEATURE_TITLE[project-tools]="IDE / Git 项目工具（固定分组）"
+FEATURE_TITLE[project-tools]="IDE 项目工具 / Git操作"
 FEATURE_PROJECT_DIR[project-tools]="JobsProjectTools"
 FEATURE_SCHEME[project-tools]="JobsProjectTools"
 FEATURE_APP_NAME[project-tools]="JobsProjectTools"
@@ -96,6 +100,14 @@ FEATURE_APP_NAME[run-authorize]="JobsRunAuthorizer"
 FEATURE_APP_ID[run-authorize]="com.jobs.JobsRunAuthorizer"
 FEATURE_EXTENSION_NAME[run-authorize]="JobsRunAuthorizerFinderSync.appex"
 FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtension"
+
+FEATURE_TITLE[run-revoke]="解除运行授权"
+FEATURE_PROJECT_DIR[run-revoke]="JobsRunAuthorizationRevoker"
+FEATURE_SCHEME[run-revoke]="JobsRunAuthorizationRevoker"
+FEATURE_APP_NAME[run-revoke]="JobsRunAuthorizationRevoker"
+FEATURE_APP_ID[run-revoke]="com.jobs.JobsRunAuthorizationRevoker"
+FEATURE_EXTENSION_NAME[run-revoke]="JobsRunAuthorizationRevokerFinderSync.appex"
+FEATURE_EXTENSION_ID[run-revoke]="com.jobs.JobsRunAuthorizationRevoker.FinderSyncExtension"
 
 FEATURE_TITLE[ipa-resign]="IPA 免编译重签"
 FEATURE_PROJECT_DIR[ipa-resign]="JobsIPAResigner"
@@ -154,7 +166,7 @@ FEATURE_APP_NAME[flutter-dependency-extract]="JobsFlutterDependencyExtractor"
 FEATURE_EXTENSION_NAME[flutter-dependency-extract]="JobsFlutterDependencyFinderSync.appex"
 FEATURE_EXTENSION_ID[flutter-dependency-extract]="com.jobs.JobsFlutterDependencyExtractor.FinderSync"
 
-FEATURE_TITLE[flutter-run]="运行 Flutter 项目"
+FEATURE_TITLE[flutter-run]="从终端运行 Flutter 项目"
 FEATURE_PROJECT_DIR[flutter-run]="JobsFlutterRunner"
 FEATURE_SCHEME[flutter-run]="JobsFlutterRunner"
 FEATURE_APP_NAME[flutter-run]="JobsFlutterRunner"
@@ -214,6 +226,14 @@ FEATURE_APP_ID[harmony-simulator-create]="com.jobs.harmonysimulatorcreator"
 FEATURE_EXTENSION_NAME[harmony-simulator-create]="JobsHarmonySimulatorFinderSync.appex"
 FEATURE_EXTENSION_ID[harmony-simulator-create]="com.jobs.harmonysimulatorcreator.findersync"
 
+FEATURE_TITLE[harmony-simulator-repair]="Harmony 模拟器检测与修复"
+FEATURE_PROJECT_DIR[harmony-simulator-repair]="JobsHarmonySimulatorRepairer"
+FEATURE_SCHEME[harmony-simulator-repair]="JobsHarmonySimulatorRepairer"
+FEATURE_APP_NAME[harmony-simulator-repair]="JobsHarmonySimulatorRepairer"
+FEATURE_APP_ID[harmony-simulator-repair]="com.jobs.harmonysimulatorrepairer"
+FEATURE_EXTENSION_NAME[harmony-simulator-repair]="JobsHarmonySimulatorRepairFinderSync.appex"
+FEATURE_EXTENSION_ID[harmony-simulator-repair]="com.jobs.harmonysimulatorrepairer.findersync"
+
 FEATURE_TITLE[git-proxy-configure]="配置 Git 动态代理"
 FEATURE_PROJECT_DIR[git-proxy-configure]="JobsGitProxyConfigurator"
 FEATURE_SCHEME[git-proxy-configure]="JobsGitProxyConfigurator"
@@ -255,8 +275,8 @@ FEATURE_APP_ID[ios-tools]="com.jobs.JobsIOSTools"
 FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
-IOS_FUNCTION_IDS=(ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier path_copier run-authorize ipa-resign hidden-files-toggle flutter-tools ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets)
+IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier path_copier run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create android-simulator-repair harmony-simulator-create harmony-simulator-repair git-proxy-configure terminal_open pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-run flutter-pub-get flutter-extract flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -265,6 +285,8 @@ SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
 SELECTABLE_FUNCTION_TITLE[run-authorize]="运行授权"
 SELECTABLE_FUNCTION_PROJECT_KEY[run-authorize]="run-authorize"
+SELECTABLE_FUNCTION_TITLE[run-revoke]="解除运行授权"
+SELECTABLE_FUNCTION_PROJECT_KEY[run-revoke]="run-revoke"
 SELECTABLE_FUNCTION_TITLE[ipa-resign]="IPA 免编译重签"
 SELECTABLE_FUNCTION_PROJECT_KEY[ipa-resign]="ipa-resign"
 SELECTABLE_FUNCTION_TITLE[hidden-files-toggle]="显示 / 隐藏文件"
@@ -283,7 +305,7 @@ SELECTABLE_FUNCTION_TITLE[git-pull]="拉取 Git 到最新"
 SELECTABLE_FUNCTION_PROJECT_KEY[git-pull]="project-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-dependency-extract]="提取 Flutter 第三方依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-dependency-extract]="flutter-tools"
-SELECTABLE_FUNCTION_TITLE[flutter-run]="运行 Flutter 项目"
+SELECTABLE_FUNCTION_TITLE[flutter-run]="从终端运行 Flutter 项目"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-run]="flutter-tools"
 SELECTABLE_FUNCTION_TITLE[flutter-package]="Flutter打包"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-package]="flutter-tools"
@@ -299,28 +321,28 @@ SELECTABLE_FUNCTION_TITLE[android-simulator-repair]="Android 模拟器检测与�
 SELECTABLE_FUNCTION_PROJECT_KEY[android-simulator-repair]="android-simulator-repair"
 SELECTABLE_FUNCTION_TITLE[harmony-simulator-create]="新建 Harmony 模拟器"
 SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-create]="harmony-simulator-create"
+SELECTABLE_FUNCTION_TITLE[harmony-simulator-repair]="Harmony 模拟器检测与修复"
+SELECTABLE_FUNCTION_PROJECT_KEY[harmony-simulator-repair]="harmony-simulator-repair"
 SELECTABLE_FUNCTION_TITLE[git-proxy-configure]="配置 Git 动态代理"
-SELECTABLE_FUNCTION_PROJECT_KEY[git-proxy-configure]="git-proxy-configure"
+SELECTABLE_FUNCTION_PROJECT_KEY[git-proxy-configure]="project-tools"
 SELECTABLE_FUNCTION_TITLE[terminal_open]="用终端打开"
 SELECTABLE_FUNCTION_PROJECT_KEY[terminal_open]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[terminal_open]="open"
 SELECTABLE_FUNCTION_TITLE[pod_install]="Pod Install"
-SELECTABLE_FUNCTION_PROJECT_KEY[pod_install]="terminal_opener"
+SELECTABLE_FUNCTION_PROJECT_KEY[pod_install]="ios-tools"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[pod_install]="pod-install"
 SELECTABLE_FUNCTION_TITLE[flutter_pub_get]="在终端执行 flutter pub get"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter_pub_get]="flutter-tools"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[flutter_pub_get]="flutter-pub-get"
-SELECTABLE_FUNCTION_TITLE[clean_build_artifacts]="清理构建产物（按工程类型显示）"
+SELECTABLE_FUNCTION_TITLE[clean_build_artifacts]="清理 Android / OpenHarmony 构建产物"
 SELECTABLE_FUNCTION_PROJECT_KEY[clean_build_artifacts]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[clean_build_artifacts]="clean-build-artifacts"
 SELECTABLE_FUNCTION_TITLE[codegraph_bootstrap]="更新代码地图（.codegraph）"
 SELECTABLE_FUNCTION_PROJECT_KEY[codegraph_bootstrap]="terminal_opener"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[codegraph_bootstrap]="codegraph-bootstrap"
 SELECTABLE_FUNCTION_TITLE[git_empty_commit_push]="在终端创建空白 Commit 并 Push"
-SELECTABLE_FUNCTION_PROJECT_KEY[git_empty_commit_push]="terminal_opener"
+SELECTABLE_FUNCTION_PROJECT_KEY[git_empty_commit_push]="project-tools"
 SELECTABLE_FUNCTION_TERMINAL_ACTION[git_empty_commit_push]="git-empty-commit-push"
-SELECTABLE_FUNCTION_TITLE[ios-clean-cache]="清理 iOS 缓存"
-SELECTABLE_FUNCTION_PROJECT_KEY[ios-clean-cache]="ios-tools"
 SELECTABLE_FUNCTION_TITLE[ios-disable-sandbox]="禁用 CocoaPods 构建沙盒"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-disable-sandbox]="ios-tools"
 SELECTABLE_FUNCTION_TITLE[ios-install-cocoapods]="安装 CocoaPods"
@@ -339,6 +361,71 @@ SELECTABLE_FUNCTION_TITLE[ios-pod-build-check]="自检当前本地 Pod 编译"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-pod-build-check]="ios-tools"
 SELECTABLE_FUNCTION_TITLE[ios-code-snippets]="安装 / 升级 JobsCodeSnippets"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-code-snippets]="ios-tools"
+SELECTABLE_FUNCTION_TITLE[ios-clean-build-artifacts]="清理 iOS/Xcode 构建产物"
+SELECTABLE_FUNCTION_PROJECT_KEY[ios-clean-build-artifacts]="ios-tools"
+
+FLUTTER_ACTION_IDS=(run pub-get extract sdk-version sdk-manage ohos-sdk-manage java-manage codegen package-ios package-android package-ohos native-doctor harmony-doctor repair-android repair-imports repair-namespace repair-package-imports clean-build-artifacts maintenance)
+SELECTABLE_FUNCTION_TITLE[flutter-run]="从终端运行 Flutter 项目"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-run]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-run]="run"
+SELECTABLE_FUNCTION_TITLE[flutter-pub-get]="拉取 Flutter 第三方依赖"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-pub-get]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-pub-get]="pub-get"
+SELECTABLE_FUNCTION_TITLE[flutter-extract]="提取 Flutter 第三方依赖"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-extract]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-extract]="extract"
+SELECTABLE_FUNCTION_TITLE[flutter-sdk-version]="查看当前 Flutter 项目的 SDK 版本"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-sdk-version]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-sdk-version]="sdk-version"
+SELECTABLE_FUNCTION_TITLE[flutter-sdk-manage]="安装 / 切换 Flutter SDK 版本"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-sdk-manage]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-sdk-manage]="sdk-manage"
+SELECTABLE_FUNCTION_TITLE[flutter-ohos-sdk-manage]="安装 / 切换 Flutter@OpenHarmony SDK"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-ohos-sdk-manage]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-ohos-sdk-manage]="ohos-sdk-manage"
+SELECTABLE_FUNCTION_TITLE[flutter-java-manage]="安装 / 切换 Java 环境"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-java-manage]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-java-manage]="java-manage"
+SELECTABLE_FUNCTION_TITLE[flutter-codegen]="Flutter 自动化生产代码"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-codegen]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-codegen]="codegen"
+SELECTABLE_FUNCTION_TITLE[flutter-package-ios]="打包 iOS"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-package-ios]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-package-ios]="package-ios"
+SELECTABLE_FUNCTION_TITLE[flutter-package-android]="打包 Android"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-package-android]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-package-android]="package-android"
+SELECTABLE_FUNCTION_TITLE[flutter-package-ohos]="打包 OpenHarmony"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-package-ohos]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-package-ohos]="package-ohos"
+SELECTABLE_FUNCTION_TITLE[flutter-native-doctor]="原生 Flutter 项目体检"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-native-doctor]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-native-doctor]="native-doctor"
+SELECTABLE_FUNCTION_TITLE[flutter-harmony-doctor]="OpenHarmony Flutter 环境体检"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-harmony-doctor]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-harmony-doctor]="harmony-doctor"
+SELECTABLE_FUNCTION_TITLE[flutter-repair-android]="修复 Android SDK / platforms 缺失"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-repair-android]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-repair-android]="repair-android"
+SELECTABLE_FUNCTION_TITLE[flutter-repair-imports]="修复 Flutter 项目中文路径"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-repair-imports]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-repair-imports]="repair-imports"
+SELECTABLE_FUNCTION_TITLE[flutter-repair-namespace]="修复 Flutter 插件 namespace"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-repair-namespace]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-repair-namespace]="repair-namespace"
+SELECTABLE_FUNCTION_TITLE[flutter-repair-package-imports]="修复 Dart 相对 import 为 package 引用"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-repair-package-imports]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-repair-package-imports]="repair-package-imports"
+SELECTABLE_FUNCTION_TITLE[flutter-clean-build-artifacts]="清理当前 Flutter 项目构建产物"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-clean-build-artifacts]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-clean-build-artifacts]="clean-build-artifacts"
+SELECTABLE_FUNCTION_TITLE[flutter-maintenance]="依赖与缓存维护"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-maintenance]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-maintenance]="maintenance"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter_version_manager]="sdk-manage"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter_sdk_version]="sdk-version"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter_pub_get]="pub-get"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-dependency-extract]="extract"
 
 # 判断当前终端是否适合输出 ANSI 彩色文本。
 supports_color() {
@@ -421,10 +508,10 @@ show_script_intro_and_wait() {
   highlight_echo "============================== 脚本自述 ==============================" | jobs_intro_style title
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo "核心用途：用原生复选框 UI 选择并安装 Finder 右键增强功能。" | jobs_intro_style body
-  note_echo "可选功能：共 ${#SELECTABLE_FUNCTION_IDS[@]} 项，按用途分为 6 组；iOS / CocoaPods 的 9 项工具可分别勾选。" | jobs_intro_style body
+  note_echo "可选功能：共 ${#SELECTABLE_FUNCTION_IDS[@]} 项，按用途分为 6 组；Flutter、Git 与 iOS / CocoaPods 子菜单功能均可分别勾选。" | jobs_intro_style body
   warn_echo "影响范围：会调用 xcodebuild 构建选中的 macOS App。" | jobs_intro_style body
   warn_echo "影响范围：会注册并启用对应 Finder Sync Extension。" | jobs_intro_style body
-  warn_echo "影响范围：会保存 Terminal 功能选择，并合并已安装的 iOS 辅助功能选择。" | jobs_intro_style body
+  warn_echo "影响范围：会保存 Terminal 与 Flutter 本次勾选，并合并已安装的 iOS 辅助功能选择。" | jobs_intro_style body
   warn_echo "影响范围：安装成功后会重启 Finder，刷新右键菜单缓存。" | jobs_intro_style body
   warn_echo "运行策略：按回车后打开原生勾选窗口；按 Ctrl+C 或窗口中的“取消”可以终止。" | jobs_intro_style body
   gray_echo "UI 操作：每组及底部全部功能均可“全选”或“全不选”；选好后点击“安装”，空选时置灰。" | jobs_intro_style body
@@ -452,6 +539,8 @@ init_runtime() {
   TERMINAL_FEATURE_CONFIG_PATH="${TERMINAL_FEATURE_CONFIG_DIR}/EnabledFinderMenuFeatures.txt"
   IOS_FEATURE_CONFIG_DIR="${HOME}/Library/Application Support/JobsIOSTools"
   IOS_FEATURE_CONFIG_PATH="${IOS_FEATURE_CONFIG_DIR}/EnabledFeatures.txt"
+  FLUTTER_FEATURE_CONFIG_DIR="${HOME}/Library/Application Support/JobsFinderExtensions"
+  FLUTTER_FEATURE_CONFIG_PATH="${FLUTTER_FEATURE_CONFIG_DIR}/flutter-tools-features.conf"
 }
 # 获取当前 Mac CPU 架构，用于收敛 xcodebuild 目标。
 get_cpu_arch() {
@@ -570,12 +659,17 @@ parse_feature_selection() {
   local terminal_action=""
   local terminal_actions=()
   local ios_actions=()
+  local flutter_actions=()
+  typeset -U flutter_actions
+  typeset -U ios_actions
 
   SELECTED_KEYS=()
   SELECTED_FUNCTION_IDS=()
   TERMINAL_OPENER_ENABLED_FEATURES=""
   IOS_TOOLS_ENABLED_FEATURES=""
+  FLUTTER_TOOLS_ENABLED_FEATURES=""
   for selected_function_id in ${(s:,:)selection_output}; do
+    [[ "$selected_function_id" == ios-clean-cache ]] && selected_function_id=ios-clean-build-artifacts
     project_key="${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_function_id]}"
     if [[ -z "$project_key" ]]; then
       error_echo "功能选择 UI 返回了未知标识：${selected_function_id}"
@@ -587,12 +681,27 @@ parse_feature_selection() {
     if [[ "$project_key" == "terminal_opener" ]]; then
       terminal_action="${SELECTABLE_FUNCTION_TERMINAL_ACTION[$selected_function_id]}"
       [[ -n "$terminal_action" ]] && terminal_actions+=("$terminal_action")
+    elif [[ "$project_key" == "flutter-tools" ]]; then
+      if [[ "$selected_function_id" == flutter-tools ]]; then
+        flutter_actions+=("${FLUTTER_ACTION_IDS[@]}")
+      elif [[ "$selected_function_id" == flutter-package ]]; then
+        flutter_actions+=(package-ios package-android package-ohos)
+      elif [[ "$selected_function_id" == flutter-doctor ]]; then
+        flutter_actions+=(native-doctor harmony-doctor)
+      else
+        flutter_actions+=("${SELECTABLE_FUNCTION_FLUTTER_ACTION[$selected_function_id]}")
+      fi
     elif [[ "$project_key" == "ios-tools" ]]; then
-      ios_actions+=("$selected_function_id")
+      if [[ "$selected_function_id" == pod_install ]]; then
+        ios_actions+=(ios-pod-install)
+      else
+        ios_actions+=("$selected_function_id")
+      fi
     fi
   done
   TERMINAL_OPENER_ENABLED_FEATURES="${(j:,:)terminal_actions}"
   IOS_TOOLS_ENABLED_FEATURES="${(j:,:)ios_actions}"
+  FLUTTER_TOOLS_ENABLED_FEATURES="${(j:,:)flutter_actions}"
 }
 # 编译功能选择窗口（源码更新后自动重编），产物缓存在 work 目录。
 build_feature_selector_if_needed() {
@@ -892,7 +1001,7 @@ open_host_for_extension_registration() {
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == "run-authorize" || "$key" == "ipa-resign" || "$key" == "hidden-files-toggle" || "$key" == "ios-tools" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "android-simulator-repair" || "$key" == "harmony-simulator-create" || "$key" == "git-proxy-configure" ]]; then
+  if [[ "$key" == "run-authorize" || "$key" == "run-revoke" || "$key" == "ipa-resign" || "$key" == "hidden-files-toggle" || "$key" == "ios-tools" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "android-simulator-repair" || "$key" == "harmony-simulator-create" || "$key" == "harmony-simulator-repair" || "$key" == "git-proxy-configure" ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   /usr/bin/open "${open_arguments[@]}"
@@ -994,6 +1103,7 @@ persist_ios_feature_selection() {
     existing_value="$(<"$IOS_FEATURE_CONFIG_PATH")"
   fi
   for selected_id in ${(s:,:)existing_value} ${(s:,:)IOS_TOOLS_ENABLED_FEATURES}; do
+    [[ "$selected_id" == ios-clean-cache ]] && selected_id=ios-clean-build-artifacts
     (( ${IOS_FUNCTION_IDS[(Ie)$selected_id]} )) && enabled[$selected_id]=1
   done
   for feature_id in "${IOS_FUNCTION_IDS[@]}"; do
@@ -1013,6 +1123,25 @@ persist_ios_feature_selection() {
   success_echo "iOS 辅助功能选择已合并保存：${(j:,:)enabled_features}"
   return 0
 }
+# 按本次勾选原子替换 Flutter 子菜单开关，取消的旧动作不会被合并回来。
+persist_flutter_feature_selection() {
+  local key="$1"
+  local temporary_path=""
+
+  [[ "$key" != flutter-tools ]] && return 0
+  if ! /bin/mkdir -p "$FLUTTER_FEATURE_CONFIG_DIR"; then
+    error_echo "无法创建 Flutter 功能配置目录：${FLUTTER_FEATURE_CONFIG_DIR}"
+    return 1
+  fi
+  temporary_path="$(/usr/bin/mktemp "${FLUTTER_FEATURE_CONFIG_DIR}/.flutter-features.XXXXXX")" || return 1
+  if ! print -nr -- "$FLUTTER_TOOLS_ENABLED_FEATURES" > "$temporary_path" ||
+     ! /bin/mv -f "$temporary_path" "$FLUTTER_FEATURE_CONFIG_PATH"; then
+    /bin/rm -f "$temporary_path"
+    error_echo "无法保存 Flutter 功能选择：${FLUTTER_FEATURE_CONFIG_PATH}"
+    return 1
+  fi
+  success_echo "Flutter 子菜单选择已保存：${FLUTTER_TOOLS_ENABLED_FEATURES}"
+}
 # 安装单个 Finder 扩展功能。
 install_feature() {
   local key="$1"
@@ -1030,6 +1159,7 @@ install_feature() {
   build_feature "$key" || return 1
   persist_ios_feature_selection "$key" || return 1
   register_and_enable_feature "$key" || return 1
+  persist_flutter_feature_selection "$key" || return 1
   persist_terminal_feature_selection "$key" || return 1
   return 0
 }

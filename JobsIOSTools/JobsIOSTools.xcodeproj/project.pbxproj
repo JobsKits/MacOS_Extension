@@ -22,6 +22,8 @@
 		01B000000000000000000035 /* IOSToolsRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* IOSToolsRequest.swift */; };
 		01B000000000000000000040 = {isa = PBXBuildFile; fileRef = 01A000000000000000000040; };
 		01B000000000000000000041 = {isa = PBXBuildFile; fileRef = 01A000000000000000000040; };
+		01B000000000000000000042 = {isa = PBXBuildFile; fileRef = 01A000000000000000000042; };
+		01B000000000000000000043 = {isa = PBXBuildFile; fileRef = 01A000000000000000000042; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +67,7 @@
 		01A000000000000000000025 /* IOSToolsRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "IOSToolsRequest/IOSToolsRequest.swift"; sourceTree = "<group>"; };
 		01A000000000000000000026 /* Tools */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Tools"; sourceTree = "<group>"; };
 		01A000000000000000000040 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsIOSFactories.swift; sourceTree = "<group>"; };
+		01A000000000000000000042 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyProjectValidator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +149,7 @@
                 01A000000000000000000024 /* IOSProjectValidator.swift */,
                 01A000000000000000000025 /* IOSToolsRequest.swift */,
                 01A000000000000000000040 /* JobsIOSFactories.swift */,
+                01A000000000000000000042 /* DependencyProjectValidator.swift */,
             );
             path = JobsIOSToolsShared;
             sourceTree = "<group>";
@@ -278,6 +282,7 @@
 				01B000000000000000000024 /* IOSProjectValidator.swift in Sources */,
 				01B000000000000000000025 /* IOSToolsRequest.swift in Sources */,
                 01B000000000000000000040 /* JobsIOSFactories.swift in Sources */,
+				01B000000000000000000042 /* DependencyProjectValidator.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -290,6 +295,7 @@
 				01B000000000000000000034 /* IOSProjectValidator.swift in Sources */,
 				01B000000000000000000035 /* IOSToolsRequest.swift in Sources */,
                 01B000000000000000000041 /* JobsIOSFactories.swift in Sources */,
+				01B000000000000000000043 /* DependencyProjectValidator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

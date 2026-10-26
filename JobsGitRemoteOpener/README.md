@@ -1,4 +1,4 @@
-> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，同一 Finder 扩展固定 IDE / Git 菜单顺序。此目录的安装、卸载入口仅启停对应单项；请保留完整仓库。下文说明本目录保留的源码工程与构建方式；常规菜单安装使用统一包。
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，本项位于“Git操作”子菜单。只有有效 Git 工作树的普通文件夹或其内部空白处显示；文件、普通非 Git 目录和多选隐藏。此目录的入口仅启停 `git_remote` 单项，请保留完整仓库；下文保留远程地址解析与旧独立工程的说明，不代表常规安装会恢复旧一级菜单。
 
 # `JobsGitRemoteOpener`
 

@@ -1,4 +1,4 @@
-> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，同一 Finder 扩展固定 IDE / Git 菜单顺序。此目录的安装、卸载入口仅启停对应单项；请保留完整仓库。下文说明本目录保留的源码工程与构建方式；常规菜单安装使用统一包。
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，本项位于“Git操作”子菜单。只有有效 Git 工作树的普通文件夹或内部空白处显示；本目录的安装、卸载入口仅启停对应单项，请保留完整仓库。下文保留业务脚本、恢复边界与旧源码工程的说明；常规安装使用统一包，不重新启用旧一级菜单。
 
 # `JobsGitPuller`
 
@@ -45,23 +45,22 @@
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
+两个裸露入口与本 README 平级，转交统一包的 `git-pull` 单项；需保留完整仓库。构建、登记路径、配置并集和逐项关闭以[统一包安装说明](../JobsProjectTools/README.md)为准；本目录完整业务脚本仍可直接在交互终端使用。
 
 ### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Git拉取Finder扩展.command](./【MacOS】安装Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 构建并注册本项 Finder 扩展。
+> **目的：** 在统一 Git 子菜单中启用拉取单项。
 
 - 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK 与本工程文件，缺失时明确停止；健康 Git 由右键动作在运行时另行核验。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
-- 安装过程不会拉取任何目标仓库；日志为系统临时目录中的 `JobsGitPullerInstall.log`。也可使用[总仓统一安装器](../【MacOS】🧩安装Finder扩展.command)仅勾选本项。
+- 直接回车安装，输入任意字符（包括空格）后回车跳过；统一包产物位于 `../JobsProjectTools/work/DerivedData/`，成功启用后刷新 Finder，其它选择保留。
+- 安装过程不会拉取任何目标仓库；诊断显示在终端。也可使用[总仓统一安装器](../【MacOS】🧩安装Finder扩展.command)仅勾选本项。
 
 ### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载Git拉取Finder扩展.command](./【MacOS】卸载Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 停用并注销本项扩展，清理本工程安装产物。
+> **目的：** 关闭统一包的 Git 拉取单项。
 
-- 阅读自述并回车确认，停止本项宿主和扩展。
-- 注销并清理构建产物，刷新 Finder；不删除源码、目标项目或目标仓库的恢复快照。
-- 展示真实注册路径后必须输入 `YES` 才继续；日志为系统临时目录中的 `【MacOS】卸载Git拉取Finder扩展.log`。
+- 阅读自述，回车执行、任意非空输入跳过；没有额外 `YES` 步骤。
+- 其它启用项保留，最后一项关闭时注销统一扩展；源码、构建缓存、目标项目和恢复快照保留。诊断显示在终端，完成后刷新 Finder。
 
 ## 二、<span id="safety">运行与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

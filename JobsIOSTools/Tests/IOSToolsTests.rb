@@ -54,6 +54,38 @@ class IOSToolsTests < Minitest::Test
     end
   end
 
+  def test_build_cleanup_reuses_canonical_script_and_checks_native_ios_only
+    canonical = File.expand_path('../../JobsTerminalOpener/Scripts/CleanBuildArtifacts.zsh', __dir__)
+    assert_equal File.binread(canonical), File.binread(File.join(TOOLS, 'CleanBuildArtifacts.zsh'))
+    validator = File.expand_path('../../JobsTerminalOpener/JobsTerminalShared/DependencyProjectValidator.swift', __dir__)
+    assert_equal File.binread(validator), File.binread(File.join(ROOT, 'JobsIOSToolsShared/DependencyProjectValidator.swift'))
+    Dir.mktmpdir('JobsIOSCleanRoute') do |root|
+      project = File.join(root, "中文 ' $() `x`\n工程")
+      xcode = File.join(project, 'App.xcodeproj')
+      FileUtils.mkdir_p(xcode)
+      File.write(File.join(xcode, 'project.pbxproj'), 'SDKROOT = iphoneos;')
+      FileUtils.mkdir_p(File.join(project, 'build'))
+      File.write(File.join(project, 'build', 'keep-until-confirmed'), 'intact')
+      out, status = Open3.capture2e('/bin/zsh', File.join(TOOLS, 'DispatchIOSTools.zsh'), '--plan', 'ios-clean-build-artifacts', project)
+      assert status.success?, out
+      assert File.file?(File.join(project, 'build', 'keep-until-confirmed'))
+      out, status = Open3.capture2e('/bin/zsh', File.join(TOOLS, 'DispatchIOSTools.zsh'), '--plan', 'ios-clean-cache', project)
+      assert status.success?, out
+      assert_includes out, '动作：ios-clean-build-artifacts'
+      assert_includes out, 'CleanBuildArtifacts.zsh'
+      refute File.exist?(File.join(TOOLS, '【MacOS】🧹双击清理iOS缓存.command'))
+      File.write(File.join(project, 'pubspec.yaml'), "dependencies: {flutter: {sdk: flutter}}\n")
+      out, status = Open3.capture2e('/bin/zsh', File.join(TOOLS, 'DispatchIOSTools.zsh'), '--plan', 'ios-clean-build-artifacts', project)
+      refute status.success?, out
+      assert File.file?(File.join(project, 'build', 'keep-until-confirmed'))
+      File.delete(File.join(project, 'pubspec.yaml'))
+      File.write(File.join(xcode, 'project.pbxproj'), 'SDKROOT = macosx;')
+      out, status = Open3.capture2e('/bin/zsh', File.join(TOOLS, 'DispatchIOSTools.zsh'), '--plan', 'ios-clean-build-artifacts', project)
+      refute status.success?, out
+      assert File.file?(File.join(project, 'build', 'keep-until-confirmed'))
+    end
+  end
+
   def definitions(path)
     File.read(path).sub(/\nmain "\$@"\s*\z/, "\n")
   end
@@ -76,7 +108,7 @@ class IOSToolsTests < Minitest::Test
       parse_feature_options --features=ios-pod-update
       persist_feature_selection
     ZSH
-      assert_equal 'ios-clean-cache,ios-pod-update,ios-pod-build-check', File.read(config).strip
+      assert_equal 'ios-pod-update,ios-pod-build-check,ios-clean-build-artifacts', File.read(config).strip
     end
     run_fixture(UNINSTALL, <<~ZSH) do |config, out|
       print -r -- 'ios-clean-cache,ios-pod-update' > "$FEATURE_CONFIG"
@@ -102,6 +134,24 @@ class IOSToolsTests < Minitest::Test
       (( $? != 0 )) || exit 1
     ZSH
       refute File.exist?(config)
+    end
+  end
+
+  def test_existing_cache_selection_migrates_when_installing_or_removing_another_feature
+    run_fixture(INSTALL, <<~ZSH) do |config, _out|
+      print -r -- 'ios-clean-cache' > "$FEATURE_CONFIG"
+      parse_feature_options --features ios-pod-update
+      persist_feature_selection
+    ZSH
+      assert_equal 'ios-pod-update,ios-clean-build-artifacts', File.read(config).strip
+    end
+    run_fixture(UNINSTALL, <<~ZSH) do |config, _out|
+      print -r -- 'ios-clean-cache,ios-pod-update' > "$FEATURE_CONFIG"
+      parse_feature_options --features ios-pod-update
+      plan_feature_removal
+      uninstall_extension
+    ZSH
+      assert_equal 'ios-clean-build-artifacts', File.read(config).strip
     end
   end
 
@@ -158,6 +208,7 @@ class IOSToolsTests < Minitest::Test
       binary = File.join(root, 'IOSToolsBehaviorTests')
       sources = [
         'JobsIOSToolsShared/IOSProjectValidator/IOSProjectValidator.swift',
+        'JobsIOSToolsShared/DependencyProjectValidator.swift',
         'JobsIOSToolsShared/IOSToolsRequest/IOSToolsRequest.swift',
         'JobsIOSToolsShared/JobsIOSFactories.swift',
         'JobsIOSTools/IOSToolsLauncher/IOSToolsLauncher.swift',

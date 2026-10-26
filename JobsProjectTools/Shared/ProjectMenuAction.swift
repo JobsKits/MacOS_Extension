@@ -1,6 +1,13 @@
+//
+//  ProjectMenuAction.swift
+//  JobsProjectTools
+//
+//  Created by Jobs on 2026年10月24日，星期六.
+//
+
 import Foundation
 
-/// 声明顺序就是 Finder 一级菜单顺序；隐藏不适用的项目后仍保持组内连续。
+/// IDE 保留一级入口；Git 动作按声明顺序进入同一个子菜单。
 enum ProjectMenuAction: String, CaseIterable {
     case androidStudio = "android_studio_opener"
     case vscode = "vscode_opener"
@@ -8,6 +15,17 @@ enum ProjectMenuAction: String, CaseIterable {
     case gitPull = "git-pull"
     case gitRemote = "git_remote"
     case gitRemoteCopy = "git_remote_copier"
+    case gitProxy = "git-proxy-configure"
+    case gitEmptyCommitPush = "git_empty_commit_push"
+
+    var isGitAction: Bool {
+        switch self {
+        case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
+            return true
+        default:
+            return false
+        }
+    }
 
     var title: String {
         switch self {
@@ -17,6 +35,8 @@ enum ProjectMenuAction: String, CaseIterable {
         case .gitPull: return "拉取 Git 到最新"
         case .gitRemote: return "打开 Git 远程地址"
         case .gitRemoteCopy: return "复制 Git 远程地址"
+        case .gitProxy: return "配置 Git 动态代理"
+        case .gitEmptyCommitPush: return "在终端创建空白 Commit 并 Push"
         }
     }
 
@@ -28,13 +48,14 @@ enum ProjectMenuAction: String, CaseIterable {
         let isXcode = XcodeProjectDetector.canOpen(directory)
             || (["xcodeproj", "xcworkspace"].contains(directory.pathExtension.lowercased())
                 && XcodeProjectDetector.canOpen(directory.deletingLastPathComponent()))
+        let isGit = GitRepositoryValidator().isWorkingDirectory(at: url)
         return allCases.filter { action in
             guard enabled.contains(action) else { return false }
             switch action {
             case .androidStudio, .vscode: return !isXcode
             case .xcode: return isXcode
-            case .gitPull: return GitFolderValidator().isFolder(at: url)
-            case .gitRemote, .gitRemoteCopy: return true
+            case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
+                return isGit
             }
         }
     }

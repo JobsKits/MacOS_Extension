@@ -349,7 +349,6 @@ sim_check_environment() {
         return 1
     fi
     sim_log "✔ 当前 Xcode 工具链：${SIM_DEVELOPER_DIR}"
-    sim_check_selector
 }
 # 单独复检选择器，独立入口安装依赖后即可刷新而不重复体检 Xcode。
 sim_check_selector() {
@@ -361,9 +360,10 @@ sim_check_selector() {
         fi
     fi
     if [[ -n "$SIM_FZF" ]]; then
-        sim_log '➤ 选择方式：本机健康 fzf（Esc 取消）。'
+        sim_log '➤ 选择方式：本机健康 fzf（系统版本按 ← 返回型号，Esc 取消）。'
     else
-        sim_log '➤ 选择方式：原生编号列表（输入 q 取消），无需安装额外工具。'
+        sim_log '✖ fzf 缺失或不可用，已停止交互选择；请先运行独立入口的依赖自检，或修复 fzf 后重试。'
+        return 1
     fi
 }
 # 获取结构化清单，任一命令失败都停止，不把错误文本当作设备数据。
@@ -378,52 +378,53 @@ sim_load_catalog() {
         fi
     done
 }
-# 回车选择列表首项，编号可另选；EOF、Esc 和 q 明确取消。
+# 选择真实清单行；子层用左键返回，取消与选择器失败分别传播。
 sim_choose_row() {
-    local title="$1" content="$2" answer="" index=0 result=0
+    local title="$1" content="$2" allow_back="${3:-0}" result=0 output="" key=""
+    local -a picker_args
     SIM_SELECTED_ROW=""
     SIM_ROWS=("${(@f)content}")
     if [[ -z "$content" || ${#SIM_ROWS} == 0 ]]; then
         return 2
     fi
     sim_log "➤ ${title}"
-    if [[ -n "$SIM_FZF" ]]; then
-        SIM_SELECTED_ROW="$(print -rl -- "${SIM_ROWS[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE "$SIM_FZF" --delimiter=$'\t' --with-nth=1 --height=60% --reverse --prompt="${title} > ")" || result=$?
-        if (( result != 0 )) || [[ -z "$SIM_SELECTED_ROW" ]]; then
-            SIM_CANCELLED=1
-            return 130
-        fi
-        if (( ${SIM_ROWS[(Ie)$SIM_SELECTED_ROW]} == 0 )); then
-            sim_log '✖ 选择结果不属于当前清单，已停止。'
-            return 1
-        fi
-    else
-        for (( index=1; index<=${#SIM_ROWS}; index++ )); do
-            sim_log "${index}、${SIM_ROWS[index]%%$'\t'*}"
-        done
-        while true; do
-            if ! IFS= read -r "?输入编号（回车选第 1 项，q 取消）：" answer || [[ "$answer" == [qQ] || "$answer" == $'\e' ]]; then
-                SIM_CANCELLED=1
-                return 130
-            fi
-            if [[ -z "$answer" ]]; then
-                SIM_SELECTED_ROW="${SIM_ROWS[1]}"
-                break
-            fi
-            if [[ "$answer" == <-> && ${#answer} -le 6 ]]; then
-                index=$(( 10#$answer ))
-                if (( index >= 1 && index <= ${#SIM_ROWS} )); then
-                    SIM_SELECTED_ROW="${SIM_ROWS[index]}"
-                    break
-                fi
-            fi
-            sim_log '⚠ 请输入列表内的编号，或输入 q 取消。'
-        done
+    [[ -n "$SIM_FZF" ]] || sim_check_selector || return $?
+    picker_args=(--delimiter=$'\t' --with-nth=1 --height=60% --reverse --prompt="${title} > " --header='回车确认；Esc / Ctrl+C 取消')
+    if (( allow_back )); then
+        picker_args+=(--expect=left --header='← 返回型号选择；回车确认；Esc / Ctrl+C 取消')
+    fi
+    output="$(print -rl -- "${SIM_ROWS[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE "$SIM_FZF" "${picker_args[@]}")" || result=$?
+    if (( allow_back && (result == 0 || result == 1) )) && [[ "${output%%$'\n'*}" == left ]]; then
+        return 10
+    fi
+    if (( result == 130 || result == 1 )); then
+        SIM_CANCELLED=1
+        return 130
+    fi
+    if (( result != 0 )); then
+        sim_log "✖ 选择器执行失败（退出码 ${result}），未创建模拟器。"
+        return "$result"
+    fi
+    if (( allow_back )); then
+        key="${output%%$'\n'*}"
+        [[ "$key" == left ]] && return 10
+        [[ -z "$key" ]] || return 1
+        [[ "$output" == *$'\n'* ]] || return 1
+        output="${output#*$'\n'}"
+    fi
+    SIM_SELECTED_ROW="$output"
+    if [[ -z "$SIM_SELECTED_ROW" ]]; then
+        SIM_CANCELLED=1
+        return 130
+    fi
+    if (( ${SIM_ROWS[(Ie)$SIM_SELECTED_ROW]} == 0 )); then
+        sim_log '✖ 选择结果不属于当前清单，已停止。'
+        return 1
     fi
 }
 # 保留完整型号并优先推荐可搭配已装系统的型号，选定后只列匹配该型号的系统。
 sim_select_combination() {
-    local devices="" runtimes="" total=0 matched=0
+    local devices="" runtimes="" total=0 matched=0 result=0
     local -a all_rows matched_rows
     if ! devices="$(sim_data preferred-devicetypes "$SIM_RUN_DIR/devicetypes.json" "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" 2>&1)"; then
         sim_log "✖ 无法解析设备型号：${devices}"
@@ -443,29 +444,40 @@ sim_select_combination() {
     fi
     all_rows=("${(@f)runtimes}")
     total=${#all_rows}
-    sim_choose_row '选择 iPhone / iPad 型号' "$devices" || return $?
-    SIM_DEVICE_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
-    SIM_DEVICE_ID="${SIM_SELECTED_ROW#*$'\t'}"
-    if ! runtimes="$(sim_data compatible-runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" "$SIM_RUN_DIR/devicetypes.json" "$SIM_DEVICE_ID" 2>&1)"; then
-        sim_log "✖ 无法匹配所选型号的系统：${runtimes}"
-        return 1
-    fi
-    if [[ -z "$runtimes" ]]; then
-        sim_log "✖ ${SIM_DEVICE_NAME} 没有可搭配的已安装 iOS 系统：本机 ${total} 个已装 iOS 系统都不支持该型号。"
-        sim_log '➤ 请在 Xcode 安装该型号可用的 Runtime，或重新选择其它型号；未创建模拟器。'
-        return 2
-    fi
-    matched_rows=("${(@f)runtimes}")
-    matched=${#matched_rows}
-    # 明确列出匹配数量，避免把本机全部系统当成该型号的可选项。
-    sim_log "➤ ${SIM_DEVICE_NAME}：本机已装 ${total} 个 iOS 系统，其中 ${matched} 个匹配该型号。"
-    if (( total > matched )); then
-        sim_log "➤ 已排除 $(( total - matched )) 个不支持该型号的已装系统，未被 Xcode 明确列出的系统标注为“（未确认支持）”。"
-    fi
-    sim_log '➤ 已确认支持的最新系统排首位，回车采用首项。'
-    sim_choose_row '选择 iOS 系统版本' "$runtimes" || return $?
-    SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
-    SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
+    while true; do
+        sim_choose_row '选择 iPhone / iPad 型号' "$devices" || return $?
+        SIM_DEVICE_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
+        SIM_DEVICE_ID="${SIM_SELECTED_ROW#*$'\t'}"
+        if ! runtimes="$(sim_data compatible-runtimes "$SIM_RUN_DIR/runtimes.json" "$(/usr/bin/uname -m)" "$SIM_RUN_DIR/devicetypes.json" "$SIM_DEVICE_ID" 2>&1)"; then
+            sim_log "✖ 无法匹配所选型号的系统：${runtimes}"
+            return 1
+        fi
+        if [[ -z "$runtimes" ]]; then
+            sim_log "✖ ${SIM_DEVICE_NAME} 没有可搭配的已安装 iOS 系统：本机 ${total} 个已装 iOS 系统都不支持该型号。"
+            sim_log '➤ 请在 Xcode 安装该型号可用的 Runtime，或重新选择其它型号；未创建模拟器。'
+            return 2
+        fi
+        matched_rows=("${(@f)runtimes}")
+        matched=${#matched_rows}
+        # 明确列出匹配数量，避免把本机全部系统当成该型号的可选项。
+        sim_log "➤ ${SIM_DEVICE_NAME}：本机已装 ${total} 个 iOS 系统，其中 ${matched} 个匹配该型号。"
+        if (( total > matched )); then
+            sim_log "➤ 已排除 $(( total - matched )) 个不支持该型号的已装系统，未被 Xcode 明确列出的系统标注为“（未确认支持）”。"
+        fi
+        sim_log '➤ 已确认支持的最新系统排首位，回车采用首项。'
+        result=0
+        sim_choose_row '选择 iOS 系统版本' "$runtimes" 1 || result=$?
+        if (( result == 10 )); then
+            SIM_RUNTIME_NAME=""
+            SIM_RUNTIME_ID=""
+            sim_log '↩ 已返回型号选择，未创建模拟器。'
+            continue
+        fi
+        (( result == 0 )) || return "$result"
+        SIM_RUNTIME_NAME="${SIM_SELECTED_ROW%%$'\t'*}"
+        SIM_RUNTIME_ID="${SIM_SELECTED_ROW#*$'\t'}"
+        return 0
+    done
 }
 # 创建前刷新已有名称，避开同秒操作或遗留同名设备。
 sim_prepare_unique_name() {
@@ -656,6 +668,9 @@ sim_run_requested_action() {
     fi
     sim_initialize_runtime
     sim_check_environment || return $?
+    if [[ "$SIM_MODE" == interactive ]]; then
+        sim_check_selector || return $?
+    fi
     sim_load_catalog || return $?
     if [[ "$SIM_MODE" == check ]]; then
         sim_report_catalog
@@ -671,7 +686,7 @@ show_script_intro_and_wait() {
     sim_intro_line title '━━━━━━━━━━ 新建 iOS 模拟器 ━━━━━━━━━━'
     sim_intro_line body '1、完整型号中优先显示有可搭配系统的机型，无可搭配系统的机型带标注；选完型号后只列匹配该型号的系统；一路回车采用首选组合，创建并启动新模拟器。'
     sim_intro_line body '2、保留现有设备与调试会话；不安装工具 / Runtime，不更改 Xcode、Shell 或网络配置。'
-    sim_intro_line body '3、Ctrl+C 随时停止；选择时按 Esc / 输入 q 取消；创建前会再次确认。'
+    sim_intro_line body '3、Ctrl+C 随时停止；系统选择时 ← 返回型号，Esc / Ctrl+C 取消；创建前会再次确认。'
     sim_intro_line body "日志位置：${LOG_FILE}（确认后创建；只读入口不写日志）"
     sim_confirm_entry "$@"
 }

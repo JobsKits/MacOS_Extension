@@ -14,7 +14,7 @@
 
 NON_INTERACTIVE=0
 SKIP_ENABLE=0
-ALL_FEATURES=(ios-clean-cache ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets)
+ALL_FEATURES=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
 REQUESTED_FEATURES=()
 FEATURE_CONFIG="${HOME}/Library/Application Support/JobsIOSTools/EnabledFeatures.txt"
 SCRIPT_DIR=""
@@ -174,8 +174,11 @@ parse_feature_options() {
   done
   [[ -n "$raw_features" ]] || raw_features="${(j:,:)ALL_FEATURES}"
   REQUESTED_FEATURES=(${(s:,:)raw_features})
-  local feature=""
+  local feature="" index=1
   for feature in "${REQUESTED_FEATURES[@]}"; do
+    [[ "$feature" != ios-clean-cache ]] || feature=ios-clean-build-artifacts
+    REQUESTED_FEATURES[$index]="$feature"
+    (( index += 1 ))
     (( ${ALL_FEATURES[(Ie)$feature]} > 0 )) || { print -u2 -r -- "✖ 未知功能：$feature"; exit 1; }
   done
 }
@@ -195,6 +198,7 @@ persist_feature_selection() {
   local existing=""
   [[ ! -f "$FEATURE_CONFIG" ]] || existing="$(/bin/cat "$FEATURE_CONFIG")"
   local -a enabled=(${(s:,:)existing})
+  (( ${enabled[(Ie)ios-clean-cache]} == 0 )) || enabled+=(ios-clean-build-artifacts)
   local -a result=()
   local feature=""
   for feature in "${ALL_FEATURES[@]}"; do

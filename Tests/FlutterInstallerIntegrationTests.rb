@@ -28,7 +28,8 @@ class FlutterInstallerIntegrationTests < Minitest::Test
       output, result, phases = run_install_confirmation(path, "\n")
       assert result.success?, "#{path}\n#{output}"
       assert_includes output, '直接回车安装；输入任意字符后回车跳过'
-      assert_equal INSTALL_PHASES, phases, path
+      expected = File.basename(File.dirname(path)) == 'JobsProjectTools' ? ['manage_selected_features'] : INSTALL_PHASES
+      assert_equal expected, phases, path
     end
   end
 
@@ -64,9 +65,11 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     identifiers = selector.scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
     all = identifiers
     independent = selector[/static let independent:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
-    assert_match(/static let all: \[FeatureOption\] = independent \+ terminal \+ ios/, selector)
+    flutter = selector[/static let flutter:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
+    assert_match(/static let all: \[FeatureOption\] = independent \+ terminal \+ ios \+ flutter/, selector)
     assert_equal identifiers.uniq, identifiers
-    assert_includes identifiers, 'flutter-tools'
+    assert_equal 19, flutter.count
+    refute_includes identifiers, 'flutter-tools'
     assert_includes independent, 'run-authorize'
     assert_includes independent, 'ios-simulator-create'
     output = run_definitions(INSTALLER, <<~'ZSH', all.join(','))
@@ -78,9 +81,32 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     lines = output.lines.map(&:strip)
     assert_equal all.join(','), lines[0]
     assert_equal all.join(','), lines[1]
-    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier]
+    grouped = %w[android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure]
     projects = independent.map { |key| grouped.include?(key) ? 'project-tools' : key }.uniq
-    assert_equal projects + ['terminal_opener', 'ios-tools'], lines[2].split(',')
+    assert_equal projects + ['terminal_opener', 'ios-tools', 'flutter-tools'], lines[2].split(',')
+  end
+
+  def test_flutter_leaf_selection_replaces_previous_actions_and_builds_one_package
+    Dir.mktmpdir('jobs-flutter-features-') do |directory|
+      output = run_definitions(INSTALLER, <<~'ZSH', directory)
+        FLUTTER_FEATURE_CONFIG_DIR="$1/配置 带空格"
+        FLUTTER_FEATURE_CONFIG_PATH="$FLUTTER_FEATURE_CONFIG_DIR/flutter-tools-features.conf"
+        /bin/mkdir -p "$FLUTTER_FEATURE_CONFIG_DIR"
+        print -nr -- 'run,sdk-manage,package-ios' > "$FLUTTER_FEATURE_CONFIG_PATH"
+        log() { :; }
+        parse_feature_selection 'flutter-package-android,flutter-repair-package-imports,flutter-package-android' || exit 1
+        persist_flutter_feature_selection flutter-tools || exit 1
+        print -r -- "${(j:,:)SELECTED_KEYS}"
+        print -r -- "$FLUTTER_TOOLS_ENABLED_FEATURES"
+        print -r -- "$(<"$FLUTTER_FEATURE_CONFIG_PATH")"
+        parse_feature_selection 'flutter-tools' || exit 1
+        print -r -- "${#${(s:,:)FLUTTER_TOOLS_ENABLED_FEATURES}}"
+        parse_feature_selection 'flutter-package,flutter-doctor,flutter_pub_get,flutter_version_manager,flutter_sdk_version,flutter-dependency-extract' || exit 1
+        print -r -- "$FLUTTER_TOOLS_ENABLED_FEATURES"
+      ZSH
+      assert_equal ['flutter-tools', 'package-android,repair-package-imports', 'package-android,repair-package-imports', '19',
+                    'package-ios,package-android,package-ohos,native-doctor,harmony-doctor,pub-get,sdk-manage,sdk-version,extract'], output.lines.map(&:strip)
+    end
   end
 
   def test_flutter_selection_is_independent_and_terminal_actions_are_deduplicated
@@ -351,7 +377,7 @@ end
                   '-gj|/fixture/JobsFlutterVersionMgr.app'], output.lines.map(&:strip)
   end
 
-  def test_git_proxy_selection_uses_its_independent_project_and_fixed_identifiers
+  def test_git_proxy_selection_uses_project_tools_and_retains_legacy_identity_for_cleanup
     selector = File.read(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
     independent = selector[/static let independent:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
     assert_equal 1, independent.count('git-proxy-configure')
@@ -367,7 +393,7 @@ end
       print -r -- "${FEATURE_EXTENSION_ID[git-proxy-configure]}"
       print -r -- "terminal:${TERMINAL_OPENER_ENABLED_FEATURES}"
     ZSH
-    assert_equal ['git-proxy-configure,terminal_opener', '配置 Git 动态代理', 'JobsGitProxyConfigurator',
+    assert_equal ['project-tools,terminal_opener', '配置 Git 动态代理', 'JobsGitProxyConfigurator',
                   'JobsGitProxyConfigurator', 'JobsGitProxyConfigurator', 'JobsGitProxyFinderSync.appex',
                   'com.jobs.gitproxyconfigurator', 'com.jobs.gitproxyconfigurator.findersync',
                   'terminal:open'], output.lines.map(&:strip)
@@ -402,8 +428,8 @@ end
     assert_equal ['-gj|/fixture/中文 space/JobsGitProxyConfigurator.app|--args|--initialize-finder-extension'], output.lines.map(&:strip)
   end
 
-  def test_missing_git_proxy_project_stops_before_any_registration
-    assert_missing_project_stops('git-proxy-configure', 'JobsGitProxyConfigurator')
+  def test_missing_git_menu_project_stops_before_any_registration
+    assert_missing_project_stops('project-tools', 'JobsProjectTools')
   end
 
   def test_registration_cleanup_finds_explicit_and_legacy_host_identifiers
@@ -541,6 +567,54 @@ end
                   'similar-path:rejected', 'new-enabled:accepted'], output.lines.map(&:strip)
   end
 
+  def test_flutter_selection_is_saved_only_after_build_and_registration_succeed
+    %w[build register success].each do |failure_phase|
+      Dir.mktmpdir('jobs-flutter-install-atomicity-') do |directory|
+        config_path = File.join(directory, 'flutter-tools-features.conf')
+        snapshot_path = File.join(directory, 'before.conf')
+        trace_path = File.join(directory, 'phases')
+        previous_bytes = "run,pub-get\n".b
+        File.binwrite(config_path, previous_bytes)
+        File.binwrite(snapshot_path, previous_bytes)
+        output = run_definitions(INSTALLER, <<~'ZSH', directory, failure_phase)
+          FLUTTER_FEATURE_CONFIG_DIR="$1"
+          FLUTTER_FEATURE_CONFIG_PATH="$1/flutter-tools-features.conf"
+          FLUTTER_TOOLS_ENABLED_FEATURES='package-android'
+          JOBS_TEST_FAIL_PHASE="$2"
+          JOBS_TEST_CONFIG_BEFORE="$1/before.conf"
+          JOBS_TEST_PHASES="$1/phases"
+          LOG_FILE=/dev/null
+          highlight_echo() { :; }
+          success_echo() { :; }
+          build_feature() {
+            print -r -- build >> "$JOBS_TEST_PHASES"
+            [[ "$JOBS_TEST_FAIL_PHASE" != build ]]
+          }
+          register_and_enable_feature() {
+            print -r -- register >> "$JOBS_TEST_PHASES"
+            /usr/bin/cmp -s "$FLUTTER_FEATURE_CONFIG_PATH" "$JOBS_TEST_CONFIG_BEFORE" || return 9
+            [[ "$JOBS_TEST_FAIL_PHASE" != register ]]
+          }
+          if install_feature flutter-tools; then
+            print -r -- installed
+          else
+            print -r -- failed
+          fi
+        ZSH
+        expected_phases = failure_phase == 'build' ? ['build'] : %w[build register]
+        assert_equal expected_phases, File.readlines(trace_path, chomp: true), failure_phase
+        if failure_phase == 'success'
+          assert_equal "installed\n", output
+          assert_equal 'package-android', File.binread(config_path), 'successful install replaces the old selection exactly'
+        else
+          assert_equal "failed\n", output
+          assert_equal previous_bytes, File.binread(config_path), "#{failure_phase} failure must preserve the old selection bytes"
+        end
+        assert_empty Dir.children(directory).select { |name| name.start_with?('.flutter-features.') }
+      end
+    end
+  end
+
   private
 
   def run_install_confirmation(path, input, interactive: true)
@@ -551,6 +625,8 @@ end
     valid_intro = ['show_script_intro_and_wait', 'show_script_intro_and_wait "$@"'].include?(phases&.first)
     expected_phases = if File.basename(File.dirname(path)) == 'JobsIOSTools'
                         %w[initialize_runtime check_environment build_extension persist_feature_selection register_extension]
+                      elsif File.basename(File.dirname(path)) == 'JobsProjectTools'
+                        %w[manage_selected_features]
                       else
                         INSTALL_PHASES
                       end
@@ -561,6 +637,7 @@ end
       trace = File.join(directory, 'phases')
       # 保留真实自述、read 和 main；所有确认后的业务阶段仅记录顺序。
       stubs = INSTALL_PHASES.map { |phase| "#{phase}() { print -r -- #{phase} >> \"$JOBS_TEST_PHASES\"; }" }.join("\n")
+      stubs += "\nmanage_selected_features() { print -r -- manage_selected_features >> \"$JOBS_TEST_PHASES\"; }\n" if expected_phases.include?('manage_selected_features')
       stubs += "\npersist_feature_selection() { :; }\n" if expected_phases.include?('persist_feature_selection')
       File.write(fixture, source + "\n" + stubs + "\nmain \"$@\"\n")
       environment = {'NO_COLOR' => '1', 'TMPDIR' => "#{directory}/", 'JOBS_TEST_PHASES' => trace}

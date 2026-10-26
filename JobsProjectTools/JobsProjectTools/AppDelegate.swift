@@ -1,3 +1,10 @@
+//
+//  AppDelegate.swift
+//  JobsProjectTools
+//
+//  Created by Jobs on 2026年10月24日，星期六.
+//
+
 import AppKit
 
 @main
@@ -5,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOperations = 0
     private var didFinishLaunching = false
     private var idleGeneration = 0
+    private var recentRequests: [String: Date] = [:]
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSAppleEventManager.shared().setEventHandler(self,
@@ -33,6 +41,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             scheduleExit()
             return
         }
+        // macOS 可通过两条 URL 回调交付同一次点击；写操作只派发一次。
+        let now = Date()
+        recentRequests = recentRequests.filter { now.timeIntervalSince($0.value) < 1 }
+        let key = request.url?.absoluteString ?? url.absoluteString
+        guard recentRequests[key] == nil else {
+            return
+        }
+        recentRequests[key] = now
         pendingOperations += 1
         idleGeneration += 1
         do {
@@ -40,15 +56,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .androidStudio, .vscode, .xcode:
                 try IDEProjectOpener().open(request.action, at: request.fileURL) { self.finish() }
             case .gitPull:
-                DispatchQueue.global(qos: .userInitiated).async {
-                    var failure: String?
-                    do { try GitPullTerminalLauncher().launch(projectURL: request.fileURL) }
-                    catch { failure = error.localizedDescription }
-                    let message = failure
-                    DispatchQueue.main.async {
-                        if let message { Self.showFailure(message) }
-                        self.finish()
-                    }
+                launchInBackground {
+                    try GitPullTerminalLauncher().launch(projectURL: request.fileURL)
+                }
+            case .gitProxy:
+                launchInBackground {
+                    try GitProxyTerminalLauncher().launch()
+                }
+            case .gitEmptyCommitPush:
+                launchInBackground {
+                    _ = try TerminalOpener().openTerminal(from: request.fileURL, action: .gitEmptyCommitPush)
                 }
             case .gitRemote:
                 let remote = try GitRemoteResolver().webURL(from: request.fileURL)
@@ -69,6 +86,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             Self.showFailure(error.localizedDescription)
             finish()
+        }
+    }
+
+    private func launchInBackground(_ operation: @escaping () throws -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var failure: String?
+            do {
+                try operation()
+            } catch {
+                failure = error.localizedDescription
+            }
+            let message = failure
+            DispatchQueue.main.async {
+                if let message {
+                    Self.showFailure(message)
+                }
+                self.finish()
+            }
         }
     }
 

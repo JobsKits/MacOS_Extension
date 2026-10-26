@@ -55,6 +55,10 @@
     "JobsPathCopier/Scripts/README.md",
     "JobsVSCodeOpener/Scripts/README.md",
     "JobsXcodeOpener/Scripts/README.md",
-    "JobsProjectTools/Scripts/README.md"
+    "JobsProjectTools/Scripts/README.md",
+    "JobsRunAuthorizationRevoker/README.md",
+    "JobsRunAuthorizationRevoker/Scripts/README.md",
+    "JobsHarmonySimulatorRepairer/README.md",
+    "JobsHarmonySimulatorRepairer/Scripts/README.md"
   ]
 }

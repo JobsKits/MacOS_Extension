@@ -87,7 +87,7 @@ extension TerminalOpener {
             guard let scriptURL = Bundle.main.url(forResource: "CleanBuildArtifacts", withExtension: "zsh") else {
                 throw TerminalOpenError.terminalCommandFailed("缺少构建产物清理脚本，请重新构建或安装扩展。")
             }
-            businessScript = try String(contentsOf: scriptURL, encoding: .utf8)
+            businessScript = "set -- \"$1\" --android-openharmony\n" + (try String(contentsOf: scriptURL, encoding: .utf8))
         /// CodeGraph 的依赖链与地图操作使用同一个私有载体。
         case .codeGraphBootstrap:
             businessScript = codeGraphDependencyCommand()
@@ -250,9 +250,10 @@ private extension TerminalOpener {
             };return fileURL
         /// 菜单和宿主都要求已识别的工程；脚本执行时再次识别。
         case .cleanBuildArtifacts:
-            guard dependencyProjectValidator.isBuildArtifactTargetFolder(at: fileURL) else {
-                throw TerminalOpenError.terminalCommandFailed("请选择可识别的 iOS/Xcode、Android、Flutter 或鸿蒙工程文件夹。")
-            };return fileURL
+            guard dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: fileURL) else {
+                throw TerminalOpenError.terminalCommandFailed("请选择可识别的 Flutter、Android 或 OpenHarmony 工程文件夹。")
+            }
+            return fileURL
         /// 代码地图只允许在当前普通文件夹中创建或更新
         case .codeGraphBootstrap:
             guard dependencyProjectValidator.isCodeGraphTargetFolder(at: fileURL) else {
