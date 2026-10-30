@@ -18,7 +18,7 @@ enum TerminalRequestTransportFixture {
             throw failure("需要 mode 和 target 参数")
         }
         let mode = arguments[1]
-        let target = URL(fileURLWithPath: arguments[2], isDirectory: true)
+        let target = URL(fileURLWithPath: arguments[2])
         let action = arguments.count > 3 ? TerminalOpener.Action(rawValue: arguments[3]) ?? .podInstall : .podInstall
 
         switch mode {

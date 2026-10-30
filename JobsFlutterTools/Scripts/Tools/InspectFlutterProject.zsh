@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：【MacOS@SourceTree】🐦Flutter项目体检.command
-# - 核心用途：默认检查 Flutter 开发环境，也可显式选择 pub-get 或 clean-get。
-# - 影响范围：doctor 只请求诊断（SDK 自身可能准备缓存）；pub-get 写入依赖；clean-get 还会清理缓存。
+# - 核心用途：默认检查 Flutter 开发环境；pub-get 按需引导绑定 SDK，再拉取依赖。
+# - 影响范围：doctor 只请求诊断；pub-get 可经确认准备 SDK、项目 FVM / IDE 配置并写入依赖；clean-get 还会清理缓存。
 # - 运行提示：终端回车确认；Sourcetree 连续执行；--help / --check 只读且无等待。
 # shell: zsh
 
@@ -114,7 +114,7 @@ show_script_intro_and_wait() {
   intro_line title "================ 脚本内置自述 ================"
   intro_line title "脚本名称：${SCRIPT_BASENAME}.command"
   intro_line body "1、用途：默认检查 Flutter 开发环境，也可显式选择 pub-get 或 clean-get。"
-  intro_line body "2、影响：doctor 只请求诊断（SDK 自身可能准备缓存）；pub-get 写入依赖；clean-get 还会清理缓存。"
+  intro_line body "2、影响：doctor 只请求诊断（SDK 自身可能准备缓存）；pub-get 在项目 SDK 缺失 / 损坏时先进入安装/切换流程，经确认准备工具、SDK 和项目 FVM / IDE 配置，再拉取依赖；clean-get 还会清理缓存。"
   intro_line body "3、策略：Sourcetree 连续执行；独立终端回车确认；Ctrl+C 取消。"
   intro_line body "4、只读：--help 查看参数；--check 检查路径、SDK 和计划，不调用 SDK、不写日志。"
   intro_line body "日志位置：$LOG_FILE"
@@ -335,6 +335,49 @@ choose_project_flutter() {
   info_echo "工程目录：$FLUTTER_ROOT"
   info_echo "Flutter 命令：${(q)FLUTTER_CMD[1]}"
 }
+# 依赖拉取必须使用目标自身声明的 SDK 和实际 Dart，不能借用全局或父工程。
+pub_get_sdk_files_ready() {
+  [[ ( -f "$FLUTTER_ROOT/.fvmrc" || -f "$FLUTTER_ROOT/.fvm/fvm_config.json" ) &&
+     -x "$FLUTTER_ROOT/.fvm/flutter_sdk/bin/flutter" &&
+     -x "$FLUTTER_ROOT/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart" ]]
+}
+# 文件存在仍可能是损坏或架构不兼容的安装，真实运行通过后才允许拉取。
+check_pub_get_sdk_health() {
+  pub_get_sdk_files_ready || return 1
+  choose_project_flutter || return $?
+  run_flutter_step '检查项目 Flutter SDK' "${FLUTTER_CMD[@]}" --version --machine || return $?
+  run_flutter_step '检查项目 Dart runtime' "$FLUTTER_ROOT/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart" --version
+}
+# 只恢复一次；管理器明确完成且复检通过后才继续，取消 / 失败均不拉取依赖。
+prepare_pub_get_sdk() {
+  local result=0 manager="$SCRIPT_DIR/ManageFlutterVersion.zsh"
+  if [[ "$READ_ONLY_MODE" == check ]]; then
+    pub_get_sdk_files_ready || { error_echo '项目 FVM SDK 尚未就绪；实际拉取时将先进入安装/切换流程。本次只读检查未启动准备。'; return 1; }
+    choose_project_flutter
+    return $?
+  fi
+  if check_pub_get_sdk_health; then
+    return 0
+  else
+    result=$?
+    (( result != 130 && result != 143 )) || return "$result"
+  fi
+  warn_echo '项目尚未锚定可用 SDK，或绑定的 Flutter / Dart 不可运行；先进入“安装/切换 Flutter SDK 版本”，完成后自动继续拉取依赖。'
+  [[ -t 0 && -t 1 ]] || { error_echo 'SDK 准备需要可交互终端；请在 Terminal 中重新执行拉取依赖。'; return 1; }
+  [[ -f "$manager" ]] || { error_echo "缺少 SDK 准备入口：$manager"; return 1; }
+  JOBS_FLUTTER_VERSION_CHAINED=1 /bin/zsh "$manager" --project "$FLUTTER_ROOT" || {
+    result=$?
+    error_echo "SDK 准备已取消或失败，退出码：$result；未拉取依赖。"
+    return "$result"
+  }
+  if check_pub_get_sdk_health; then
+    success_echo '项目 SDK 已准备并复检通过，继续拉取第三方依赖。'
+  else
+    result=$?
+    error_echo "SDK 准备后复检失败，退出码：$result；未拉取依赖，请检查项目 FVM 绑定和 SDK 完整性。"
+    return "$result"
+  fi
+}
 # 在原始命令和日志管道之间保留退出码；命令失败优先返回其原码。
 run_flutter_step() {
   local title="$1" result=0 code=0
@@ -370,7 +413,8 @@ confirm_risky_options() {
 show_usage() {
   print -r -- '用法：脚本 [--check|--help] [Flutter 工程路径] [doctor|pub-get|clean-get]'
   print -r -- '默认 doctor：flutter doctor -v，诊断有警告或错误时返回非零。'
-  print -r -- 'pub-get：显式拉取依赖；clean-get：终端精确 YES 后清理并拉取依赖。'
+  print -r -- 'pub-get：项目 SDK 未就绪时先交互安装/切换并复检，再拉取依赖；取消或失败即停止。'
+  print -r -- 'clean-get：终端精确 YES 后清理并拉取依赖。'
   print -r -- '--check：只显示工程、SDK 和命令计划；--help：显示参数。'
 }
 # Flutter doctor 可能在发现环境问题时返回 0，需同时检查诊断结论。
@@ -391,7 +435,11 @@ run_original_logic() {
     *) error_echo "未知动作：$ACTION"; show_usage; return 2 ;;
   esac
   resolve_flutter_project "${1:-}" || return $?
-  choose_project_flutter || return $?
+  if [[ "$ACTION" == pub-get ]]; then
+    prepare_pub_get_sdk || return $?
+  else
+    choose_project_flutter || return $?
+  fi
   case "$ACTION" in
     doctor) gray_echo '计划：flutter doctor -v' ;;
     pub-get) gray_echo '计划：flutter pub get' ;;

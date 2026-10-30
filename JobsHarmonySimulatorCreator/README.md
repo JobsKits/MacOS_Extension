@@ -22,18 +22,24 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理鸿蒙模拟器Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
 Jobs 维护的独立 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 扩展，仅在系统桌面空白菜单提供“新建 Harmony 模拟器”。点击后在 Terminal 补齐缺失工具和系统镜像，默认回车选择最新 Release 手机镜像，经确认调用华为官方 `Emulator -create` 创建唯一实例、复查详情并按需启动。源码与安装框架已实现，真实 DevEco 创建仍需相应机器验收。
 
 | 入口 / 条件 | 实际行为 |
 | --- | --- |
 | 系统桌面空白右键 | 固定请求交给独立 Terminal，执行自包含创建脚本，不要求项目。 |
 | 普通目录背景、任何选中项菜单 | 隐藏本入口；点击旧菜单时重新核对桌面上下文。 |
-| [独立安装](./【MacOS】安装鸿蒙模拟器Finder扩展.command) | 回车后由聚合管理器安装本叶，保留其它已选功能；非空输入跳过。 |
-| [独立卸载](./【MacOS】卸载鸿蒙模拟器Finder扩展.command) | 回车后只关闭本叶，保留共享 App、其它菜单与全部模拟器数据。 |
+| [管理入口：安装 / 更新](./【MacOS】管理鸿蒙模拟器Finder扩展.command) | 选择安装模式后立即执行，只增加对应功能，保留其它已装菜单。 |
+| [管理入口：卸载](./【MacOS】管理鸿蒙模拟器Finder扩展.command) | 选择卸载模式后立即执行，只移除对应菜单，保留其它功能与业务数据。 |
 | 缺少兼容工具 | 首屏回车确认后，从 SDL 免登录镜像补齐 Mac ARM64 工具依赖，校验并复检；不升级健康工具。 |
 | 缺少 Release 系统镜像 | 自动读取官方可下载清单，回车选最新稳定版手机镜像；展示许可并由本人同意后下载，核验就绪再继续。 |
 
-当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `harmony-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的管理入口只启停 `harmony-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="requirements">平台与官方命令</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -118,8 +124,7 @@ Emulator -start JobsHarmony_phone
 ├── JobsHarmonySimulatorShared/         # 真实桌面白名单、固定 URL
 ├── Scripts/                           # 自包含业务脚本、启用辅助脚本及 README
 ├── Tests/                             # 假 Emulator、菜单、传输及安装测试
-├── 【MacOS】安装鸿蒙模拟器Finder扩展.command
-└── 【MacOS】卸载鸿蒙模拟器Finder扩展.command
+└── 【MacOS】管理鸿蒙模拟器Finder扩展.command
 ```
 
 | 标识 | 值 |

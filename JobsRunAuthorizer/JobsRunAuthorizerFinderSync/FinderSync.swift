@@ -24,7 +24,7 @@ final class FinderSync: FIFinderSync {
         }
         let menu = NSMenu.make(title: "")
             .byAutoenablesItems(false)
-        let item = NSMenuItem.make(title: "🔓 运行授权", action: #selector(authorizeSelectedFile(_:)), keyEquivalent: "") {
+        let item = NSMenuItem.make(title: "🔒 运行授权", action: #selector(authorizeSelectedFile(_:)), keyEquivalent: "") {
             $0.byTarget(self)
                 .byEnabled(!validator.hasExecutionPermission(at: fileURL))
         }

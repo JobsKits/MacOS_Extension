@@ -22,6 +22,12 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理显示隐藏文件Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
 > 为 [**macOS**](https://www.apple.com/macos/) 的 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 增加按当前全局状态变化的右键菜单：当前隐藏时显示“👁️ 显示文件”，当前显示时显示“🙈 隐藏文件”。仅在系统桌面和任意文件夹的空白处显示；点击后立即反转当前用户的隐藏文件显示偏好，并刷新当前用户 Finder。
 
 | 右键位置 | 是否显示 |
@@ -33,17 +39,17 @@
 
 菜单位置跟随当前目录，切换效果作用于当前用户的整个 Finder；不会更改文件本身的隐藏标记，也不会删除文件。
 
-当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `hidden-files-toggle` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的管理入口只启停 `hidden-files-toggle` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="usage">安装与使用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 1、准备 macOS 12 或更新版本，以及可正常使用的完整 [**Xcode**](https://developer.apple.com/xcode) 与 macOS SDK。安装器只检查现有工具，不会自动安装或切换开发目录。
 
-2、双击 [独立安装入口](./【MacOS】安装显示隐藏文件Finder扩展.command)。读完内置自述后直接回车安装，任意非空输入（包括空格）跳过，`Ctrl+C` 或输入结束停止。管理器构建并验证聚合 App，只启用本叶；按需刷新当前用户 Finder，安装本身不切换显示偏好。
+2、双击 [独立管理入口（安装模式）](./【MacOS】管理显示隐藏文件Finder扩展.command)。在面板选择安装 / 更新并勾选功能，点击操作按钮后后台执行。管理器构建并验证聚合 App，只启用本叶；按需刷新当前用户 Finder，安装本身不切换显示偏好。
 
 3、在桌面或任意文件夹空白处右键，点击菜单显示的下一步动作：“👁️ 显示文件”切换为显示，“🙈 隐藏文件”切换为隐藏；每次打开菜单重新读取系统状态，不缓存旧标题。菜单不依赖打开的目录是否可写，不要求开发项目。
 
-4、也可从 [总安装入口](../【MacOS】🧩安装Finder扩展.command) 勾选本功能。源码安装需保留相邻聚合包；已构建聚合 App 内含全部业务资源。
+4、也可从 [总管理入口](../【MacOS】🧩管理Finder扩展.command) 勾选本功能。源码安装需保留相邻聚合包；已构建聚合 App 内含全部业务资源。
 
 Finder 刷新会短暂关闭并重新打开 Finder 界面。无需打开终端、模拟快捷键、授予辅助功能或 Terminal 自动化权限。受系统保护的部分项目仍可能不显示。
 
@@ -59,11 +65,11 @@ Finder 刷新会短暂关闭并重新打开 Finder 界面。无需打开终端�
 
 ## 三、<span id="uninstall">卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-双击 [独立卸载入口](./【MacOS】卸载显示隐藏文件Finder扩展.command)，阅读管理器自述后直接回车关闭本叶；任意非空输入取消。共享 App、其它菜单、项目源码和当前显示偏好保留。
+双击 [独立管理入口（卸载模式）](./【MacOS】管理显示隐藏文件Finder扩展.command)，在面板选择卸载并勾选本叶，点击操作按钮后关闭本叶。共享 App、其它菜单、项目源码和当前显示偏好保留。
 
 **卸载保留当前隐藏文件显示偏好。** 若希望隐藏文件重新隐藏，请先使用菜单切换到隐藏，再卸载菜单。卸载脚本不会替用户反转偏好。
 
-安装器供总入口调用时支持 `--install [--skip-finder-restart]`；卸载器对应 `--uninstall [--skip-finder-restart]`。跳过刷新参数只让外层统一刷新，不跳过注册和身份核验。
+内部 `Scripts/ManageExtension.zsh` 供面板或已确认的总管理器调用时支持 `--action install|uninstall --non-interactive [--skip-finder-restart]`。跳过刷新参数只让外层统一刷新，不跳过注册和身份核验。
 
 ## 四、<span id="layout">目录、产物与日志</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

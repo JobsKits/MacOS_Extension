@@ -16,8 +16,8 @@ class InstallerRegistrationTests < Minitest::Test
   end
 
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】安装Android模拟器Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】卸载Android模拟器Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
   HELPER = File.join(ROOT, 'Scripts/EnableFinderExtension.zsh')
   APP_ID = 'com.jobs.androidsimulatorcreator'
   EXTENSION_ID = "#{APP_ID}.findersync"

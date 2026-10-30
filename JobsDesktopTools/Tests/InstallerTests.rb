@@ -146,7 +146,7 @@ class DesktopInstallerTests < Minitest::Test
   end
 
   def test_total_installer_deduplicates_six_leaves_into_one_project
-    installer = File.join(ROOT, '../【MacOS】🧩安装Finder扩展.command')
+    installer = File.join(ROOT, '../Scripts/ManageFinderExtensions.zsh')
     run_checks(<<~'ZSH', source: installer)
       parse_feature_selection ios-simulator-create,android-simulator-create,harmony-simulator-create,android-simulator-repair,harmony-simulator-repair,hidden-files-toggle,ios-simulator-create || exit 1
       [[ "${(j:,:)SELECTED_KEYS}" == desktop-tools && ${#SELECTED_FUNCTION_IDS} == 6 ]] || exit 2

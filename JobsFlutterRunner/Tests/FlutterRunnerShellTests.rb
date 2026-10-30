@@ -417,7 +417,7 @@ class FlutterRunnerShellTests < Minitest::Test
     File.write(File.join(@tmp, 'fvm/versions', version, 'bin', 'flutter'), "#!/bin/zsh\nexit 0\n")
     File.chmod(0o755, File.join(@tmp, 'fvm/versions', version, 'bin', 'flutter'))
     FileUtils.mkdir_p(File.join(project, '.fvm'))
-    FileUtils.ln_s('/Users/jobs/fvm/versions/3.47.7', File.join(project, '.fvm', 'flutter_sdk'))
+    FileUtils.ln_s(File.join(@tmp, 'missing-old-machine', version), File.join(project, '.fvm', 'flutter_sdk'))
     File.write(File.join(project, '.fvmrc'), "{ \"flutter\": \"#{version}\" }\n")
     out, err, result = shell(<<~ZSH, input: "\n")
       PROJECT_PATH=#{project.shellescape}
@@ -471,7 +471,7 @@ class FlutterRunnerShellTests < Minitest::Test
     File.write(File.join(@tmp, 'fvm/versions', version, 'bin', 'flutter'), "#!/bin/zsh\nexit 0\n")
     File.chmod(0o755, File.join(@tmp, 'fvm/versions', version, 'bin', 'flutter'))
     FileUtils.mkdir_p(File.join(project, '.fvm'))
-    FileUtils.ln_s('/Users/jobs/fvm/versions/3.47.7', File.join(project, '.fvm', 'flutter_sdk'))
+    FileUtils.ln_s(File.join(@tmp, 'missing-old-machine', version), File.join(project, '.fvm', 'flutter_sdk'))
     File.write(File.join(project, '.fvmrc'), "{ \"flutter\": \"#{version}\" }\n")
     out, err, result = shell(<<~ZSH, input: "\n")
       PROJECT_PATH=#{project.shellescape}

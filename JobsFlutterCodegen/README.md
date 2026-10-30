@@ -27,14 +27,14 @@
 
 先执行 `flutter pub get`，再按项目依赖和配置运行实际可用的生成任务。支持 build_runner、Flutter launcher icons / native splash、Flutter l10n、ffigen、带 `@ConfigurePigeon` 的 Pigeon 配置和 protobuf / grpc。缺少声明或配置的任务会跳过；任何选中任务失败立即停止并保留非零退出码。
 
-本目录是 [MacOS@Extension](../README.md) 中的普通源码目录；保留自己的宿主 App、Finder 扩展、Xcode 工程和独立安装 / 卸载脚本。业务资源完整打包在 App 中，单独携走本目录即可构建；运行时不需要 SourceTree 或其它扩展目录。
+本目录是 [MacOS@Extension](../README.md) 中的普通源码目录；保留自己的宿主 App、Finder 扩展、Xcode 工程和独立安装 / 卸载脚本。业务资源完整打包在 App 中，旧源码工程仍可独立构建供调试；运行时不需要 SourceTree 或其它扩展目录。
 
 | 操作 | 实际行为 |
 | --- | --- |
-| 总安装器勾选“Flutter 自动化生产代码” | 只构建并启用本安装单元，可与其它功能分别选择 |
-| [独立安装](./【MacOS】安装Flutter自动化生产代码Finder扩展.command) | 阅读自述后直接回车安装；任何非空输入（包括空格）跳过，EOF 停止 |
+| 总管理器勾选“Flutter 自动化生产代码” | 构建 `JobsFlutterTools` 并只增加本项菜单，可与其它功能分别选择 |
+| [管理入口：安装 / 更新](./【MacOS】管理Flutter自动化生产代码Finder扩展.command) | 选择安装模式后立即执行，只增加对应功能，保留其它已装菜单。 |
 | Finder 单选 Flutter 根目录或根目录内空白处 | 二次校验项目后打开 Terminal，展示业务自述与目标 |
-| [独立卸载](./【MacOS】卸载Flutter自动化生产代码Finder扩展.command) | 停用并注销固定扩展，停止对应进程，清理本工程产物；保留业务项目与 SDK |
+| [管理入口：卸载](./【MacOS】管理Flutter自动化生产代码Finder扩展.command) | 选择卸载模式后立即执行，只移除对应菜单，保留其它功能与业务数据。 |
 
 ## <span id="section-1">一、菜单与 SDK 范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -46,11 +46,19 @@ SDK 顺序为项目 `.fvm/flutter_sdk`，再到 PATH 中可执行的 Flutter。�
 
 ## <span id="section-2">二、安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-最低 macOS 12.0，需要完整 [**Xcode**](https://developer.apple.com/xcode)、macOS SDK 和可用本机签名。安装器检查 `xcodebuild`、`xcrun`、`pluginkit` 等系统命令，不自动下载依赖或修改 `xcode-select`。两个 `.command` 裸露在本目录，与本 README 平级。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter自动化生产代码Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-独立安装产物在 `./work/DerivedData/Build/Products/Debug/JobsFlutterCodegen.app`；总安装器产物在总仓的 `work/JobsFlutterCodegenDerivedData/`。安装及卸载会刷新 Finder，请先完成 Finder 中的重要操作。系统若尚未授权，请启用对应 Finder 扩展，并允许宿主 App 自动化控制 Terminal。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-独立安装与卸载日志分别为系统临时目录中的 `JobsFlutterCodegenInstall.log` / `【MacOS】卸载Flutter自动化生产代码Finder扩展.log`。宿主初始化、URL 接收、Terminal 派发和退出状态追加到 `JobsFlutterCodegen.log`；业务日志位置由终端输出。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+本入口转交 [JobsFlutterTools](../JobsFlutterTools/README.md)，只管理 `codegen`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
+
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
+
+安装日志为系统临时目录中的 `JobsFlutterToolsInstall.log`；卸载日志为聚合管理入口同名 `.log`，以面板底部日志为准。
+
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## <span id="section-3">三、终端与只读检查</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -74,8 +82,7 @@ SDK 顺序为项目 `.fvm/flutter_sdk`，再到 PATH 中可执行的 Flutter。�
 ├── JobsFlutterCodegenShared/             # 精确 Flutter 判定与 URL 请求
 ├── Scripts/                 # 自包含业务资源与构建后启用入口
 ├── Tests/                   # 临时项目、假脚本与路径隔离验证
-├── 【MacOS】安装Flutter自动化生产代码Finder扩展.command
-├── 【MacOS】卸载Flutter自动化生产代码Finder扩展.command
+├── 【MacOS】管理Flutter自动化生产代码Finder扩展.command
 └── README.md
 ```
 

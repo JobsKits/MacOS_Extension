@@ -1,0 +1,139 @@
+ObjC.import('Foundation');
+// 只解析本机工具/启动配置数据，不执行项目JSON/XML中的任务或表达式。
+function readText(path, limit) {
+    var fm = $.NSFileManager.defaultManager;
+    var attrs = fm.attributesOfItemAtPathError($(path), null);
+    if (!attrs || Number(ObjC.unwrap(attrs.objectForKey($.NSFileSize))) > (limit || 1048576)) throw Error('文件缺失或超过读取上限：' + path);
+    if (ObjC.unwrap(attrs.objectForKey($.NSFileType)) !== ObjC.unwrap($.NSFileTypeRegular)) throw Error('只允许普通文件：' + path);
+    var text = $.NSString.stringWithContentsOfFileEncodingError($(path), $.NSUTF8StringEncoding, null);
+    if (!text) throw Error('无法读取UTF8：' + path);
+    return ObjC.unwrap(text);
+}
+// JSONC词法过滤保留字符串中的URL/注释字符，并允许尾逗号。
+function jsonc(text) {
+    var out = '', quoted = false, escaped = false, line = false, block = false, i;
+    for (i = 0; i < text.length; i++) {
+        var c = text[i], n = text[i + 1];
+        if (line) { if (c === '\n') {line = false; out += c;} continue; }
+        if (block) { if (c === '*' && n === '/') {block = false; i++;} continue; }
+        if (quoted) {out += c; if (escaped) escaped = false; else if (c === '\\') escaped = true; else if (c === '"') quoted = false; continue;}
+        if (c === '"') {quoted = true; out += c;}
+        else if (c === '/' && n === '/') {line = true; i++;}
+        else if (c === '/' && n === '*') {block = true; i++;}
+        else out += c;
+    }
+    if (quoted || block) throw Error('JSONC字符串或注释未闭合');
+    text = out; out = ''; quoted = false; escaped = false;
+    for (i = 0; i < text.length; i++) {
+        c = text[i];
+        if (quoted) {out += c; if (escaped) escaped = false; else if (c === '\\') escaped = true; else if (c === '"') quoted = false; continue;}
+        if (c === '"') quoted = true;
+        if (c === ',') {var j = i + 1; while (/\s/.test(text[j] || '') && j < text.length) j++; if (text[j] === '}' || text[j] === ']') continue;}
+        out += c;
+    }
+    return JSON.parse(out);
+}
+// 只按引号/反斜杠分词；$、反引号和命令替换保留数据，不作Shell展开。
+function words(text) {
+    var result = [], value = '', quote = '', escape = false, seen = false;
+    String(text || '').split('').forEach(function(c) {
+        if (escape) {value += c; escape = false; seen = true; return;}
+        if (c === '\\' && quote !== "'") {escape = true; return;}
+        if (quote) {if (c === quote) quote = ''; else value += c; seen = true; return;}
+        if (c === '"' || c === "'") {quote = c; seen = true; return;}
+        if (/\s/.test(c)) {if (seen) result.push(value); value = ''; seen = false;} else {value += c; seen = true;}
+    });
+    if (quote || escape) throw Error('启动参数引号未闭合');
+    if (seen) result.push(value);
+    return result;
+}
+// Flutter启动参数白名单，禁止设备/项目路径、脚本与Shell控制符从配置透传。
+function safeArgs(args) {
+    var result = [], value = '', i;
+    if (!Array.isArray(args)) throw Error('启动参数须为数组');
+    args.forEach(function(a) {if (typeof a !== 'string' || /[\x00-\x1f\x7f]/.test(a)) throw Error('启动参数须为不含控制字符的字符串');});
+    for (i = 0; i < args.length; i++) {
+        value = String(args[i]);
+        if (/[\x00-\x1f\x7f]/.test(value)) throw Error('参数含控制字符');
+        if (/^--(?:debug|profile|release|verbose|no-pub)$/.test(value) || value === '-v') {result.push(value); continue;}
+        if (/^(?:--flavor|--target|-t|--dart-define|--dart-define-from-file)$/.test(value)) {
+            if (i + 1 >= args.length || typeof args[i + 1] !== 'string') throw Error('缺少参数值');
+            result.push(value, String(args[++i])); continue;
+        }
+        if (/^--(?:flavor|target|dart-define|dart-define-from-file)=.+/.test(value)) {result.push(value); continue;}
+        throw Error('尚未支持的启动参数：' + value.split('=')[0]);
+    }
+    return result;
+}
+// 读取VSCode JSONC与Android Studio .run XML；tasks/脚本字段一律忽略。
+function configurations(project) {
+    var fm = $.NSFileManager.defaultManager, rows = [{name:'默认 debug · lib/main.dart', args:['--debug', '--target', 'lib/main.dart']}];
+    var vscode = project + '/.vscode/launch.json';
+    if (fm.fileExistsAtPath($(vscode))) {
+        var launch = jsonc(readText(vscode));
+        (launch.configurations || []).forEach(function(c) {
+            if (!c || c.type !== 'dart' || (c.request && c.request !== 'launch')) return;
+            try {
+                var args = [].concat(c.toolArgs || [], c.args || []);
+                if (c.program) args.push('--target', String(c.program).replace(/^\$\{workspaceFolder\}\//, ''));
+                if (c.flutterMode) {if (!/^(debug|profile|release)$/.test(c.flutterMode)) throw Error('运行模式无效'); args.push('--' + c.flutterMode);}
+                rows.push({name:'VSCode · ' + String(c.name || '未命名'), args:safeArgs(args)});
+            } catch (e) {console.log('⚠ 已跳过启动配置 ' + String(c.name || '') + '：' + e.message);}
+        });
+    }
+    var dir = project + '/.run', files = fm.contentsOfDirectoryAtPathError($(dir), null);
+    var runFiles = files ? ObjC.deepUnwrap(files) : [];
+    if (Array.isArray(runFiles)) runFiles.filter(function(p){return /\.run\.xml$/.test(p);}).sort().forEach(function(file) {
+        try {
+            var xml = readText(dir + '/' + file);
+            if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw Error('拒绝外部实体/DTD');
+            var data = $(xml).dataUsingEncoding($.NSUTF8StringEncoding);
+            var doc = $.NSXMLDocument.alloc.initWithDataOptionsError(data, 0, null);
+            if (!doc) throw Error('XML解析失败');
+            var nodes = doc.nodesForXPathError($('//configuration[@type="FlutterRunConfigurationType"]'), null);
+            if (!nodes) return;
+            for (var i=0; i<Number(nodes.count); i++) {
+                var node = nodes.objectAtIndex(i), options = node.nodesForXPathError($('option'), null), args = [], name = ObjC.unwrap(node.attributeForName($('name')).stringValue);
+                for (var j=0; j<Number(options.count); j++) {
+                    var option=options.objectAtIndex(j), key=ObjC.unwrap(option.attributeForName($('name')).stringValue), val=ObjC.unwrap(option.attributeForName($('value')).stringValue);
+                    if (key === 'additionalArgs') args=args.concat(words(val));
+                    if (key === 'filePath') args.push('--target', val.replace(/^\$PROJECT_DIR\$\//, ''));
+                }
+                rows.push({name:'Android Studio · ' + name, args:safeArgs(args)});
+            }
+        } catch(e) {console.log('⚠ 已跳过.run配置 ' + file + '：' + e.message);}
+    });
+    return rows;
+}
+// 仅列目标平台匹配的设备，保留真实ID、模拟器状态及名称。
+function devices(path, platform) {
+    var data = JSON.parse(readText(path));
+    if (!Array.isArray(data)) throw Error('设备响应不是数组');
+    return data.filter(function(d) {
+        var t=String(d.targetPlatform || '');
+        return d && d.isSupported !== false && (/^[^\x00-\x1f\x7f]+$/.test(String(d.id || ''))) &&
+            ((platform === 'android' && /^android/.test(t)) || (platform === 'ios' && t === 'ios') || (platform === 'macos' && t === 'darwin') || (platform === 'web' && /^web/.test(t)) || (platform === 'ohos' && /^(ohos|openharmony)/.test(t)));
+    }).map(function(d) {return String(d.id) + '\t' + String(d.name || d.id).replace(/[\x00-\x1f\x7f]/g,' ') + ' · ' + String(d.targetPlatform) + (d.emulator ? ' · 模拟器' : '');}).join('\n');
+}
+// app.started才算启动；app.start仅意味着开始，不能提前成功。
+function started(path, expectedDevice) {
+    var app='', ready='';
+    readText(path, 33554432).split(/\r?\n/).forEach(function(line){
+        try {var values=JSON.parse(line); if (!Array.isArray(values)) return;
+            values.forEach(function(v){if (!v || !v.params) return;
+                if (v.event === 'app.start' && (!expectedDevice || v.params.deviceId === expectedDevice)) app=String(v.params.appId || '');
+                if (v.event === 'app.started' && app && String(v.params.appId || '') === app) ready=app;
+            });
+        } catch(e) {}
+    });
+    return ready;
+}
+function run(a) {
+    if (a[0] === 'devices') return devices(a[1], a[2]);
+    if (a[0] === 'configs') return JSON.stringify(configurations(a[1]), null, 2);
+    if (a[0] === 'config-rows') return JSON.parse(readText(a[1])).map(function(c,i){return i+'\t'+String(c.name).replace(/[\x00-\x1f\x7f]/g,' ');}).join('\n');
+    if (a[0] === 'args') {var c=JSON.parse(readText(a[1]))[Number(a[2])]; if(!c) throw Error('启动配置索引失效'); return safeArgs(c.args).join('\n');}
+    if (a[0] === 'started') return started(a[1], a[2]);
+    if (a[0] === 'detach') return JSON.stringify([{id:991,method:'app.detach',params:{appId:a[1]}}]);
+    throw Error('未知数据操作');
+}

@@ -4,11 +4,13 @@
 require 'minitest/autorun'
 require 'open3'
 require 'tmpdir'
+require_relative 'IsolatedInstallerDefinitions'
 
 class IPAResignInstallerIntegrationTests < Minitest::Test
+  include IsolatedInstallerDefinitions
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
   PROJECT = File.join(ROOT, 'JobsIPAResigner')
   KEY = 'ipa-resign'
   APP = 'JobsIPAResigner'
@@ -87,19 +89,17 @@ class IPAResignInstallerIntegrationTests < Minitest::Test
   def test_uninstall_mapping_and_title_selection_keep_the_same_identity
     output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT)
       WORKSPACE_DIR="$1"
-      parse_fzf_selection "${FEATURE_TITLE[ipa-resign]}"$'\n'"${FEATURE_TITLE[ipa-resign]}" || exit 1
+      parse_feature_selection 'ipa-resign,ipa-resign' || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"
       print -r -- "${FEATURE_TITLE[ipa-resign]}"
       print -r -- "${FEATURE_PROJECT_DIR[ipa-resign]}"
       print -r -- "${FEATURE_APP_NAME[ipa-resign]}"
-      print -r -- "${FEATURE_EXTENSION_PROCESS_NAME[ipa-resign]}"
+      print -r -- "${FEATURE_EXTENSION_NAME[ipa-resign]}"
       print -r -- "${FEATURE_EXTENSION_ID[ipa-resign]}"
-      print -r -- "${FEATURE_REFRESH_MARKER[ipa-resign]}"
-      print -r -- "${FEATURE_RUNTIME_LOG[ipa-resign]}"
-      local_derived_data_dir_for_key ipa-resign
+      derived_data_dir_for_key ipa-resign
     ZSH
-    assert_equal [KEY, TITLE, APP, APP, 'JobsIPAResignerFinderSync', "#{APP_ID}.FinderSyncExtension",
-                  "/tmp/#{APP}NeedsFinderRestart", "/tmp/#{APP}.log",
+    assert_equal [KEY, TITLE, APP, APP, 'JobsIPAResignerFinderSync.appex', "#{APP_ID}.FinderSyncExtension",
+
                   File.join(ROOT, "work/#{APP}DerivedData")], output.lines.map(&:strip)
   end
 
@@ -127,13 +127,12 @@ class IPAResignInstallerIntegrationTests < Minitest::Test
   private
 
   def run_definitions(path, checks, *arguments, replacements: {})
-    source = File.read(path)
-    raise '真实主入口未找到' unless source.sub!(/^main "\$@"\s*\z/, '')
-    replacements.each { |from, to| source = source.gsub(from, to) }
+    source = isolated_installer_source(path, replacements: replacements)
+
     Dir.mktmpdir('jobs-ipa-resign-install-mapping-') do |directory|
       fixture = File.join(directory, 'mapping.zsh')
       File.write(fixture, source + "\nLOG_FILE=\"${0:h}/mapping.log\"\n" + checks)
-      output, status = Open3.capture2e({'NO_COLOR' => '1'}, '/bin/zsh', '-f', fixture, *arguments)
+      output, status = Open3.capture2e(isolated_installer_environment(directory), '/bin/zsh', '-f', fixture, *arguments)
       assert status.success?, output
       output
     end

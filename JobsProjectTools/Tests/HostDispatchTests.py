@@ -62,7 +62,7 @@ for action in [ProjectMenuAction.gitSourcetree, .gitRollback, .gitPull, .gitProx
  wait()
 }
 expect(Launches.rollback == 1, "duplicate rollback URL dispatched once")
-expect(Launches.sourcetree == 1, "duplicate Sourcetree URL dispatched once")
+expect(Launches.sourcetree == 0, "retired Sourcetree URL is rejected even with legacy enabled configuration")
 expect(Launches.pull == 1, "duplicate pull URL dispatched once")
 expect(Launches.proxy == 1, "duplicate proxy URL dispatched once")
 expect(Launches.commit == 1, "duplicate empty commit URL dispatched once")

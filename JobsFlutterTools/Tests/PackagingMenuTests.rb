@@ -75,11 +75,58 @@ class PackagingShellTests
     write_mock(File.join(@project, '.fvm/flutter_sdk/bin/flutter'), 'exit 97')
     write_mock(File.join(@project, '.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart'), 'exit 97')
     FileUtils.cp(File.expand_path('../Scripts/Tools/DispatchFlutterTools.zsh', __dir__), tools)
-    write_mock(File.join(tools, 'PackageFlutter.zsh'), 'printf "%s\\0" "$@" > "$FP_TEST_ARGS"; exit 19')
+    write_mock(File.join(tools, 'PackageFlutter.zsh'), <<~ZSH)
+      source #{@library.shellescape}
+      fp_parse "$@" || exit $?
+      if [[ "$FP_PLATFORM" == ohos ]]; then
+        [[ "$FP_OHOS_TARGET" == all && "$FP_MODE" == release && -z "$FP_FLAVOR" ]] || exit 94
+      fi
+      printf "%s\\0" "$@" > "$FP_TEST_ARGS"
+      exit 19
+    ZSH
+    prepare_ohos
     %w[ios android ohos].each do |platform|
-      out, err, status = Open3.capture3(@environment, '/bin/zsh', File.join(tools, 'DispatchFlutterTools.zsh'), "package-#{platform}", @project)
+      environment = @environment.merge('BUILD_MODE' => 'debug', 'FLAVOR' => 'ambient-production')
+      out, err, status = Open3.capture3(environment, '/bin/zsh', File.join(tools, 'DispatchFlutterTools.zsh'), "package-#{platform}", @project)
       assert_equal 19, status.exitstatus, out + err
-      assert_equal ['--project', @project, '--platform', platform], File.binread(@environment['FP_TEST_ARGS']).force_encoding('UTF-8').split("\0")
+      expected = ['--project', @project, '--platform', platform]
+      expected += ['--ohos-target', 'all', '--mode', 'release'] if platform == 'ohos'
+      assert_equal expected, File.binread(@environment['FP_TEST_ARGS']).force_encoding('UTF-8').split("\0", -1)[0...-1]
+    end
+  end
+
+  def test_harmony_pair_stops_on_second_build_failure
+    prepare_ohos
+    mock = File.join(@bin, 'flutter')
+    body = File.read(mock).sub('[[ "${FP_TEST_BUILD_EXIT:-0}" == 0 ]]', '[[ "$2" != app ]] || exit 43; [[ "${FP_TEST_BUILD_EXIT:-0}" == 0 ]]')
+    File.write(mock, body)
+    out, err, status = ohos_shell('FP_MODE=release; FP_OHOS_TARGET=all; fp_build')
+    assert_equal 43, status.exitstatus, out + err
+    assert_equal [%w[pub get], %w[build hap --release], %w[build app --release]], flutter_calls
+    assert File.size?(File.join(@project, 'build/ohos/hap/entry-default-signed.hap'))
+    refute_includes out, 'Flutter打包完成'
+  end
+
+  def test_harmony_pair_requires_app_artifact_after_successful_command
+    prepare_ohos
+    mock = File.join(@bin, 'flutter')
+    File.write(mock, File.read(mock).sub('[[ "${FP_TEST_NO_OUTPUT:-0}" != 1 ]]', '[[ "$2" != app ]] || exit 0; [[ "${FP_TEST_NO_OUTPUT:-0}" != 1 ]]'))
+    out, err, status = ohos_shell('FP_MODE=release; FP_OHOS_TARGET=all; fp_build')
+    refute status.success?, out + err
+    assert_includes out + err, '未发现非空 .app 鸿蒙产物'
+    refute_includes out, 'Flutter打包完成'
+  end
+
+  def test_harmony_pair_rechecks_hap_after_app_rebuilds_output_tree
+    prepare_ohos
+    mock = File.join(@bin, 'flutter')
+    File.write(mock, File.read(mock).sub('[[ "${FP_TEST_BUILD_EXIT:-0}" == 0 ]]', '[[ "$2" != app ]] || /bin/rm -f "$FP_TEST_PROJECT/build/ohos/hap/entry-default-signed.hap"; [[ "${FP_TEST_BUILD_EXIT:-0}" == 0 ]]'))
+    each_menu_worker do |worker|
+      out, err, status = ohos_shell('FP_MODE=release; FP_OHOS_TARGET=all; fp_build')
+      refute status.success?, worker + out + err
+      assert_includes out + err, '最终产物复核失败'
+      assert File.size?(File.join(@project, 'build/ohos/app/entry-default-signed.app'))
+      refute_includes out, 'Flutter打包完成'
     end
   end
 end

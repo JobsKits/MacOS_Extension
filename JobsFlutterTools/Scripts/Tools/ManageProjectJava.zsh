@@ -5,11 +5,11 @@
 # - 影响范围：确认后可用 Homebrew 安装缺失工具、向 jEnv 注册本机 JDK，并修改目标 .java-version；不改全局 Java、Shell 或 Flutter 配置。
 # - 运行提示：先阅读自述并回车，选择版本后再次确认；Ctrl+C / q 取消。--check 全程只读且不联网；source 只提供函数。
 
-typeset PJ_PROJECT="" PJ_MODE="manage" PJ_LOG_FILE="" PJ_RUN_DIR=""
-typeset PJ_JENV="" PJ_BREW="" PJ_BREW_PREFIX="" PJ_JAVA_HOME="" PJ_JAVA_VERSION="" PJ_JAVA_MAJOR=""
-typeset PJ_CONFIG="" PJ_CONFIG_STAMP="" PJ_ORIGINAL="" PJ_SELECTED_HOME="" PJ_SELECTED_MAJOR="" PJ_SELECTED_ALIAS=""
-typeset PJ_EXPECTED="" PJ_LOCK="" PJ_TRANSACTION=0 PJ_CONFIG_EXISTED=0
-typeset -a PJ_HOMES PJ_VERSIONS
+typeset -g PJ_PROJECT="" PJ_MODE="manage" PJ_LOG_FILE="" PJ_RUN_DIR=""
+typeset -g PJ_JENV="" PJ_BREW="" PJ_BREW_PREFIX="" PJ_JAVA_HOME="" PJ_JAVA_VERSION="" PJ_JAVA_MAJOR=""
+typeset -g PJ_CONFIG="" PJ_CONFIG_STAMP="" PJ_ORIGINAL="" PJ_SELECTED_HOME="" PJ_SELECTED_MAJOR="" PJ_SELECTED_ALIAS=""
+typeset -g PJ_EXPECTED="" PJ_LOCK="" PJ_TRANSACTION=0 PJ_CONFIG_EXISTED=0
+typeset -ga PJ_HOMES PJ_VERSIONS
 
 # 展示自述专用配色，非终端保持纯文本。
 pj_intro_line() {
@@ -269,7 +269,7 @@ pj_confirm_selection() {
 # 在已有 Homebrew 上验证真实前缀；缺失时停止，不自动安装包管理器。
 pj_find_brew() {
     local candidate="$(command -v brew 2>/dev/null)" item prefix=""
-    for item in "$candidate" /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    for item in "${JOBS_HOMEBREW_BIN:-}" "$candidate" /opt/homebrew/bin/brew /usr/local/bin/brew "${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}/bin/brew" "$HOME/.homebrew/bin/brew"; do
         if [[ -n "$item" && -x "$item" ]] && "$item" --version >/dev/null 2>&1; then
             prefix="$(HOMEBREW_NO_AUTO_UPDATE=1 "$item" --prefix 2>/dev/null)" || continue
             [[ "$prefix" == /* && -d "$prefix" ]] || continue
@@ -279,6 +279,11 @@ pj_find_brew() {
             return 0
         fi
     done
+    # 一键配置已展示完整安装范围时沿同一依赖链补齐；独立旧菜单保持原边界。
+    if [[ -n "${PE_RUN_DIR:-}" ]] && (( $+functions[pe_prepare_homebrew] )); then
+        pe_prepare_homebrew
+        return $?
+    fi
     pj_log '✖ 缺少可用 Homebrew。请先通过 https://brew.sh/ 安装 / 修复 Homebrew，再重新运行此菜单；本次已停止。'
     return 1
 }
@@ -357,7 +362,7 @@ pj_check_gradle_criteria() {
 }
 # 对目标 .java-version 做快照并在唯一项目目录执行 jenv local。
 pj_write_project_config() {
-    local current_stamp="" result=0 config_file="$PJ_PROJECT/.java-version" original_existed="$PJ_CONFIG_EXISTED"
+    local current_stamp="" result=0 config_file="$PJ_PROJECT/.java-version" original_existed="$PJ_CONFIG_EXISTED" binding_scope="${1:-gradle}"
     PJ_LOCK="$PJ_PROJECT/.java-version.jobs-lock"
     /bin/mkdir "$PJ_LOCK" 2>/dev/null || { PJ_LOCK=""; pj_log '✖ 已有 Java 切换锁或同名项目文件；请确认没有并发任务，保留现场后重试。'; return 1; }
     current_stamp="$(pj_config_stamp)" || return 1
@@ -375,7 +380,7 @@ pj_write_project_config() {
         return 1
     fi
     PJ_CONFIG="$PJ_SELECTED_ALIAS"
-    pj_bind_project_java "$PJ_PROJECT" || result=$?
+    pj_bind_project_java "$PJ_PROJECT" "$binding_scope" || result=$?
     PJ_CONFIG_EXISTED="$original_existed"
     (( result == 0 )) || return "$result"
     PJ_TRANSACTION=0
@@ -412,11 +417,11 @@ pj_cleanup_transaction() {
 }
 # 只读绑定接口：无项目声明时完全保持原环境，有声明时验证并注入当前进程。
 pj_bind_project_java() {
-    local project="$1" chosen_home="" escaped_home=""
+    local project="$1" chosen_home="" escaped_home="" binding_scope="${2:-gradle}"
     [[ -e "$project/.java-version" || -L "$project/.java-version" ]] || return 0
     pj_validate_project "$project" || return $?
     pj_read_config || return $?
-    pj_check_gradle_criteria || return $?
+    [[ "$binding_scope" == sdk-only ]] || pj_check_gradle_criteria || return $?
     pj_discover_jdks
     pj_resolve_config || { pj_log "✖ 项目 Java 声明 ${PJ_CONFIG} 无法解析到可用 JDK；请先使用“安装/切换Java环境”菜单。"; return 1; }
     chosen_home="$PJ_JAVA_HOME"
@@ -428,7 +433,7 @@ pj_bind_project_java() {
     export JAVA_HOME="$chosen_home"
     export PATH="$chosen_home/bin:$PATH"
     export JENV_VERSION="$PJ_CONFIG"
-    export GRADLE_OPTS="${GRADLE_OPTS:+${GRADLE_OPTS} }-Dorg.gradle.java.home=\"${escaped_home}\""
+    if [[ "$binding_scope" != sdk-only ]]; then export GRADLE_OPTS="${GRADLE_OPTS:+${GRADLE_OPTS} }-Dorg.gradle.java.home=\"${escaped_home}\""; fi
     return 0
 }
 # 汇总只读自检结果，包含失效声明和 Gradle criteria 冲突。

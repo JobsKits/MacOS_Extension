@@ -64,6 +64,10 @@
     "JobsGitRollback/Scripts/README.md",
     "JobsProjectTools/README.md",
     "JobsDesktopTools/README.md",
-    "JobsDesktopTools/Scripts/README.md"
+    "JobsDesktopTools/Scripts/README.md",
+    "JobsFlutterTools/Scripts/Tools/README.md",
+    "JobsFlutterTools/Scripts/Tools/SetupGUIAssets/README.md",
+    "JobsFileCreator/README.md",
+    "JobsFileCreator/Scripts/README.md"
   ]
 }

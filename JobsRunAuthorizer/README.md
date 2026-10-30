@@ -20,12 +20,12 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**选中一个可执行格式文件 → 右键“🔓 运行授权” → Terminal 核对路径并回车 → 仅执行 `chmod +x`。** 本功能延续原“⚙️运行授权.command”的权限语义，由 Jobs 维护；状态：维护中，功能核对日期 **2026-10-22**。
+**选中一个可执行格式文件 → 右键“🔒 运行授权” → Terminal 核对路径并回车 → 仅执行 `chmod +x`。** 本功能延续原“⚙️运行授权.command”的权限语义，由 Jobs 维护；状态：维护中，功能核对日期 **2026-10-22**。
 
 | Finder 目标 | 菜单行为 |
 | --- | --- |
-| 单个脚本或原生可执行文件，尚无执行位 | 显示“🔓 运行授权”且可点击；“🔒 解除运行授权”显示并置灰。 |
-| 已有任一执行位 | “🔓 运行授权”显示并置灰；“🔒 解除运行授权”可点击。 |
+| 单个脚本或原生可执行文件，尚无执行位 | 显示“🔒 运行授权”且可点击；“🔓 解除运行授权”显示并置灰。 |
+| 已有任一执行位 | “🔒 运行授权”显示并置灰；“🔓 解除运行授权”可点击。 |
 | README、文本、图片等普通文档 | 两项均隐藏，即使文档误加了执行位。 |
 | 文件夹、应用包、工程包 | 不显示。 |
 | 符号链接、多选、目录或桌面空白处 | 不显示。 |
@@ -36,21 +36,29 @@
 
 Finder 支持 `command/sh/bash/zsh/ksh/csh/tcsh/fish/py/pyw/rb/pl/swift/js/mjs/lua/tcl/awk/expect/scpt/applescript`（后缀不区分大小写）、无扩展名且以 `#!` 开头的脚本，以及单架构或 Universal Mach-O 的 `MH_EXECUTE` 文件；不把动态库、对象文件或 Java 类视为原生可执行。执行状态按 POSIX `0111` 的任一执行位判断，与解除全部执行位的语义一致。两项须分别安装；格式资格与是否已授权独立。独立终端脚本仍保留普通单文件的通用权限操作语义。
 
-本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立工程、Scheme、Bundle ID、安装与卸载入口，没有独立 Git 或子模块配置。整个文件夹可单独复制后安装；业务脚本随 App 打包，不依赖原脚本仍在磁盘上。
+本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立工程、Scheme、Bundle ID、统一管理入口，没有独立 Git 或子模块配置。整个文件夹可单独复制后安装；业务脚本随 App 打包，不依赖原脚本仍在磁盘上。
 
 ## 一、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-双击[安装入口](./【MacOS】安装运行授权Finder扩展.command)，阅读自述后直接回车安装；输入任意非空字符跳过，EOF 停止。入口检查完整 [**Xcode**](https://developer.apple.com/xcode/) 和 macOS SDK，构建当前工程并验证 Bundle ID 与签名，注销同 ID 的旧扩展路径和旧宿主 URL 登记，再注册当前产物、初始化后台宿主并刷新 Finder。安装过程中不会给任何文件授权，也不会下载依赖或修改 `xcode-select`。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理运行授权Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
+双击[管理入口（安装模式）](./【MacOS】管理运行授权Finder扩展.command)，在面板选择安装 / 更新并勾选功能，点击操作按钮后后台执行。入口检查完整 [**Xcode**](https://developer.apple.com/xcode/) 和 macOS SDK，构建当前工程并验证 Bundle ID 与签名，注销同 ID 的旧扩展路径和旧宿主 URL 登记，再注册当前产物、初始化后台宿主并刷新 Finder。安装过程中不会给任何文件授权，也不会下载依赖或修改 `xcode-select`。
 
 独立构建产物位于 `./work/DerivedData/Build/Products/Debug/JobsRunAuthorizer.app`，系统从此路径启动扩展，安装后请保留。总安装入口使用总仓 `work/`，两种入口安装同一个功能时会精确注销旧登记；旧 App 文件保留。安装日志为系统临时目录中的 `JobsRunAuthorizerInstall.log`。
 
-双击[卸载入口](./【MacOS】卸载运行授权Finder扩展.command)，阅读自述并回车查看待处理路径，然后输入精确 `YES` 才卸载并刷新 Finder。入口只禁用固定扩展，注销其记录，并删除名称、Bundle ID、非符号链接目录均核验通过的已登记 App；源码、原脚本和所有曾授权文件保留。卸载不撤销已经增加的执行权限。日志为系统临时目录中的 `【MacOS】卸载运行授权Finder扩展.log`。
+双击[管理入口（卸载模式）](./【MacOS】管理运行授权Finder扩展.command)，在面板选择卸载并勾选功能，点击操作按钮后后台执行并刷新 Finder。入口只禁用固定扩展，注销其记录，并删除名称、Bundle ID、非符号链接目录均核验通过的已登记 App；源码、原脚本和所有曾授权文件保留。卸载不撤销已经增加的执行权限。日志为系统临时目录中的 管理入口同名 `.log`（以面板底部日志为准）。
 
 依赖为 macOS 12.0+、完整 Xcode、系统 Finder Sync、Terminal 和系统 zsh；业务不依赖 Homebrew、Python、Node 或 Ruby。Ruby 仅用于隔离回归。首次点击时按系统提示允许宿主自动化控制 Terminal；菜单未出现时在系统设置的 Finder 扩展中检查 `JobsRunAuthorizer`。
 
 ## 二、<span id="usage">操作与风险边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-1、在 Finder 中只选中一个尚无执行位的可执行格式文件，打开右键菜单选择“🔓 运行授权”。桌面上的单个普通文件也可以；桌面空白处没有入口。
+1、在 Finder 中只选中一个尚无执行位的可执行格式文件，打开右键菜单选择“🔒 运行授权”。桌面上的单个普通文件也可以；桌面空白处没有入口。
 
 2、Terminal 展示目标路径及影响范围；核对后回车增加执行权限。目标文件在等待期间被替换时，设备号与 inode 校验会阻止继续授权。
 
@@ -85,8 +93,7 @@ Finder 支持 `command/sh/bash/zsh/ksh/csh/tcsh/fish/py/pyw/rb/pl/swift/js/mjs/l
 ├── JobsRunAuthorizationShared/       # 单文件校验、URL 请求与系统工厂
 ├── Scripts/                         # 权限业务及构建后注册
 ├── Tests/                           # 临时文件与系统命令替身回归
-├── 【MacOS】安装运行授权Finder扩展.command
-└── 【MacOS】卸载运行授权Finder扩展.command
+└── 【MacOS】管理运行授权Finder扩展.command
 ```
 
 | 项目项 | 当前值 / 依据（2026-10-22） |

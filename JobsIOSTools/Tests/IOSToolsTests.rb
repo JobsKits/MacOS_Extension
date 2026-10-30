@@ -11,8 +11,8 @@ class IOSToolsTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   TOOLS = File.join(ROOT, 'Scripts', 'Tools')
   MANIFEST = JSON.parse(File.read(File.join(TOOLS, 'SourceManifest.json')))
-  INSTALL = File.join(ROOT, '【MacOS】安装iOS辅助工具Finder扩展.command')
-  UNINSTALL = File.join(ROOT, '【MacOS】卸载iOS辅助工具Finder扩展.command')
+  INSTALL = File.join(ROOT, 'Scripts/ManageExtension.zsh')
+  UNINSTALL = File.join(ROOT, 'Scripts/ManageExtension.zsh')
 
   def test_shell_syntax_and_source_provenance
     Dir.glob(File.join(ROOT, '**', '*')).select { |p| p.end_with?('.command', '.zsh') }.each do |path|
@@ -86,15 +86,21 @@ class IOSToolsTests < Minitest::Test
     end
   end
 
-  def definitions(path)
-    File.read(path).sub(/\nmain "\$@"\s*\z/, "\n")
+  def definitions(path, operation: :install)
+    source = File.read(path)
+    if source.include?('run_install_operation() {')
+      source = source[/^run_#{operation}_operation\(\) \{\n\(\n(.*?)\n# 外层统一负责交互/m, 1]
+      raise "缺少操作分支 #{operation}" unless source
+      return source
+    end
+    source.sub(/\nmain "\$@"\s*\z/, "\n")
   end
 
-  def run_fixture(source, body)
+  def run_fixture(source, body, operation: :install)
     Dir.mktmpdir('JobsIOSFeatures') do |root|
       config = File.join(root, 'EnabledFeatures.txt')
       script = File.join(root, 'fixture.zsh')
-      File.write(script, definitions(source) + "\nFEATURE_CONFIG=#{config.dump}\nlog() { print -r -- \"$*\"; }\n" + body)
+      File.write(script, definitions(source, operation: operation) + "\nFEATURE_CONFIG=#{config.dump}\nlog() { print -r -- \"$*\"; }\n" + body)
       out, status = Open3.capture2e('/bin/zsh', '-f', script)
       assert status.success?, out
       yield config, out
@@ -110,7 +116,7 @@ class IOSToolsTests < Minitest::Test
     ZSH
       assert_equal 'ios-pod-update,ios-pod-build-check,ios-clean-build-artifacts', File.read(config).strip
     end
-    run_fixture(UNINSTALL, <<~ZSH) do |config, out|
+    run_fixture(UNINSTALL, <<~ZSH, operation: :uninstall) do |config, out|
       print -r -- 'ios-clean-cache,ios-pod-update' > "$FEATURE_CONFIG"
       parse_feature_options --features ios-clean-cache
       plan_feature_removal
@@ -119,7 +125,7 @@ class IOSToolsTests < Minitest::Test
       assert_equal 'ios-pod-update', File.read(config).strip
       assert_includes out, '仅关闭所选功能'
     end
-    run_fixture(UNINSTALL, <<~ZSH) do |_config, out|
+    run_fixture(UNINSTALL, <<~ZSH, operation: :uninstall) do |_config, out|
       parse_feature_options --non-interactive
       plan_feature_removal
       (( ${#REMAINING_FEATURES[@]} == 0 )) || exit 1
@@ -145,7 +151,7 @@ class IOSToolsTests < Minitest::Test
     ZSH
       assert_equal 'ios-pod-update,ios-clean-build-artifacts', File.read(config).strip
     end
-    run_fixture(UNINSTALL, <<~ZSH) do |config, _out|
+    run_fixture(UNINSTALL, <<~ZSH, operation: :uninstall) do |config, _out|
       print -r -- 'ios-clean-cache,ios-pod-update' > "$FEATURE_CONFIG"
       parse_feature_options --features ios-pod-update
       plan_feature_removal

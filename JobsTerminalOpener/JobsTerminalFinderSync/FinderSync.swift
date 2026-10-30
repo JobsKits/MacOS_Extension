@@ -31,17 +31,40 @@ final class FinderSync: FIFinderSync {
         }
         let isContainer = menuKind == .contextualMenuForContainer
         let targets = isContainer ? FIFinderSyncController.default().targetedURL().map { [$0] } ?? [] : urls
+        let enabledFeatures = enabledFeatures()
+        if !isContainer, targets.count > 1 {
+            guard enabledFeatures.contains(.fileMerge), FileVolumeSelection.canMerge(targets) else {
+                return nil
+            }
+            let menu = NSMenu(title: "")
+            let item = NSMenuItem(title: "🧩 合并分卷", action: #selector(mergeFiles(_:)), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            return menu
+        }
         guard targets.count == 1 else {
             return nil
         }
 
-        let enabledFeatures = enabledFeatures()
         let menu = NSMenu(title: "")
         if !isContainer, enabledFeatures.contains(.open) {
             let openItem = NSMenuItem(title: "💻 用终端打开", action: #selector(openInTerminal(_:)), keyEquivalent: "")
             openItem.target = self
             openItem.isEnabled = true
             menu.addItem(openItem)
+        }
+
+        if !isContainer, enabledFeatures.contains(.fileContent),
+           dependencyProjectValidator.isFileContentTarget(at: targets[0]) {
+            let viewItem = NSMenuItem(title: "📄 用终端查看文件内容", action: #selector(viewFileContent(_:)), keyEquivalent: "")
+            viewItem.target = self
+            menu.addItem(viewItem)
+        }
+
+        if !isContainer, enabledFeatures.contains(.fileSplit), FileVolumeSelection.canSplit(targets) {
+            let item = NSMenuItem(title: "✂️ 拆分文件", action: #selector(splitFile(_:)), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
         }
 
         let directoryURL = targets[0]
@@ -81,6 +104,35 @@ private extension FinderSync {
         performTerminalAction(.open)
     }
 
+    @objc func viewFileContent(_ sender: Any?) {
+        performTerminalAction(.fileContent)
+    }
+
+    @objc func mergeFiles(_ sender: Any?) {
+        performVolumeAction(.fileMerge)
+    }
+
+    @objc func splitFile(_ sender: Any?) {
+        performVolumeAction(.fileSplit)
+    }
+
+    func performVolumeAction(_ action: TerminalAction) {
+        let urls = candidateURLs()
+        guard action == .fileMerge ? FileVolumeSelection.canMerge(urls) : FileVolumeSelection.canSplit(urls) else {
+            return
+        }
+        var components = URLComponents()
+        components.scheme = "jobsterminalopener"
+        components.host = "open"
+        components.queryItems = [URLQueryItem(name: "action", value: action.rawValue)] + urls.map {
+            URLQueryItem(name: "path", value: $0.path)
+        }
+        guard let request = components.url, NSWorkspace.shared.open(request) else {
+            showFailureAlert(title: action.failureTitle, messages: ["无法传递完整文件选择，请减少分卷数量后重试。"])
+            return
+        }
+    }
+
     @objc func runPodInstallInTerminal(_ sender: Any?) {
         performTerminalAction(.podInstall)
     }
@@ -108,6 +160,13 @@ private extension FinderSync {
 
     func performTerminalAction(_ action: TerminalAction, urls: [URL]? = nil) {
         let urls = urls ?? candidateURLs()
+        guard urls.count == 1 else { return }
+        if action == .fileContent {
+            guard urls.count == 1,
+                  dependencyProjectValidator.isFileContentTarget(at: urls[0]) else {
+                return
+            }
+        }
         if action == .cleanBuildArtifacts {
             guard urls.count == 1,
                   dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: urls[0]) else {
@@ -158,10 +217,11 @@ private extension FinderSync {
 
     func candidateURLs() -> [URL] {
         let controller = FIFinderSyncController.default()
-        guard let selectedURLs = controller.selectedItemURLs(),
-              selectedURLs.count == 1,
-              let selectedURL = selectedURLs.first,
-              selectedURL.isFileURL else { return [] };return [selectedURL.standardizedFileURL]
+        guard let selectedURLs = controller.selectedItemURLs(), !selectedURLs.isEmpty,
+              selectedURLs.allSatisfy({ $0.isFileURL }) else {
+            return []
+        }
+        return selectedURLs
     }
 
     func showFailureAlert(title: String, messages: [String]) {
@@ -191,6 +251,9 @@ private extension FinderSync {
 
 private enum TerminalAction: String {
     case open
+    case fileContent = "file-content"
+    case fileMerge = "file-merge"
+    case fileSplit = "file-split"
     case podInstall = "pod-install"
     case flutterPubGet = "flutter-pub-get"
     case cleanBuildArtifacts = "clean-build-artifacts"
@@ -202,6 +265,14 @@ private enum TerminalAction: String {
         /// 普通打开终端请求失败
         case .open:
             return "用终端打开失败"
+        case .fileContent:
+            return "查看文件内容失败"
+        /// 合并所选分卷失败。
+        case .fileMerge:
+            return "合并分卷失败"
+        /// 拆分所选普通文件失败。
+        case .fileSplit:
+            return "拆分文件失败"
         /// 在目标文件夹执行 pod install 请求失败
         case .podInstall:
             return "执行 pod install 失败"

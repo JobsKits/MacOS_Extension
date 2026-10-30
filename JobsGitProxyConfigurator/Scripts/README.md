@@ -18,6 +18,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 本目录由 Jobs 维护，只服务 [JobsGitProxyConfigurator](../README.md)。**扩展安装与用户 Git 配置是两层独立动作**：前者注册菜单，后者必须在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 由用户确认。
 
 | 文件 | 职责与边界 |

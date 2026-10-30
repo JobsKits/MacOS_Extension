@@ -431,14 +431,21 @@ fm_run_logged() {
     (( results[1] == 0 )) || return "${results[1]}"
     (( results[2] == 0 )) || return "${results[2]}"
 }
+# 独立菜单取消保持成功退出；依赖拉取串接时显式传递取消，阻止下游业务。
+fm_cancel() {
+    fm_log "$1"
+    if [[ "${JOBS_FLUTTER_VERSION_CHAINED:-0}" == 1 ]]; then
+        exit 130
+    fi
+    exit 0
+}
 # 必需依赖采用现有终端承接规则：回车确认准备，任意内容取消整个流程。
 fm_confirm_dependency() {
     local answer=""
     fm_log "⚠ $1"
     IFS= read -r 'answer?👉 按回车确认安装 / 修复该必需组件；输入任意内容后回车取消：' || exit 1
     if [[ -n "$answer" ]]; then
-        fm_log 'ℹ 已取消依赖准备，未安装 / 切换 Flutter 版本。'
-        exit 0
+        fm_cancel 'ℹ 已取消依赖准备，未安装 / 切换 Flutter 版本。'
     fi
 }
 # 拒绝 FVM 将直接写入的配置链接；SDK 链接本身属于正常 FVM 结构。
@@ -772,7 +779,7 @@ fm_select_version() {
     if (( FM_ONLINE )); then
         channel="$(printf 'stable\t稳定版（默认）\nbeta\t预发布\ndev\t历史开发版\nall\t全部渠道\ncached\t仅本机缓存\n' |
             FZF_DEFAULT_OPTS= FZF_DEFAULT_OPTS_FILE=/dev/null "$FM_FZF" --no-multi --height=12 --layout=reverse --delimiter=$'\t' --prompt='渠道 > ' --header='Enter 选择渠道；Esc 取消；stable 排首位')" || result=$?
-        if (( result == 1 || result == 130 )); then fm_log 'ℹ 已取消选择，未安装 / 切换 Flutter SDK。'; exit 0; fi
+        if (( result == 1 || result == 130 )); then fm_cancel 'ℹ 已取消选择，未安装 / 切换 Flutter SDK。'; fi
         (( result == 0 )) || fm_stop "fzf 渠道选择失败（$result）"
         channel="${channel%%$'\t'*}"
         case "$channel" in stable|beta|dev|all|cached) FM_CHANNEL="$channel" ;; *) fm_stop 'fzf 返回未登记渠道' ;; esac
@@ -788,7 +795,7 @@ fm_select_version() {
     fi
     fm_list_has_rows "$rows" || fm_stop '当前渠道没有匹配版本，请重新运行选择其它渠道'
     selection="$(FZF_DEFAULT_OPTS= FZF_DEFAULT_OPTS_FILE=/dev/null "$FM_FZF" --no-multi --height=80% --layout=reverse --delimiter=$'\t' --prompt='Flutter > ' --header="$channel_label | 版本 / 日期 / 渠道 / 架构 / 状态；Esc 取消" < "$rows")" || result=$?
-    if (( result == 1 || result == 130 )); then fm_log 'ℹ 已取消选择，未安装 / 切换 Flutter SDK。'; exit 0; fi
+    if (( result == 1 || result == 130 )); then fm_cancel 'ℹ 已取消选择，未安装 / 切换 Flutter SDK。'; fi
     (( result == 0 )) || fm_stop "fzf 版本选择失败（$result）"
     /usr/bin/grep -Fqx -- "$selection" "$rows" || fm_stop '选择结果不是已展示清单中的完整条目'
     FM_SELECTED_ROW="$selection"
@@ -837,8 +844,7 @@ fm_confirm_project_change() {
     fm_log 'ℹ 切换完成后需另行执行 fvm flutter pub get 检查依赖兼容。'
     IFS= read -r 'answer?👉 直接回车执行安装 / 切换；输入任意内容后回车取消：' || exit 1
     if [[ -n "$answer" ]]; then
-        fm_log 'ℹ 已取消，项目版本配置未变更。'
-        exit 0
+        fm_cancel 'ℹ 已取消，项目版本配置未变更。'
     fi
 }
 # 保存可检查的原配置，再合并精确目标自身配置，防止 FVM 向上选中父项目。

@@ -19,6 +19,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 本目录包含“Flutter 自动化生产代码”的自包含业务资源及 Xcode 构建后启用入口。功能用途、SDK 规则、安装与卸载见[工程说明](../README.md)。
 
 ## <span id="section-1">一、入口与依赖</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>

@@ -41,17 +41,30 @@
 
 ## 二、<span id="install">安装、卸载与兼容入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-要求 [**macOS**](https://www.apple.com/macos/) 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。上级[总安装面板](../【MacOS】🧩安装Finder扩展.command)保留六项独立选项，选择后只构建、注册本聚合工程一次；根安装脚本顶部的“维护索引”说明面板、叶 ID、工程、菜单、宿主、资源及配置之间的对应关系。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理桌面工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-本目录[安装入口](./【MacOS】安装桌面工具Finder扩展.command)安装全部六项，[卸载入口](./【MacOS】卸载桌面工具Finder扩展.command)移除全部六项。六个旧功能目录的安装／卸载脚本保留原文件名，转交管理器且只影响各自一叶；这些兼容源码入口需要同仓的 `JobsDesktopTools/`，缺失时明确停止，不再静默启用旧的重复菜单。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-所有入口先显示内置说明，直接回车执行、任意非空输入跳过，`Ctrl+C` 或输入结束停止。上级已确认的安装器可传 `--non-interactive`；`--skip-finder-restart` 或 `JOBS_SKIP_FINDER_RESTART=1` 将 Finder 刷新交给外层。兼容的 `--install` / `--uninstall` 也表示明确执行。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-只安装、卸载指定一项的可复制命令如下；不传 `--non-interactive` 时仍会显示说明并确认：
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
+要求 [**macOS**](https://www.apple.com/macos/) 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。上级[总管理面板](../【MacOS】🧩管理Finder扩展.command)保留六项独立选项，选择后只构建、注册本聚合工程一次；内部 `../Scripts/ManageFinderExtensions.zsh` 顶部的“维护索引”说明面板、叶 ID、工程、菜单、宿主、资源及配置之间的对应关系。
+
+本目录只保留 [桌面工具管理入口](./【MacOS】管理桌面工具Finder扩展.command)，省略 `--features` 时面板显示六项且默认空选，后台编排处理全部六项，指定时仅处理所列叶子。六个功能目录各有一个管理入口，只影响各自一叶；这些入口需要同仓 `JobsDesktopTools/`，缺失时明确停止，不启用旧的重复菜单。
+
+管理入口直接显示面板，选择操作与功能后点击按钮执行；状态和日志保留在面板中。`--action` 可预设操作，`--features` 限定逗号分隔的功能 ID；内部 `Scripts/ManageExtension.zsh` 承接面板已确认的 `--action ... --non-interactive`；其 `--skip-finder-restart` 将 Finder 刷新交给外层，保留登记及身份核验。公开启动器不接受非交互执行开关。
+
+只安装、卸载指定一项的可复制命令如下；不传 `--non-interactive` 时打开面板，并把 `--features` 限定为可见范围，仍需勾选并点击操作按钮：
 
 ```shell
-/bin/zsh ./Scripts/ManageDesktopTools.zsh install ios-simulator-create
-/bin/zsh ./Scripts/ManageDesktopTools.zsh uninstall ios-simulator-create
+/bin/zsh ./【MacOS】管理桌面工具Finder扩展.command \
+  --action install \
+  --features ios-simulator-create
+
+/bin/zsh ./【MacOS】管理桌面工具Finder扩展.command \
+  --action uninstall \
+  --features ios-simulator-create
 ```
 
 安装合并当前选择；只在首次迁移时带入 PlugInKit 明确启用的旧六项。后续安装不重新打开已关闭的旧功能。卸载只移除选定叶子，仍有其它项时保留聚合 App 和扩展；最后一项关闭后停用并注销扩展，保留源码、App 产物和所有业务数据。卸载隐藏开关不会改变当前显示状态。

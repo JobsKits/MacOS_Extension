@@ -70,7 +70,7 @@ FlutterDependencies-项目名-UTC时间-随机标识/
 
 - 基于 `pubspec.lock` 和 `.dart_tool/package_config.json` 交叉核对本地真实路径，覆盖 hosted、Git、path，包含直接、间接和开发依赖。Workspace 使用共享解析文件，必须由祖先或嵌套 workspace 声明成员关系，只导出选中项目依赖闭包；内部成员以 `workspace` 标记。成员列表支持标准块列表、单行 flow 列表和相对路径模式 `*`、`**`、`?`。
 - Flutter / Dart SDK 包排除。包内 iOS / Android / macOS / Windows 原生源码会保留；CocoaPods、Gradle、Maven 另外下载的库、框架和二进制缓存不属于 Pub 源码提取范围。
-- 忽略 `.git`、`.dart_tool`、`node_modules`、`Pods`、`.fvm`、`build`、`DerivedData`、`.gradle`、`.idea`、`.symlinks`。包内符号链接物化为普通文件；包外链接、循环链接和特殊文件明确停止。
+- 忽略 `.git`、`.dart_tool`、`node_modules`、`Pods`、`.fvm`、`build`、`DerivedData`、`.gradle`、`.idea`、`.symlinks`。包内有效符号链接物化为普通文件；失效、包外、循环及指向排除目录的链接跳过，终端及 `manifest.json` 的 `warnings` 记录具体路径与原因。真实包根、普通源码读取 / 复制失败及特殊文件仍明确停止。
 - 输出是源码归档，不重写依赖地址或生成离线构建配置；不能把源码归档当作跨机器完整构建环境。
 - 读取项目和包缓存，不修改源文件。复制完整后才将隐藏临时目录改名为正式输出；中途失败可能保留 `.FlutterDependencies-…incomplete-…` 隐藏目录，终端会显示其准确位置。
 - 原始声明、锁文件及包源码可能包含私有地址、本地路径；分享前自行检查，并遵守各包原许可证。

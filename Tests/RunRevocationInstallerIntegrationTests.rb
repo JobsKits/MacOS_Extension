@@ -4,11 +4,13 @@
 require 'minitest/autorun'
 require 'open3'
 require 'tmpdir'
+require_relative 'IsolatedInstallerDefinitions'
 
 class RunRevocationInstallerIntegrationTests < Minitest::Test
+  include IsolatedInstallerDefinitions
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
   PROJECT = File.join(ROOT, 'JobsRunAuthorizationRevoker')
   KEY = 'run-revoke'
   APP = 'JobsRunAuthorizationRevoker'
@@ -55,18 +57,16 @@ class RunRevocationInstallerIntegrationTests < Minitest::Test
   def test_uninstall_mapping_keeps_revocation_process_marker_log_and_derived_data
     output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT)
       WORKSPACE_DIR="$1"
-      parse_fzf_selection "${FEATURE_TITLE[run-revoke]}" || exit 1
+      parse_feature_selection 'run-revoke' || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"
       print -r -- "${FEATURE_PROJECT_DIR[run-revoke]}"
       print -r -- "${FEATURE_APP_NAME[run-revoke]}"
-      print -r -- "${FEATURE_EXTENSION_PROCESS_NAME[run-revoke]}"
+      print -r -- "${FEATURE_EXTENSION_NAME[run-revoke]}"
       print -r -- "${FEATURE_EXTENSION_ID[run-revoke]}"
-      print -r -- "${FEATURE_REFRESH_MARKER[run-revoke]}"
-      print -r -- "${FEATURE_RUNTIME_LOG[run-revoke]}"
-      local_derived_data_dir_for_key run-revoke
+      derived_data_dir_for_key run-revoke
     ZSH
-    assert_equal [KEY, APP, APP, 'JobsRunAuthorizationRevokerFinderSync', "#{APP_ID}.FinderSyncExtension",
-                  "/tmp/#{APP}NeedsFinderRestart", "/tmp/#{APP}.log",
+    assert_equal [KEY, APP, APP, 'JobsRunAuthorizationRevokerFinderSync.appex', "#{APP_ID}.FinderSyncExtension",
+
                   File.join(ROOT, "work/#{APP}DerivedData")], output.lines.map(&:strip)
   end
 
@@ -108,8 +108,9 @@ class RunRevocationInstallerIntegrationTests < Minitest::Test
     assert_includes project, 'PRODUCT_BUNDLE_IDENTIFIER = com.jobs.JobsRunAuthorizationRevoker.FinderSyncExtension;'
     assert_includes project, 'RevokeRun.zsh in Resources'
     assert_includes project, 'JobsRunAuthorizationRevokerFinderSync.appex in Embed App Extensions'
-    assert File.file?(File.join(PROJECT, '【MacOS】安装解除运行授权Finder扩展.command'))
-    assert File.file?(File.join(PROJECT, '【MacOS】卸载解除运行授权Finder扩展.command'))
+    assert File.file?(File.join(PROJECT, 'Scripts/ManageExtension.zsh'))
+    assert_empty Dir.glob(File.join(PROJECT, '【MacOS】安装*Finder扩展.command'))
+    assert_empty Dir.glob(File.join(PROJECT, '【MacOS】卸载*Finder扩展.command'))
     refute_includes project, 'IOSSimulator'
     refute_includes project, 'iossimulator'
   end
@@ -117,13 +118,12 @@ class RunRevocationInstallerIntegrationTests < Minitest::Test
   private
 
   def run_definitions(path, checks, *arguments, replacements: {})
-    source = File.read(path)
-    raise '真实主入口未找到' unless source.sub!(/^main "\$@"\s*\z/, '')
-    replacements.each { |from, to| source = source.gsub(from, to) }
+    source = isolated_installer_source(path, replacements: replacements)
+
     Dir.mktmpdir('jobs-revocation-install-mapping-') do |directory|
       fixture = File.join(directory, 'mapping.zsh')
-      File.write(fixture, source + "\n" + checks)
-      output, status = Open3.capture2e({'NO_COLOR' => '1'}, '/bin/zsh', '-f', fixture, *arguments)
+      File.write(fixture, source + "\nLOG_FILE=\"${0:h}/mapping.log\"\n" + checks)
+      output, status = Open3.capture2e(isolated_installer_environment(directory), '/bin/zsh', '-f', fixture, *arguments)
       assert status.success?, output
       output
     end

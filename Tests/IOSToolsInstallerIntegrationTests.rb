@@ -4,11 +4,13 @@
 require 'minitest/autorun'
 require 'open3'
 require 'tmpdir'
+require_relative 'IsolatedInstallerDefinitions'
 
 class IOSToolsInstallerIntegrationTests < Minitest::Test
+  include IsolatedInstallerDefinitions
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】🧩安装Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】🧩卸载Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
   IDS = %w[ios-disable-sandbox ios-install-cocoapods ios-pods-source-github
            ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts].freeze
   ACTION_IDS = (IDS.take(4) + ['ios-pod-install'] + IDS.drop(4)).freeze
@@ -68,21 +70,19 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
       print -r -- "ios:$IOS_TOOLS_ENABLED_FEATURES"
     ZSH
     assert_equal ['project-tools', 'terminal:', 'ios:'], output.lines.map(&:strip)
-    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT, *ids, replacements: {'/bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh"' => 'jobs_record_git_uninstall'})
+    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT, ids.join(','), replacements: {'/bin/zsh' => 'jobs_record_git_uninstall'})
       WORKSPACE_DIR="$1"
-      shift
       jobs_record_git_uninstall() { print -r -- "delegate:${(j:|:)@}"; }
-      for key in "$@"; do
-        uninstall_feature "$key" || exit 1
-      done
+      parse_feature_selection "$2" || exit 1
+      uninstall_feature project-tools || exit 1
     ZSH
-    assert_equal ids.map { |id| "delegate:uninstall|#{id}" }, output.lines.map(&:strip)
+    assert_equal ["delegate:#{File.join(ROOT, 'JobsProjectTools/Scripts/ManageProjectTools.zsh')}|uninstall|#{ids.join('|')}"], output.lines.map(&:strip)
   end
 
   def test_independent_install_and_uninstall_share_the_complete_fixed_action_list
-    %w[安装 卸载].each do |operation|
-      path = File.join(ROOT, "JobsIOSTools/【MacOS】#{operation}iOS辅助工具Finder扩展.command")
-      output = run_definitions(path, <<~'ZSH')
+    %i[install uninstall].each do |operation|
+      path = File.join(ROOT, 'JobsIOSTools/Scripts/ManageExtension.zsh')
+      output = run_definitions(path, <<~'ZSH', operation: operation)
         parse_feature_options --features ios-code-snippets || exit 1
         print -r -- "${(j:,:)ALL_FEATURES}"
         print -r -- "${(j:,:)REQUESTED_FEATURES}"
@@ -106,24 +106,24 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
                   'com.jobs.JobsIOSTools', 'com.jobs.JobsIOSTools.FinderSyncExtension',
                   File.join(ROOT, 'work/JobsIOSToolsDerivedData')], output.lines.map(&:strip)
     output = run_definitions(UNINSTALLER, <<~'ZSH')
-      parse_fzf_selection "${FEATURE_TITLE[ios-tools]}" || exit 1
+      parse_feature_selection 'ios-code-snippets' || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"
       print -r -- "${FEATURE_PROJECT_DIR[ios-tools]}"
-      print -r -- "${FEATURE_EXTENSION_PROCESS_NAME[ios-tools]}"
+      print -r -- "${FEATURE_EXTENSION_NAME[ios-tools]}"
       print -r -- "${FEATURE_EXTENSION_ID[ios-tools]}"
     ZSH
-    assert_equal ['ios-tools', 'JobsIOSTools', 'JobsIOSToolsFinderSync', 'com.jobs.JobsIOSTools.FinderSyncExtension'], output.lines.map(&:strip)
+    assert_equal ['ios-tools', 'JobsIOSTools', 'JobsIOSToolsFinderSync.appex', 'com.jobs.JobsIOSTools.FinderSyncExtension'], output.lines.map(&:strip)
   end
 
-  def test_installation_preserves_existing_ios_selection_and_ignores_invalid_ids
+  def test_installation_merges_valid_ios_selection_and_deduplicates_legacy_actions
     Dir.mktmpdir('jobs-ios-feature-config-') do |directory|
       config = File.join(directory, '配置 space', 'EnabledFeatures.txt')
       output = run_definitions(INSTALLER, <<~'ZSH', config)
         IOS_FEATURE_CONFIG_PATH="$1"
         IOS_FEATURE_CONFIG_DIR="${1:h}"
         /bin/mkdir -p "$IOS_FEATURE_CONFIG_DIR"
-        print -nr -- 'ios-pod-build-check,unknown,ios-clean-cache' > "$IOS_FEATURE_CONFIG_PATH"
-        parse_feature_selection 'ios-pod-update,ios-clean-cache' || exit 1
+        print -nr -- 'ios-pod-build-check,ios-clean-cache' > "$IOS_FEATURE_CONFIG_PATH"
+        parse_feature_selection 'ios-pod-update,ios-pod-update,ios-clean-cache,ios-clean-build-artifacts' || exit 1
         persist_ios_feature_selection ios-tools || exit 1
         print -r -- "configured:$(<"$IOS_FEATURE_CONFIG_PATH")"
       ZSH
@@ -193,30 +193,30 @@ class IOSToolsInstallerIntegrationTests < Minitest::Test
     assert_equal ['-gj|/fixture/中文 space/JobsIOSTools.app|--args|--initialize-finder-extension'], output.lines.map(&:strip)
   end
 
-  def test_bulk_uninstall_delegates_configuration_cleanup_and_retains_root_artifact_cleanup
-    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT, replacements: {'/bin/zsh "$WORKSPACE_DIR/JobsIOSTools/【MacOS】卸载iOS辅助工具Finder扩展.command"' => 'jobs_record_uninstall'})
+  def test_ios_partial_uninstall_delegates_selected_actions_without_root_artifact_cleanup
+    output = run_definitions(UNINSTALLER, <<~'ZSH', ROOT, replacements: {'/bin/zsh' => 'jobs_record_uninstall'})
       WORKSPACE_DIR="$1"
       jobs_record_uninstall() { print -r -- "delegate:${(j:|:)@}"; }
       for phase in print_current_extension_status disable_extension stop_host_application stop_extension_processes reset_election_and_unregister_extension clear_runtime_markers remove_xcode_deriveddata_app_bundles remove_local_deriveddata_dir remove_legacy_automator_service; do
         functions[$phase]='print -r -- "phase:${funcstack[1]}:$1"'
       done
+      parse_feature_selection ios-code-snippets || exit 1
       uninstall_feature ios-tools || exit 1
     ZSH
-    assert_includes output, "delegate:--features|#{ACTION_IDS.join(',')}|--non-interactive"
-    assert_includes output, 'phase:remove_local_deriveddata_dir:ios-tools'
-    assert_includes output, 'phase:reset_election_and_unregister_extension:ios-tools'
+    assert_includes output, "delegate:#{File.join(ROOT, 'JobsIOSTools/Scripts/ManageExtension.zsh')}|--action|uninstall|--non-interactive|--skip-finder-restart|--features|ios-code-snippets"
+    refute_includes output, 'phase:remove_local_deriveddata_dir:ios-tools'
+    refute_includes output, 'phase:reset_election_and_unregister_extension:ios-tools'
   end
 
   private
 
-  def run_definitions(path, checks, *arguments, replacements: {})
-    source = File.read(path)
-    raise '真实主入口未找到' unless source.sub!(/^main "\$@"\s*\z/, '')
-    replacements.each { |from, to| source = source.gsub(from, to) }
+  def run_definitions(path, checks, *arguments, replacements: {}, operation: :install)
+    source = isolated_installer_source(path, replacements: replacements, operation: operation)
+
     Dir.mktmpdir('jobs-ios-install-mapping-') do |directory|
       fixture = File.join(directory, 'mapping.zsh')
       File.write(fixture, source + "\nLOG_FILE=\"${0:h}/mapping.log\"\n" + checks)
-      output, status = Open3.capture2e({'NO_COLOR' => '1'}, '/bin/zsh', '-f', fixture, *arguments)
+      output, status = Open3.capture2e(isolated_installer_environment(directory), '/bin/zsh', '-f', fixture, *arguments)
       assert status.success?, output
       output
     end

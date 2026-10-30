@@ -53,6 +53,12 @@ Future<void> main(List<String> arguments) async {
     'workspace 仅提取所选成员的依赖闭包': (fixture) =>
         _workspaceExtraction(fixture, engine),
     '缓存与构建目录不会混入第三方源码': (fixture) => _excludedDirectories(fixture, engine),
+    'Flutter 平台临时目录中的失效链接不影响源码提取': (fixture) =>
+        _flutterGeneratedDirectories(fixture, engine),
+    '普通源码中的失效链接跳过且记录明确告警': (fixture) => _brokenSourceSymlink(fixture, engine),
+    '别名指向平台生成目录时不能混入构建缓存': (fixture) =>
+        _generatedDirectoryAlias(fixture, engine),
+    '普通源码文件无法读取仍须失败且保留源件': (fixture) => _unreadableSourceFile(fixture, engine),
     '目的地中的不存在父目录加 .. 按用户路径归一化': (fixture) =>
         _destinationDotDot(fixture, engine),
     'Pub 生成的带引号描述和 Git 修订不影响锁解析': (fixture) =>
@@ -562,6 +568,203 @@ Future<void> _excludedDirectories(_Fixture fixture, File engine) async {
   }
 }
 
+Future<void> _flutterGeneratedDirectories(_Fixture fixture, File engine) async {
+  fixture.addPackage('alpha', source: 'git');
+  fixture.writeMetadata();
+  final source = fixture.packages.first.directory;
+  const generated = [
+    'linux/flutter/ephemeral',
+    'windows/flutter/ephemeral',
+    'macos/Flutter/ephemeral',
+    'example/linux/flutter/ephemeral',
+    'example/windows/flutter/ephemeral',
+    'example/macos/Flutter/ephemeral',
+    'nested/example/linux/flutter/ephemeral',
+    '.plugin_symlinks',
+  ];
+  for (final relative in generated) {
+    final directory = Directory('${source.path}/$relative')
+      ..createSync(recursive: true);
+    File('${directory.path}/generated.txt').writeAsStringSync('build output');
+    if (!Platform.isWindows) {
+      final links = Directory('${directory.path}/.plugin_symlinks')
+        ..createSync();
+      Link('${links.path}/connectivity_plus').createSync(
+        '${fixture.root.path}/missing-developer/.pub-cache/connectivity_plus',
+      );
+      // 临时目录自身也可能是指向另一台机器的链接，必须在解析前排除。
+      if (relative == 'windows/flutter/ephemeral') {
+        directory.deleteSync(recursive: true);
+        Link(directory.path).createSync('${fixture.root.path}/missing-flutter');
+      }
+    }
+  }
+  const retained = [
+    'linux/flutter/CMakeLists.txt',
+    'windows/flutter/CMakeLists.txt',
+    'macos/Flutter/Flutter-Debug.xcconfig',
+    'lib/ephemeral/keep.dart',
+    'assets/ephemeral/keep.txt',
+  ];
+  for (final relative in retained) {
+    final file = File('${source.path}/$relative');
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync('source: $relative');
+  }
+  final before = fixture.sourceSnapshot();
+  final result = await fixture.run(engine);
+  _expect(result.code == 0, '平台临时目录不应阻止提取：$result');
+  final output = fixture.onlyCompleteOutput();
+  for (final relative in generated) {
+    _expect(
+      FileSystemEntity.typeSync(
+            '${output.path}/packages/alpha/$relative',
+            followLinks: false,
+          ) ==
+          FileSystemEntityType.notFound,
+      '不应导出平台临时目录：$relative',
+    );
+  }
+  for (final relative in retained) {
+    _expect(
+      File('${output.path}/packages/alpha/$relative').readAsStringSync() ==
+          'source: $relative',
+      '不能误删平台源码或普通 ephemeral 目录：$relative',
+    );
+  }
+  final manifest = _readManifest(output);
+  _expect(
+    (manifest['excludedDirectories'] as List).contains('.plugin_symlinks') &&
+        (manifest['excludedRelativePaths'] as List).contains(
+          'linux/flutter/ephemeral',
+        ),
+    '清单必须说明新增的平台临时目录排除规则',
+  );
+  _expect(
+    _sameJson(
+      manifest['excludedRelativePaths'],
+      manifest['excludedGeneratedDirectorySuffixes'],
+    ),
+    '旧排除字段应作为新字段的等值兼容别名',
+  );
+  _expect(_sameJson(before, fixture.sourceSnapshot()), '不能修改源包及失效链接');
+}
+
+Future<void> _brokenSourceSymlink(_Fixture fixture, File engine) async {
+  if (Platform.isWindows) return;
+  fixture.addPackage('alpha');
+  fixture.writeMetadata();
+  final source = fixture.packages.first.directory;
+  Link('${source.path}/lib/missing.dart').createSync('not-present.dart');
+  final before = fixture.sourceSnapshot();
+  final result = await fixture.run(engine);
+  _expect(result.code == 0, '失效链接应告警跳过，不中断其它源码提取：$result');
+  final output = fixture.onlyCompleteOutput();
+  _expect(
+    FileSystemEntity.typeSync(
+          '${output.path}/packages/alpha/lib/missing.dart',
+          followLinks: false,
+        ) ==
+        FileSystemEntityType.notFound,
+    '失效链接不能进入结果',
+  );
+  _expectWarning(_readManifest(output), 'alpha/lib/missing.dart', '无法解析');
+  _expect(
+    File('${output.path}/packages/alpha/lib/alpha.dart').readAsStringSync() ==
+        '// alpha fixture\n',
+    '跳过失效链接不能丢失正常源码',
+  );
+  _expect(_sameJson(before, fixture.sourceSnapshot()), '跳过链接不能改变源包');
+}
+
+Future<void> _generatedDirectoryAlias(_Fixture fixture, File engine) async {
+  if (Platform.isWindows) return;
+  fixture.addPackage('alpha');
+  fixture.writeMetadata();
+  final source = fixture.packages.single.directory;
+  final generated = Directory('${source.path}/linux/flutter/ephemeral')
+    ..createSync(recursive: true);
+  File('${generated.path}/generated-secret.txt')
+      .writeAsStringSync('GENERATED_MUST_NOT_COPY');
+  Link('${source.path}/lib/cache-alias').createSync(generated.path);
+  final before = fixture.sourceSnapshot();
+  final result = await fixture.run(engine);
+  _expect(result.code == 0, '生成目录别名应被跳过：$result');
+  final output = fixture.onlyCompleteOutput();
+  _expectWarning(
+    _readManifest(output),
+    'alpha/lib/cache-alias',
+    '真实路径位于缓存或构建目录',
+  );
+  _expect(
+    FileSystemEntity.typeSync(
+          '${output.path}/packages/alpha/lib/cache-alias',
+          followLinks: false,
+        ) ==
+        FileSystemEntityType.notFound,
+    '别名带入了排除目录',
+  );
+  for (final entity in output.listSync(recursive: true, followLinks: false)) {
+    if (entity is File) {
+      _expect(
+        !utf8
+            .decode(entity.readAsBytesSync(), allowMalformed: true)
+            .contains('GENERATED_MUST_NOT_COPY'),
+        '生成目录内容经别名泄漏进入归档',
+      );
+    }
+  }
+  _expect(_sameJson(before, fixture.sourceSnapshot()), '别名识别修改了源目录');
+}
+
+Future<void> _unreadableSourceFile(_Fixture fixture, File engine) async {
+  if (Platform.isWindows) return;
+  fixture.addPackage('alpha');
+  fixture.writeMetadata();
+  final source = File(
+    '${fixture.packages.single.directory.path}/lib/alpha.dart',
+  );
+  final before = fixture.sourceSnapshot();
+  final originalMode = source.statSync().mode & 0x1ff;
+  _expect(
+    (await Process.run('/bin/chmod', ['000', source.path])).exitCode == 0,
+    '不能建立只限夹具的普通源码不可读场景',
+  );
+  try {
+    final result = await fixture.run(engine);
+    _expect(
+      result.code != 0 && !result.timedOut,
+      '普通源码读取失败不能被当成链接告警跳过：$result',
+    );
+    _expect(fixture.completeOutputs().isEmpty, '复制真实文件失败不能发布完整结果');
+    _expect(
+      result.error.contains('Cannot copy') ||
+          result.error.contains('Permission denied'),
+      '应明确显示真实文件复制错误：$result',
+    );
+  } finally {
+    await Process.run('/bin/chmod', [
+      originalMode.toRadixString(8),
+      source.path,
+    ]);
+  }
+  _expect(_sameJson(before, fixture.sourceSnapshot()), '失败后源码内容或权限未保留');
+}
+
+void _expectWarning(Map<String, dynamic> manifest, String path, String reason) {
+  final warnings = manifest['warnings'];
+  _expect(
+    warnings is List &&
+        warnings.any(
+          (warning) =>
+              warning is String &&
+              warning.startsWith('$path：') &&
+              warning.contains(reason),
+        ),
+    '清单缺少具体路径及原因的告警：$path / $reason；实际：$warnings',
+  );
+}
+
 Future<void> _destinationDotDot(_Fixture fixture, File engine) async {
   fixture.addPackage('alpha');
   fixture.writeMetadata();
@@ -723,8 +926,13 @@ Future<void> _symlinkBoundaries(_Fixture fixture, File engine) async {
   final result = await fixture.run(engine);
   _expect(!result.timedOut, '循环符号链接导致提取挂起');
   _expect(_sameJson(before, fixture.sourceSnapshot()), '符号链接处理改变了源文件');
-  if (result.code == 0) {
+  _expect(result.code == 0, '包外与循环链接须告警跳过，正常源码仍应完成：$result');
+  {
     final output = fixture.onlyCompleteOutput();
+    final manifest = _readManifest(output);
+    _expectWarning(manifest, 'alpha/external-file', '指向包外');
+    _expectWarning(manifest, 'alpha/external-directory', '指向包外');
+    _expectWarning(manifest, 'alpha/loop', '循环符号链接');
     final copied = Directory('${output.path}/packages/alpha');
     for (final name in ['external-file', 'external-directory', 'loop']) {
       _expect(
@@ -743,8 +951,6 @@ Future<void> _symlinkBoundaries(_Fixture fixture, File engine) async {
         );
       }
     }
-  } else {
-    _expect(fixture.completeOutputs().isEmpty, '拒绝符号链接时不能留下完整成功输出');
   }
 }
 

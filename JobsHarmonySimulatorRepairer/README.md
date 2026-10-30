@@ -10,8 +10,6 @@
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、功能与范围](#capabilities)
 - [二、安装与卸载](#installation)
-  - [【MacOS】安装Harmony模拟器检测修复Finder扩展.command](#jobs-toc-heading-4)
-  - [【MacOS】卸载Harmony模拟器检测修复Finder扩展.command](#jobs-toc-heading-5)
 - [三、直接使用](#usage)
 - [四、备份、恢复与结果判断](#backup)
 - [五、隔离验证](#verification)
@@ -25,7 +23,7 @@
 
 为 [**macOS**](https://www.apple.com/macos/) 系统桌面空白右键提供 **Harmony 模拟器检测与修复**。独立 App + [**Finder Sync Extension**](https://developer.apple.com/documentation/findersync)，通过可见 Terminal 使用 [**Huawei DevEco Emulator**](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-emulator-command-line) 官方命令处理本机已有实例。核心随聚合 App 打包，源码安装需保留相邻聚合目录。
 
-当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `harmony-simulator-repair` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的管理入口只启停 `harmony-simulator-repair` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="capabilities">功能与范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -42,26 +40,19 @@
 
 ## 二、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单构建需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与可用签名环境；本地 Harmony 模拟器要求 Apple Silicon 原生终端及已有 DevEco 工具。冷启动修复额外要求 CLI 声明 `-bootMode` 能力，官方从 DevEco Studio 6.1.0 Release 支持。首次启动涉及官方许可或账号要求时，先在 DevEco Device Manager 完成；本工具不会自动同意。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Harmony模拟器检测修复Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】安装Harmony模拟器检测修复Finder扩展.command](./【MacOS】安装Harmony模拟器检测修复Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 独立构建并启用本功能，刷新 Finder。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-- 阅读内置自述，直接回车安装；任意非空输入（含空格）跳过，Ctrl+C / 输入结束停止。
-- 检查 Xcode，构建相邻 JobsDesktopTools 并核对聚合 Bundle ID 与签名，仅启用本叶。
-- 统一扩展启用并发布选择成功后停用旧重复菜单；其它已选叶和所有设备数据保留。
-- 安装与卸载日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
+本入口转交 [JobsDesktopTools](../JobsDesktopTools/README.md)，只管理 `harmony-simulator-repair`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-### <span id="jobs-toc-heading-5" data-jobs-toc="v2">[【MacOS】卸载Harmony模拟器检测修复Finder扩展.command](./【MacOS】卸载Harmony模拟器检测修复Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-> **目的：** 只关闭本叶菜单，最后一叶关闭时停用聚合扩展；保留共享 App 和业务数据。
+安装 / 卸载日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
 
-- 阅读管理器自述后，直接回车只关闭本功能；任意非空输入、Ctrl+C 或输入结束停止。
-- 只移除本叶开关；聚合包的其它功能、源码、SDK、镜像、实例、备份和业务日志保留。
-- 安装与卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。
-
-也可通过[总安装面板](../README.md)勾选本功能，标识为 `harmony-simulator-repair`。首次从右键派发需要允许本 App 控制 Terminal。
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 三、<span id="usage">直接使用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

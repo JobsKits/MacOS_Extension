@@ -20,6 +20,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 本目录包含 [**Git**](https://git-scm.com/) 拉取业务与 [**Finder**](https://support.apple.com/zh-cn/102339) 扩展构建后注册脚本，随本工程归 MacOS@Extension 统一管理，无独立 Git 根。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、脚本用途 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->

@@ -1,5 +1,7 @@
 
 # jobs-markdown-toc:start
+"/JobsFlutterTools/Scripts/Tools/README.md" filter=jobs-markdown-toc
+"/JobsFlutterTools/Scripts/Tools/SetupGUIAssets/README.md" filter=jobs-markdown-toc
 "/.jobs-markdown-toc/README.md" filter=jobs-markdown-toc
 "/JobsAndroidStudioOpener/README.md" filter=jobs-markdown-toc
 "/JobsFlutterDependencyExtractor/README.md" filter=jobs-markdown-toc
@@ -64,4 +66,6 @@
 "/JobsProjectTools/README.md" filter=jobs-markdown-toc
 "/JobsDesktopTools/README.md" filter=jobs-markdown-toc
 "/JobsDesktopTools/Scripts/README.md" filter=jobs-markdown-toc
+"/JobsFileCreator/README.md" filter=jobs-markdown-toc
+"/JobsFileCreator/Scripts/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

@@ -20,7 +20,7 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**有效 Git 文件夹右键 → Git操作 → 配置 Git 动态代理 → 终端交互。** 在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 中回车安装、输入 C 检查或输入 R 恢复。常规菜单由 [JobsProjectTools](../JobsProjectTools/README.md) 提供；本目录由 Jobs 维护，保留旧独立 App、[**Finder Sync**](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html) 扩展与完整业务脚本。安装 / 卸载入口只转交统一包的代理单项，需保留完整仓库；旧桌面代理菜单迁移后停用。
+**有效 Git 文件夹右键 → Git操作 → 配置 Git 动态代理 → 终端交互。** 在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 中回车安装、输入 C 检查或输入 R 恢复。常规菜单由 [JobsProjectTools](../JobsProjectTools/README.md) 提供；本目录由 Jobs 维护，保留旧独立 App、[**Finder Sync**](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html) 扩展与完整业务脚本。管理入口只转交统一包的代理单项，需保留完整仓库；旧桌面代理菜单迁移后停用。
 
 | 操作 | 实际行为 |
 | --- | --- |
@@ -35,21 +35,19 @@
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个裸露入口与本 README 平级：
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Git动态代理Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-- [【MacOS】安装Git动态代理Finder扩展.command](./【MacOS】安装Git动态代理Finder扩展.command)：转交项目工具包的 `git-proxy-configure` 单项，**直接回车安装；任意非空输入跳过**。要求完整 [**Xcode**](https://developer.apple.com/xcode/)、[**macOS**](https://www.apple.com/macos/) SDK 和系统 `pluginkit`；不自动安装或升级工具。
-- [【MacOS】卸载Git动态代理Finder扩展.command](./【MacOS】卸载Git动态代理Finder扩展.command)：按统一包策略回车关闭单项、任意非空输入跳过，保留其它已启用功能；用户的 Git 动态入口、Shell 挂载、Sourcetree 选择和快照保留。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-也可从统一包入口只管理本项：
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-```shell
-/bin/zsh ../JobsProjectTools/【MacOS】安装项目工具Finder扩展.command git-proxy-configure
-/bin/zsh ../JobsProjectTools/【MacOS】卸载项目工具Finder扩展.command git-proxy-configure
-```
+本入口转交 [JobsProjectTools](../JobsProjectTools/README.md)，只管理 `git-proxy-configure`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-入口和配置合并规则见[统一包说明](../JobsProjectTools/README.md)。安装成功后停用旧桌面代理扩展；构建或登记失败时保留旧菜单。菜单安装 / 初始化不打开配置终端，卸载菜单也不撤回业务配置。
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-现行统一包产物位于 `../JobsProjectTools/work/DerivedData/`，配置保存在当前用户应用支持目录的 `JobsProjectTools/EnabledFeatures.txt`。以下旧独立工程结构与协议供源码维护和隔离回归参考，不应再直接启用旧桌面扩展。系统直接从登记位置启动 App 和 appex，使用期间保留产物目录。
+诊断保留在终端；聚合工程的构建、配置与登记边界见包说明。
+
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 二、<span id="usage">配置流程与恢复范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -80,8 +78,7 @@ Terminal 中保留独立脚本的所有安装、C 检查与 R 恢复交互。安
 ├── JobsGitProxyShared/                # 固定请求与真实桌面白名单
 ├── Scripts/                          # 完整业务副本与构建后启用脚本
 ├── Tests/                            # 隔离原生协议、派发与注册回归
-├── 【MacOS】安装Git动态代理Finder扩展.command
-└── 【MacOS】卸载Git动态代理Finder扩展.command
+└── 【MacOS】管理Git动态代理Finder扩展.command
 ```
 
 桌面定位复用已验收的目录服务方案：`getpwuid_r(getuid())` 获取真实 Home/Desktop，保留系统桌面别名；监控根目录 `/` 以收到真实桌面回调，菜单按规范化路径白名单严格过滤，不依赖沙盒中的桌面元数据读取成功。Finder Sync 注册机制见 [**Apple 文档**](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html)。

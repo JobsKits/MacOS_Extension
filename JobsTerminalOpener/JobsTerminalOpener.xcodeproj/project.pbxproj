@@ -20,6 +20,8 @@
 		01B000000000000000000019 /* FinderMenuFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* FinderMenuFeatureConfiguration.swift */; };
 		01B000000000000000000020 /* FinderMenuFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* FinderMenuFeatureConfiguration.swift */; };
 		01B000000000000000000021 /* CleanBuildArtifacts.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000017 /* CleanBuildArtifacts.zsh */; };
+		01B000000000000000000022 /* ViewFileContent.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000018 /* ViewFileContent.zsh */; };
+		01B000000000000000000023 /* FileVolumes.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000019 /* FileVolumes.zsh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +64,8 @@
 		01E000000000000000000000 /* JobsTerminalOpener.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JobsTerminalOpener.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		01E000000000000000000001 /* JobsTerminalFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobsTerminalFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		01A000000000000000000017 /* CleanBuildArtifacts.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/CleanBuildArtifacts.zsh; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000018 /* ViewFileContent.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/ViewFileContent.zsh; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000019 /* FileVolumes.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/FileVolumes.zsh; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +92,8 @@
 			isa = PBXGroup;
 			children = (
 				01A000000000000000000017 /* CleanBuildArtifacts.zsh */,
+				01A000000000000000000018 /* ViewFileContent.zsh */,
+				01A000000000000000000019 /* FileVolumes.zsh */,
 				01G000000000000000000011 /* JobsTerminalOpener */,
 				01G000000000000000000012 /* JobsTerminalFinderSync */,
 				01G000000000000000000015 /* JobsTerminalShared */,
@@ -226,7 +232,11 @@
 		01D000000000000000000012 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (01B000000000000000000021 /* CleanBuildArtifacts.zsh in Resources */,);
+			files = (
+				01B000000000000000000021 /* CleanBuildArtifacts.zsh in Resources */,
+				01B000000000000000000022 /* ViewFileContent.zsh in Resources */,
+				01B000000000000000000023 /* FileVolumes.zsh in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -420,7 +430,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = JobsTerminalOpener/Info.plist;
-				JOBS_TERMINAL_ENABLED_FEATURES = "open,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
+				JOBS_TERMINAL_ENABLED_FEATURES = "open,file-content,file-merge,file-split,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -448,7 +458,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = JobsTerminalOpener/Info.plist;
-				JOBS_TERMINAL_ENABLED_FEATURES = "open,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
+				JOBS_TERMINAL_ENABLED_FEATURES = "open,file-content,file-merge,file-split,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -476,7 +486,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = JobsTerminalFinderSync/Info.plist;
-				JOBS_TERMINAL_ENABLED_FEATURES = "open,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
+				JOBS_TERMINAL_ENABLED_FEATURES = "open,file-content,file-merge,file-split,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../../../../Frameworks",
@@ -506,7 +516,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = JobsTerminalFinderSync/Info.plist;
-				JOBS_TERMINAL_ENABLED_FEATURES = "open,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
+				JOBS_TERMINAL_ENABLED_FEATURES = "open,file-content,file-merge,file-split,pod-install,flutter-pub-get,clean-build-artifacts,codegraph-bootstrap,git-empty-commit-push";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../../../../Frameworks",

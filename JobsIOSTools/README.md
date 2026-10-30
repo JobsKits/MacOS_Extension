@@ -21,7 +21,7 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-在 [**Finder**](https://support.apple.com/zh-cn/102339) 中右键一个 iOS 项目文件夹，打开“iOS / CocoaPods 辅助工具”子菜单，在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 执行下表十一项工具。十一项可在[总安装面板](../【MacOS】🧩安装Finder扩展.command)分别勾选，共用一个 App 与 Finder Sync Extension；安装菜单不会执行工具业务。
+在 [**Finder**](https://support.apple.com/zh-cn/102339) 中右键一个 iOS 项目文件夹，打开“iOS / CocoaPods 辅助工具”子菜单，在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 执行下表十一项工具。十一项可在[总管理面板](../【MacOS】🧩管理Finder扩展.command)分别勾选，共用一个 App 与 Finder Sync Extension；安装菜单不会执行工具业务。
 
 | 菜单 | 功能标识 | 当前功能 |
 | --- | --- | --- |
@@ -65,39 +65,33 @@
 
 ## 三、<span id="installation">安装、选择与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-需要完整 Xcode、macOS SDK、当前用户图形桌面与本工程源码。优先运行[根安装器](../【MacOS】🧩安装Finder扩展.command)，在 iOS 分组逐项选择。也可在本目录独立安装全部十一项：
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理iOS辅助工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
+需要完整 Xcode、macOS SDK、当前用户图形桌面与本工程源码。优先使用 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 在 iOS 分组勾选一项或多项，切换安装 / 更新或卸载；本目录管理入口也支持按 `--features` 指定范围。省略范围时处理全部十一项，未知标识停止。
+
+在本 README 所在目录执行，只安装代码片段菜单，或仅卸载该菜单：
 
 ```shell
-/bin/zsh ./【MacOS】安装iOS辅助工具Finder扩展.command
-```
+/bin/zsh ./【MacOS】管理iOS辅助工具Finder扩展.command \
+  --action install \
+  --features ios-code-snippets
 
-独立入口先展示自述，直接回车安装，任意非空输入跳过，Ctrl+C 或 EOF 停止。只安装代码片段菜单：
-
-```shell
-/bin/zsh ./【MacOS】安装iOS辅助工具Finder扩展.command \
+/bin/zsh ./【MacOS】管理iOS辅助工具Finder扩展.command \
+  --action uninstall \
   --features ios-code-snippets
 ```
 
-`--features` 接受逗号分隔的固定标识，省略时选择全部十一项，未知标识停止。例如只安装 Pod Install 和产物清理，传入 `--features ios-pod-install,ios-clean-build-artifacts`。安装与已有功能配置取并集，不关闭未选但已启用的功能；仅构建成功后保存。当前用户应用支持目录 `JobsIOSTools/EnabledFeatures.txt` 保存选择，不改写已签名 App 资源。
+`--features` 接受逗号分隔标识，也支持 `--features=...`；例如 `ios-pod-install,ios-clean-build-artifacts`。安装与已有功能配置取并集，成功构建后保存，不关闭未选但已启用的功能。卸载只减去指定功能，仍有其它项时保留同一个 App 与扩展登记，全部关闭后才注销并移除核验为本包的构建 App。
 
-同样支持 `--features=...` 和环境变量 `JOBS_INSTALL_FEATURES`，参数优先。宿主和扩展优先读取真实用户的 `Library/Application Support/JobsIOSTools/EnabledFeatures.txt`，已有空配置表示全部关闭，读取失败也保守关闭；无用户配置时才采用随包缺省值。最低部署目标为 macOS 12，Swift 语言模式 5.0（依据工程配置，2026-10-23）。
+当前用户应用支持目录的 `JobsIOSTools/EnabledFeatures.txt` 保存选择，不改写签名后的 App 资源。宿主和扩展优先读取真实用户配置；空配置表示全部关闭，读取失败保守关闭，无配置才使用随包缺省值。`JOBS_INSTALL_FEATURES` 是未指定 CLI 范围时的兼容输入，明确参数优先。最低部署目标 macOS 12、Swift 语言模式 5.0（工程配置）。
 
-卸载全部十一项：
-
-```shell
-/bin/zsh ./【MacOS】卸载iOS辅助工具Finder扩展.command
-```
-
-卸载先显示范围与已核验路径，精确输入 `YES` 后执行；其它输入取消。仅移除代码片段菜单：
-
-```shell
-/bin/zsh ./【MacOS】卸载iOS辅助工具Finder扩展.command \
-  --features ios-code-snippets
-```
-
-仍有其它已启用功能时保留同一个 App 与扩展登记；全部关闭后才注销并移除核验为本包的构建 App。项目源码、iOS 工程、片段仓库及其它工具业务产物保留。安装与卸载会刷新 Finder，操作前结束 Finder 中的文件搬移。
-
-`--non-interactive` 供已明确选择的总安装 / 卸载器调用，`--skip-enable` 供受控构建阶段使用；它们不是只读检查，会执行对应入口的其它业务，普通手工运行保留默认确认。
+项目源码、iOS 工程、片段仓库和其它业务产物保留；安装 / 卸载菜单不安装、升级或删除代码片段，也不执行 Pod、清理或项目改写。两种操作会刷新 Finder，请先结束文件搬移。内部 `Scripts/ManageExtension.zsh` 的 `--skip-finder-restart` 将刷新交给外层；`--action ... --non-interactive` 仅供面板或已确认的总管理器调用，会实际执行，不能用于只读检查；公开启动器只唤起 GUI。
 
 ## 四、<span id="resources-and-checks">资源、日志与只读验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -110,7 +104,7 @@
 | [DispatchIOSTools.zsh](./Scripts/Tools/DispatchIOSTools.zsh) | 固定映射、目标复核与随包脚本执行。 |
 | [SourceManifest.json](./Scripts/Tools/SourceManifest.json) | 规范源路径、源与打包资源摘要。 |
 
-安装器在本目录 `work/DerivedData` 保存产物；根安装器使用上级 `work/JobsIOSToolsDerivedData`。系统从已注册路径启动扩展，不能把注册产物当作普通缓存删除。宿主 ID 为 `com.jobs.JobsIOSTools`，扩展 ID 为 `com.jobs.JobsIOSTools.FinderSyncExtension`。
+安装器在本目录 `work/DerivedData` 保存产物；根管理器使用上级 `work/JobsIOSToolsDerivedData`。系统从已注册路径启动扩展，不能把注册产物当作普通缓存删除。宿主 ID 为 `com.jobs.JobsIOSTools`，扩展 ID 为 `com.jobs.JobsIOSTools.FinderSyncExtension`。
 
 [脚本说明](./Scripts/README.md)与[随包资源说明](./Scripts/Tools/README.md)分别说明构建挂载与原脚本适配。宿主资源阶段复制整个 Tools 目录；外部安装器与隔离构建使用 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过自定义注册阶段。Xcode 自身仍可能登记临时宿主 URL，隔离构建结束应精确注销测试产物。工程只依赖 macOS SDK 中的 AppKit / Foundation / FinderSync，没有外部 Swift 包或 CocoaPods 构建依赖；业务所需工具仍沿用原脚本体检策略。
 

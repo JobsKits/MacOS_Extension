@@ -1,4 +1,4 @@
-> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，本项位于“Git操作”子菜单。只有有效 Git 工作树的普通文件夹或内部空白处显示；本目录的安装、卸载入口仅启停对应单项，请保留完整仓库。下文保留业务脚本、恢复边界与旧源码工程的说明；常规安装使用统一包，不重新启用旧一级菜单。
+> 安装与卸载由 [JobsProjectTools](../JobsProjectTools/README.md) 统一管理，本项位于“Git操作”子菜单。只有有效 Git 工作树的普通文件夹或内部空白处显示；本目录的管理入口仅启停对应单项，请保留完整仓库。下文保留业务脚本、恢复边界与旧源码工程的说明；常规安装使用统一包，不重新启用旧一级菜单。
 
 # `JobsGitPuller`
 
@@ -11,10 +11,8 @@
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、安装与卸载](#install)
-  - [【MacOS】安装Git拉取Finder扩展.command](#jobs-toc-heading-3)
-  - [【MacOS】卸载Git拉取Finder扩展.command](#jobs-toc-heading-4)
 - [二、运行与恢复边界](#safety)
-  - [PullGitRepository.zsh](#jobs-toc-heading-6)
+  - [PullGitRepository.zsh](#jobs-toc-heading-4)
 - [三、工作区与恢复边界](#workspace-safety)
 - [四、目录与验证](#files-tests)
 
@@ -39,34 +37,31 @@
 | 第三项提交后再次冲突 | 继续三选一；选 `1` 保留刚确认的新提交，回到第二轮拉取前。再次选 `3` 不制造重复提交，保留新提交并停止供手工解决。 |
 | 网络、认证、hook、签名等失败 | 明确停止；有文件冲突才进入冲突处理，不把失败当作成功。 |
 
-本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，源码、文档与版本由总仓统一管理。取得总仓即可获得本工程，无需单独远端或子模块下载；工程仍可独立构建、安装与卸载。Windows 对应独立包位于[平行仓库](../../WindowsOS@Extension/JobsGitPuller/README.md)，两端均独立安装。
+本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，源码、文档与版本由总仓统一管理。取得总仓即可获得本工程，无需单独远端或子模块下载；旧源码工程仍可独立构建供调试，菜单由同仓聚合包管理。Windows 对应独立包位于[平行仓库](../../WindowsOS@Extension/JobsGitPuller/README.md)；两端按各自管理入口部署。
 
 本地文档保留 `[toc]`，由总仓根目录的 [目录过滤器](../.jobs-markdown-toc/README.md) 统一管理；新克隆后在总仓根目录安装一次，整文件暂存时生成远端折叠目录。
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个裸露入口与本 README 平级，转交统一包的 `git-pull` 单项；需保留完整仓库。构建、登记路径、配置并集和逐项关闭以[统一包安装说明](../JobsProjectTools/README.md)为准；本目录完整业务脚本仍可直接在交互终端使用。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Git拉取Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Git拉取Finder扩展.command](./【MacOS】安装Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 在统一 Git 子菜单中启用拉取单项。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK 与本工程文件，缺失时明确停止；健康 Git 由右键动作在运行时另行核验。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；统一包产物位于 `../JobsProjectTools/work/DerivedData/`，成功启用后刷新 Finder，其它选择保留。
-- 安装过程不会拉取任何目标仓库；诊断显示在终端。也可使用[总仓统一安装器](../【MacOS】🧩安装Finder扩展.command)仅勾选本项。
+本入口转交 [JobsProjectTools](../JobsProjectTools/README.md)，只管理 `git-pull`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载Git拉取Finder扩展.command](./【MacOS】卸载Git拉取Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-> **目的：** 关闭统一包的 Git 拉取单项。
+诊断保留在终端；聚合工程的构建、配置与登记边界见包说明。
 
-- 阅读自述，回车执行、任意非空输入跳过；没有额外 `YES` 步骤。
-- 其它启用项保留，最后一项关闭时注销统一扩展；源码、构建缓存、目标项目和恢复快照保留。诊断显示在终端，完成后刷新 Finder。
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 二、<span id="safety">运行与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 要求 macOS 12+、[**Xcode**](https://developer.apple.com/xcode/) 和健康 Git。已有 Git 直接复用，不安装依赖，不改变网络代理、全局 Git 配置或分支 upstream。分支没有 upstream、游离 HEAD、尚无提交、稀疏检出、特殊索引、已有 merge / rebase 等事务时停止。
 
-### <span id="jobs-toc-heading-6" data-jobs-toc="v2">[PullGitRepository.zsh](./Scripts/PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[PullGitRepository.zsh](./Scripts/PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在交互终端执行 Git 保护、拉取和冲突三选一。
 

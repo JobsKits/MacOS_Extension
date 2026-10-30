@@ -104,15 +104,16 @@ if name=='pluginkit':
         self.run_script('install', 'xcode_opener', 'git-pull')
         self.assertEqual(self.configured(), {'xcode_opener', 'git-pull'})
 
-    def test_sourcetree_install_and_uninstall_preserve_other_feature_choices(self):
+    def test_retired_sourcetree_rejects_install_and_legacy_uninstall_preserves_siblings(self):
         self.state.write_text('{}')
-        self.run_script('install', 'xcode_opener', 'git-sourcetree')
-        self.assertEqual(self.configured(), {'xcode_opener', 'git-sourcetree'})
+        self.run_script('install', 'xcode_opener')
+        self.config.write_text('xcode_opener,git-sourcetree')
+        before = self.config.read_bytes()
+        self.run_script('install', 'git-sourcetree', success=False)
+        self.assertEqual(self.config.read_bytes(), before)
         self.run_script('uninstall', 'git-sourcetree')
         self.assertEqual(self.configured(), {'xcode_opener'})
         self.assertEqual(json.loads(self.state.read_text())[GROUP_ID], '+')
-        self.run_script('install', 'git-sourcetree')
-        self.assertEqual(self.configured(), {'xcode_opener', 'git-sourcetree'})
 
     def test_unknown_feature_has_no_side_effects(self):
         self.run_script('install', 'unknown', success=False)
@@ -173,21 +174,23 @@ if name=='pluginkit':
         self.assertIn('../JobsGitRollback/Scripts/RollbackGitRepository.zsh', project)
         resources = project.split('/* Begin PBXResourcesBuildPhase section */')[1].split('/* End PBXResourcesBuildPhase section */')[0]
         self.assertIn('RollbackGitRepository.zsh', resources)
-        for operation in ['安装', '卸载']:
-            entry = next((ROOT / 'JobsGitRollback').glob(f'【MacOS】{operation}*Finder扩展.command')).read_text()
-            self.assertIn(f'JobsProjectTools/【MacOS】{operation}项目工具Finder扩展.command', entry)
-            self.assertIn('exec /bin/zsh "$entry" git-rollback', entry)
+        manager = (ROOT / 'JobsGitRollback/Scripts/ManageExtension.zsh').read_text()
+        self.assertIn('MANAGER_UI_SCOPE="git-rollback"', manager)
+        self.assertIn('JobsProjectTools/Scripts/ManageProjectTools.zsh', manager)
+        self.assertIn('run_feature_operation install', manager)
+        self.assertIn('run_feature_operation uninstall', manager)
 
     def test_all_entry_points_route_to_the_group(self):
-        installer = (ROOT / '【MacOS】🧩安装Finder扩展.command').read_text()
-        uninstaller = (ROOT / '【MacOS】🧩卸载Finder扩展.command').read_text()
+        installer = (ROOT / 'Scripts/ManageFinderExtensions.zsh').read_text()
+        self.assertIn('ManageProjectTools.zsh" install', installer)
+        self.assertIn('ManageProjectTools.zsh" uninstall', installer)
         for feature, app in zip(FEATURES, APPS):
             self.assertIn(f'SELECTABLE_FUNCTION_PROJECT_KEY[{feature}]="project-tools"', installer)
-            self.assertIn(feature, uninstaller.split('case "$key" in')[1].split('esac')[0])
-            for operation in ['安装', '卸载']:
-                entry = next((ROOT / app).glob(f'【MacOS】{operation}*Finder扩展.command')).read_text()
-                self.assertIn(f'JobsProjectTools/【MacOS】{operation}项目工具Finder扩展.command', entry)
-                self.assertIn(f'exec /bin/zsh "$entry" {feature}', entry)
+            manager = (ROOT / app / 'Scripts/ManageExtension.zsh').read_text()
+            self.assertIn(f'MANAGER_UI_SCOPE="{feature}"', manager)
+            self.assertIn('JobsProjectTools/Scripts/ManageProjectTools.zsh', manager)
+            self.assertIn('run_feature_operation install', manager)
+            self.assertIn('run_feature_operation uninstall', manager)
 
 
 if __name__ == '__main__':

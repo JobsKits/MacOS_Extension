@@ -10,8 +10,8 @@ require 'fileutils'
 
 class InstallerRegistrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】安装Flutter打包Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】卸载Flutter打包Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
   HELPER = File.join(ROOT, 'Scripts/EnableFinderExtension.zsh')
   APP_ID = 'com.jobs.JobsFlutterPackager'
   EXTENSION_ID = "#{APP_ID}.findersync"
@@ -84,84 +84,62 @@ class InstallerRegistrationTests < Minitest::Test
     assert_includes output, 'killall Finder exit=9'
   end
 
-  def test_independent_install_cleans_exact_old_host_and_extension_before_new_registration
-    wrong_app = create_app('wrong-id', 'com.jobs.unrelated')
-    records = [@old_app, @app, wrong_app].map do |path|
-      "--------------------------------------------------------------------------------\npath: #{path} (0x7f0c)\nidentifier: #{APP_ID}\n"
-    end.join
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks, records: records,
-                                plugin_records: "Path = #{@old_extension}\nPath = #{@extension}\n")
+  def test_manager_install_forwards_only_the_three_packaging_actions
+    output, status = run_alias('install')
     assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@old_extension}"
-    refute_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "lsregister|-u|#{@old_app}"
-    refute_includes calls, "lsregister|-u|#{@app}"
-    refute_includes calls, "lsregister|-u|#{wrong_app}"
-    assert_operator calls.index("lsregister|-u|#{@old_app}"), :<, calls.index("lsregister|-f|#{@app}")
-    assert_includes calls, "open|-n|#{@app}|--args|--initialize-finder-extension"
-    assert File.directory?(@old_app), '旧 App 文件只注销登记，保留文件。'
-  end
-
-  def test_independent_install_registration_error_does_not_report_success
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      APP_PATH="$JOBS_TEST_APP"
-      EXTENSION_PATH="$JOBS_TEST_EXTENSION"
-      LOG_FILE="$JOBS_TEST_LOG"
-      LSREGISTER=jobs_fake_lsregister
-      JOBS_TEST_REGISTER_RESULT=7
-      register_extension
-    ZSH
-    output, status = run_source(INSTALLER, checks)
-    refute status.success?, output
-    refute_includes output, '✔ 已请求启用扩展'
-    refute calls.any? { |line| line.start_with?('open|') || line.start_with?('killall|') }
-  end
-
-  def test_independent_uninstall_removes_only_verified_app_and_keeps_flutter_project
-    project_data = File.join(@directory, 'FlutterProject/lib/main.dart')
-    FileUtils.mkdir_p(File.dirname(project_data))
-    File.write(project_data, 'existing Flutter source')
-    checks = <<~'ZSH'
-      setopt PIPE_FAIL NO_NOMATCH
-      LOG_FILE="$JOBS_TEST_LOG"
-      collect_registered_paths
-      uninstall_extension
-    ZSH
-    output, status = run_source(UNINSTALLER, checks, plugin_records: "Path = #{@extension}\n")
-    assert status.success?, output
-    assert_includes calls, "pluginkit|-r|#{@extension}"
-    assert_includes calls, "rm|-rf|--|#{@app}"
-    assert_equal ["rm|-rf|--|#{@app}", 'rm|-f|--|/tmp/JobsFlutterPackagerNeedsFinderRestart'], calls.grep(/^rm\|/)
-    assert_equal 'existing Flutter source', File.read(project_data)
-    refute calls.any? { |line| line.include?('flutter build') }
-  end
-
-  def test_independent_install_rejects_noninteractive_input_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "\n")
-    refute status.success?, output
-    assert_includes output, '请在可交互终端运行'
+    assert_includes output, 'forward:--action|install|--features|package-ios,package-android,package-ohos|--non-interactive'
     assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsFlutterPackagerInstall.log'))
   end
 
-  def test_independent_install_nonempty_input_skips_before_any_mutation
-    output, status = run_source(INSTALLER, 'main "$@"', input: "skip\n", interactive: true)
+  def test_manager_uninstall_forwards_the_same_actions_and_preserves_other_flutter_menus
+    output, status = run_alias('uninstall', args: ['--skip-finder-restart'])
     assert status.success?, output
-    assert_includes output, '直接回车安装；输入任意字符后回车跳过'
+    assert_includes output, 'forward:--action|uninstall|--features|package-ios,package-android,package-ohos|--non-interactive|--skip-finder-restart'
     assert_empty calls
-    refute File.exist?(File.join(@directory, 'JobsFlutterPackagerInstall.log'))
+  end
+
+  def test_manager_propagates_the_aggregate_failure
+    output, status = run_alias('install', exit_status: 7)
+    assert_equal 7, status.exitstatus, output
+    assert_empty calls
+  end
+
+def test_manager_non_tty_opens_gui_without_installing
+  source = File.read(INSTALLER).sub(/^manager_main "\$@"\s*\z/, '')
+  source += <<~'ZSH'
+    manager_open_gui() { print -r -- OPEN_GUI; }
+    run_install_operation() { return 99; }
+    run_uninstall_operation() { return 99; }
+    manager_main --action install
+  ZSH
+  output, status = Open3.capture2e('/bin/zsh', '-c', source, INSTALLER)
+  assert status.success?, output
+  assert_includes output, 'OPEN_GUI'
+  assert_empty calls
+end
+
+
+  def test_manager_rejects_unknown_options_before_forwarding
+    output, status = run_alias('install', args: ['--unexpected'])
+    assert_equal 2, status.exitstatus, output
+    refute_includes output, 'forward:'
+    assert_empty calls
   end
 
   private
+
+  def run_alias(operation, exit_status: 0, args: [])
+    leaf = File.join(@directory, 'JobsFlutterPackager')
+    aggregate = File.join(@directory, 'JobsFlutterTools')
+    FileUtils.mkdir_p([leaf, aggregate])
+    entry = File.join(leaf, 'Scripts/ManageExtension.zsh')
+    target = File.join(aggregate, 'Scripts/ManageExtension.zsh')
+    FileUtils.mkdir_p(File.dirname(entry))
+    FileUtils.cp(INSTALLER, entry)
+    FileUtils.mkdir_p(File.dirname(target))
+    File.write(target, "#!/bin/zsh\nprint -r -- \"forward:${(j:|:)@}\"\nexit #{exit_status}\n")
+    Open3.capture2e('/bin/zsh', entry, '--action', operation, '--non-interactive', *args)
+  end
 
   def create_app(parent, identifier)
     app = File.join(@directory, parent, 'JobsFlutterPackager.app')

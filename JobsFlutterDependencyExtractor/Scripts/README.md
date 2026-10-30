@@ -19,6 +19,8 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 > 本目录承接 [**Flutter**](https://flutter.dev/) 第三方依赖归档与 Finder 扩展构建后的注册，完整行为见 [工程说明](../README.md)。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、脚本职责 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -54,9 +56,11 @@ Scripts/
 
 提取产物包含 `packages/`、原始锁文件、配置和 `manifest.json`，其中可能有本地路径或私有仓库地址，分享前检查。提取业务日志是 `${TMPDIR:-/tmp/}JobsFlutterDependencyExtractor.随机标识` 私有普通文件，准确位置在自述确认后的首屏显示；宿主与安装日志分别见 [工程日志说明](../README.md)。
 
-普通项目包含直接、间接与开发依赖；workspace 核验声明成员关系，只取所选成员依赖闭包。支持标准块列表、单行 flow 列表、相对 `*` / `**` / `?` 模式及嵌套 workspace；未知复杂 YAML 明确停止。包内符号链接物化复制，包外 / 循环链接及特殊文件拒绝。输出是源码归档，未包含平台包管理器缓存，也不保证离线构建。
+普通项目包含直接、间接与开发依赖；workspace 核验声明成员关系，只取所选成员依赖闭包。支持标准块列表、单行 flow 列表、相对 `*` / `**` / `?` 模式及嵌套 workspace；未知复杂 YAML 明确停止。包内有效符号链接物化复制；失效、包外、循环及指向排除目录的链接跳过并记录 `warnings`，特殊文件、真实包根及普通源码读取错误仍失败。输出是源码归档，未包含平台包管理器缓存，也不保证离线构建。
 
-交互回归入口为 `../Tests/ExtractionShellTests.rb`；从工程根执行 `ruby ./Tests/ExtractionShellTests.rb`。引擎回归执行 `dart ./Tests/DependencyExtractionTests.dart`，均使用临时项目，不运行真实安装或注册。
+归档排除 `.plugin_symlinks` 及 `linux/flutter/ephemeral`、`windows/flutter/ephemeral`、`macos/Flutter/ephemeral`，包括嵌套 example 中的相同路径；这些目录可能保留其他开发机器的失效链接，须在解析链接前排除。普通源码中名为 `ephemeral` 的目录仍保留；非生成目录中的失效 / 包外 / 循环链接也只告警跳过，真实普通文件读取或复制失败仍停止。清单的 `excludedDirectories`、`excludedGeneratedDirectorySuffixes` 记录排除规则；`excludedRelativePaths` 保留为后者的等值兼容别名，逐项跳过原因在 `warnings`。
+
+交互回归入口为 `../Tests/ExtractionShellTests.rb`；从工程根执行 `ruby ./Tests/ExtractionShellTests.rb`。引擎回归执行 `dart ./Tests/DependencyExtractionTests.dart`，均使用临时项目，不运行真实安装或注册。引擎也可作为首个参数指定，便于复核统一菜单中的副本。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、构建注册边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 

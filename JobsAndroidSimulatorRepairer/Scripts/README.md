@@ -18,6 +18,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 本目录保存[Android 模拟器检测与修复](../README.md)的自包含核心及 [**Finder Sync**](https://developer.apple.com/documentation/findersync) 构建后启用脚本；安装 / 卸载入口与功能包 README 平级。
 
 ## 一、<span id="files">文件职责</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>

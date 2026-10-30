@@ -5,6 +5,13 @@
 # - 影响范围：只读项目及缓存，向指定目录新建独立源码快照，不下载或改写依赖。
 # - 运行提示：先回车确认；项目和目标支持输入或拖入，目标直接回车为系统桌面。
 
+PRIVATE_ONLY=0
+typeset -a SCOPE_ARGS=()
+if [[ "${1:-}" == --private-only ]]; then
+  PRIVATE_ONLY=1
+  SCOPE_ARGS=(--private-only)
+  shift
+fi
 SCRIPT_DIR=""
 SCRIPT_PATH=""
 LOG_FILE=""
@@ -23,7 +30,12 @@ intro_line() {
 }
 # 业务开始前打印内置自述并等待回车，EOF 与非空输入取消。
 show_script_intro_and_wait() {
-  intro_line title '提取 Flutter 第三方依赖'
+  if (( PRIVATE_ONLY )); then
+    intro_line title '提取Flutter项目工程私库依赖'
+    intro_line body '私库模式：Git、path 和自建 Pub 源，含间接私库；不复制公共 Pub 包。'
+  else
+    intro_line title '提取 Flutter 第三方依赖'
+  fi
   intro_line body '1、复制实际解析的 Pub 直接、间接、开发依赖及插件包内平台源码。'
   intro_line body '2、只读源项目与缓存；输出独立目录、依赖清单和许可证，不自动 pub get。'
   intro_line body '3、目标可输入或拖入，直接回车使用系统桌面；Ctrl+C 随时取消。'
@@ -109,6 +121,7 @@ read_project_and_destination() {
 check_environment() {
   local candidate="$PROJECT_PATH/.fvm/flutter_sdk/bin/cache/dart-sdk/bin/dart"
   [[ -x "$candidate" ]] || die '项目 FVM Dart 缺失；不会回退全局 SDK。'
+  /usr/bin/file -b "${candidate:A}" | /usr/bin/grep -q 'Mach-O' || die '项目 FVM Dart 不是原生二进制；请修复项目 SDK。'
   "$candidate" --version </dev/null >/dev/null 2>&1 || die '项目 FVM Dart 不健康。'
   DART_EXECUTABLE="$candidate"
   log "✔ 项目 FVM Dart：$DART_EXECUTABLE"
@@ -121,7 +134,7 @@ run_extraction() {
   log "输出父目录：$DESTINATION_PATH"
   "$DART_EXECUTABLE" "$SCRIPT_DIR/ExtractFlutterDependencies.dart" \
     --project "$PROJECT_PATH" \
-    --destination "$DESTINATION_PATH" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+    --destination "$DESTINATION_PATH" "${SCOPE_ARGS[@]}" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
   extraction_result=$?
   if (( extraction_result != 0 )); then
     log "✖ 未完成，退出码 $extraction_result；日志：$LOG_FILE"

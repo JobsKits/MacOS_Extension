@@ -10,8 +10,8 @@ require 'fileutils'
 
 class InstallerRegistrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】安装运行授权Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】卸载运行授权Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
   HELPER = File.join(ROOT, 'Scripts/EnableFinderExtension.zsh')
   APP_ID = 'com.jobs.JobsRunAuthorizer'
   EXTENSION_ID = "#{APP_ID}.FinderSyncExtension"
@@ -136,7 +136,7 @@ class InstallerRegistrationTests < Minitest::Test
       collect_registered_paths
       uninstall_extension
     ZSH
-    output, status = run_source(UNINSTALLER, checks, plugin_records: "Path = #{@extension}\n")
+    output, status = run_source(UNINSTALLER, checks, operation: :uninstall, plugin_records: "Path = #{@extension}\n")
     assert status.success?, output
     assert_includes calls, "pluginkit|-r|#{@extension}"
     assert_includes calls, "rm|-rf|--|#{@app}"
@@ -174,10 +174,10 @@ class InstallerRegistrationTests < Minitest::Test
 
   def test_uninstall_log_path_accepts_temporary_directory_with_or_without_trailing_slash
     [@directory, "#{@directory}/"].each do |temporary_directory|
-      output, status = run_source(UNINSTALLER, 'prepare_display_context; print -r -- "$LOG_FILE"',
+      output, status = run_source(UNINSTALLER, 'prepare_display_context; print -r -- "$LOG_FILE"', operation: :uninstall,
                                   temporary_directory: temporary_directory)
       assert status.success?, output
-      assert_equal File.join(@directory, 'fixture.zsh.log'), output.strip
+      assert_equal File.join(@directory, '【MacOS】管理运行授权Finder扩展.log'), output.strip
       assert_empty calls
     end
   end
@@ -192,7 +192,7 @@ def test_independent_uninstall_skips_wrong_extension_identity
     collect_registered_paths
     uninstall_extension
   ZSH
-  output, status = run_source(UNINSTALLER, checks, plugin_records: "Path = #{@extension}\n")
+  output, status = run_source(UNINSTALLER, checks, operation: :uninstall, plugin_records: "Path = #{@extension}\n")
   assert status.success?, output
   refute_includes calls, "pluginkit|-r|#{@extension}"
   refute calls.any? { |line| line.start_with?('rm|-rf|') }
@@ -250,8 +250,13 @@ end
     File.exist?(@calls_path) ? File.readlines(@calls_path, chomp: true) : []
   end
 
-  def run_source(path, checks, records: '', plugin_records: '', input: '', interactive: false, temporary_directory: nil)
+  def run_source(path, checks, records: '', plugin_records: '', input: '', interactive: false, operation: :install, temporary_directory: nil)
     source = File.read(path)
+    if source.include?('run_install_operation() {')
+      branch = source[/^run_#{operation}_operation\(\) \{\n\(\n(.*?)\n# 外层统一负责交互/m, 1]
+      raise "缺少隔离分支 #{operation}" unless branch
+      source = 'manager_restart_finder() { /usr/bin/killall Finder "$@"; }' + "\n" + branch + "\nmain \"$@\"\n"
+    end
     raise '没有真实 main 入口' unless source.sub!(/^main "\$@"\s*\z/, '')
     REPLACEMENTS.each { |from, to| source = source.gsub(from, to) }
     # 只缩短轮询次数；状态匹配、退出码传播和 marker 逻辑保持原样。

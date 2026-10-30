@@ -11,6 +11,9 @@ import Darwin
 struct TerminalOpener {
     enum Action: String {
         case open
+        case fileContent = "file-content"
+        case fileMerge = "file-merge"
+        case fileSplit = "file-split"
         case podInstall = "pod-install"
         case flutterPubGet = "flutter-pub-get"
         case cleanBuildArtifacts = "clean-build-artifacts"
@@ -42,7 +45,13 @@ struct TerminalOpener {
     }
 
     func openTerminal(from fileURL: URL, action: Action) throws -> URL {
-        let standardizedURL = fileURL.standardizedFileURL
+        if action == .fileMerge || action == .fileSplit {
+            return try openFileVolumes(from: [fileURL], action: action)
+        }
+        if action == .fileContent, !dependencyProjectValidator.isFileContentTarget(at: fileURL) {
+            throw TerminalOpenError.terminalCommandFailed("请选择一个可读取的普通文件；不支持文件夹、链接、替身或特殊文件。")
+        }
+        let standardizedURL = action == .fileContent ? fileURL : fileURL.standardizedFileURL
         guard standardizedURL.isFileURL else {
             throw TerminalOpenError.unsupportedURL(fileURL)
         }
@@ -56,6 +65,9 @@ struct TerminalOpener {
 extension TerminalOpener {
     // 把可交互短命令与异步执行的私有脚本分开准备，目标路径只按字面量传递。
     func prepareTerminalRequest(directoryURL: URL, action: Action) throws -> PreparedTerminalRequest {
+        if action == .fileMerge || action == .fileSplit {
+            return try prepareFileVolumeRequest(urls: [directoryURL], action: action)
+        }
         let targetDirectoryURL = try terminalWorkingDirectory(from: directoryURL, action: action)
         let targetWord = terminalShellWord(targetDirectoryURL.path)
         let businessScript: String
@@ -68,6 +80,15 @@ extension TerminalOpener {
                 runtimeDirectoryURL: nil,
                 scriptURL: nil
             )
+        /// 文件正文不进入 AppleScript，交互确认与流式读取由打包脚本负责。
+        case .fileContent:
+            guard let scriptURL = Bundle.main.url(forResource: "ViewFileContent", withExtension: "zsh") else {
+                throw TerminalOpenError.terminalCommandFailed("缺少文件内容查看脚本，请重新构建或安装扩展。")
+            }
+            businessScript = try String(contentsOf: scriptURL, encoding: .utf8)
+        /// 多文件请求由完整选择专用入口准备。
+        case .fileMerge, .fileSplit:
+            throw TerminalOpenError.terminalCommandFailed("请从文件选择入口启动分卷操作。")
         /// Flutter 命令本身很短，继续在新终端中切目录后执行。
         case .flutterPubGet:
             return PreparedTerminalRequest(
@@ -96,6 +117,44 @@ extension TerminalOpener {
             businessScript = "cd -- \"$1\" || exit 1\n" + gitEmptyCommitPushCommand()
         }
 
+        return try preparePrivateScript(businessScript: businessScript, arguments: [targetDirectoryURL.path], action: action)
+    }
+
+    /// 多选参数只进入权限为 0600 的私有载体；Terminal 输入始终是一条短命令。
+    func prepareFileVolumeRequest(urls: [URL], action: Action) throws -> PreparedTerminalRequest {
+        guard action == .fileMerge || action == .fileSplit,
+              action == .fileMerge ? FileVolumeSelection.canMerge(urls) : FileVolumeSelection.canSplit(urls) else {
+            throw TerminalOpenError.terminalCommandFailed("合并须完整选中同一组分卷；拆分须选择一个普通文件。")
+        }
+        guard let scriptURL = Bundle.main.url(forResource: "FileVolumes", withExtension: "zsh") else {
+            throw TerminalOpenError.terminalCommandFailed("缺少分卷脚本，请重新构建或安装扩展。")
+        }
+        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        return try preparePrivateScript(
+            businessScript: script,
+            arguments: [action == .fileMerge ? "merge" : "split"] + urls.map(\.path),
+            action: action
+        )
+    }
+
+    func openFileVolumes(from urls: [URL], action: Action) throws -> URL {
+        _ = try terminalApplicationURL()
+        let request = try prepareFileVolumeRequest(urls: urls, action: action)
+        do {
+            if let executeAppleScript {
+                try executeAppleScript(terminalOpenAppleScript(), request.commandLine)
+            } else {
+                try runTerminalAppleScript(commandLine: request.commandLine)
+            }
+        } catch {
+            cleanupPreparedTerminalRequest(request)
+            throw error
+        }
+        activateTerminalWhenAvailable()
+        return urls[0].deletingLastPathComponent()
+    }
+
+    private func preparePrivateScript(businessScript: String, arguments: [String], action: Action) throws -> PreparedTerminalRequest {
         var directoryTemplate = Array(
             FileManager.default.temporaryDirectory
                 .appendingPathComponent("JobsTerminalOpener-XXXXXX", isDirectory: true)
@@ -114,7 +173,7 @@ extension TerminalOpener {
         )
 
         do {
-            let script = terminalScriptCleanupPrefix() + "\nset -- \(targetWord)\n" + businessScript + "\n"
+            let script = terminalScriptCleanupPrefix() + "\nset -- " + arguments.map(terminalShellWord).joined(separator: " ") + "\n" + businessScript + "\n"
             guard FileManager.default.createFile(
                 atPath: scriptURL.path,
                 contents: Data(script.utf8),
@@ -230,6 +289,13 @@ private extension TerminalOpener {
 
     func terminalWorkingDirectory(from fileURL: URL, action: TerminalOpener.Action) throws -> URL {
         switch action {
+        case .fileMerge, .fileSplit:
+            throw TerminalOpenError.terminalCommandFailed("分卷操作需要完整的文件选择。")
+        case .fileContent:
+            guard dependencyProjectValidator.isFileContentTarget(at: fileURL) else {
+                throw TerminalOpenError.terminalCommandFailed("请选择一个可读取的普通文件；不支持文件夹、链接、替身或特殊文件。")
+            }
+            return fileURL
         /// 普通打开终端时，文件或包文件使用父目录
         case .open:
             if let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),

@@ -24,6 +24,20 @@ enum BuildArtifactProjectKind: String {
 struct DependencyProjectValidator {
     private let fileManager = FileManager.default
 
+    /// 菜单与宿主只检查元数据；文件正文留在可交互终端中读取。
+    func isFileContentTarget(at fileURL: URL) -> Bool {
+        guard fileURL.isFileURL,
+              fileURL.host == nil || fileURL.host == "" || fileURL.host == "localhost",
+              let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey]),
+              values.isRegularFile == true,
+              values.isSymbolicLink != true,
+              values.isAliasFile != true,
+              fileManager.isReadableFile(atPath: fileURL.path) else {
+            return false
+        }
+        return true
+    }
+
     func isCocoaPodsProject(at directoryURL: URL) -> Bool {
         guard isOrdinaryDirectory(directoryURL),
               isRegularFile(directoryURL.appendingPathComponent("Podfile")),
@@ -348,5 +362,57 @@ private extension DependencyProjectValidator {
 
     func isRegularFile(_ url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey]) else { return false };return values.isRegularFile == true
+    }
+}
+
+/// Finder、宿主和终端共用同一分卷命名边界；不读取正文或扫描相邻文件。
+struct FileVolumeSelection {
+    static func canSplit(_ urls: [URL]) -> Bool {
+        urls.count == 1 && isOrdinaryFile(urls[0])
+    }
+
+    static func canMerge(_ urls: [URL]) -> Bool {
+        guard urls.count >= 2 else {
+            return false
+        }
+        var groupName: String?
+        var directory: String?
+        var groupTotal: Int?
+        var indices = Set<Int>()
+        for url in urls {
+            guard isOrdinaryFile(url),
+                  let match = url.lastPathComponent.range(of: "^(.+)@([0-9]{1,9})of([0-9]{1,9})$", options: .regularExpression) else {
+                return false
+            }
+            let filename = String(url.lastPathComponent[match])
+            guard let separator = filename.lastIndex(of: "@") else {
+                return false
+            }
+            let name = String(filename[..<separator])
+            let numbers = filename[filename.index(after: separator)...].components(separatedBy: "of")
+            guard numbers.count == 2, let index = Int(numbers[0]), let total = Int(numbers[1]),
+                  name != ".", name != "..", total == urls.count,
+                  index >= 1, index <= total,
+                  groupName == nil || groupName == name,
+                  groupTotal == nil || groupTotal == total,
+                  directory == nil || directory == url.deletingLastPathComponent().standardizedFileURL.path,
+                  indices.insert(index).inserted,
+                  let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+                  let size = values.fileSize, size > 0 else {
+                return false
+            }
+            groupName = name
+            groupTotal = total
+            directory = url.deletingLastPathComponent().standardizedFileURL.path
+        }
+        return indices.count == urls.count
+    }
+
+    private static func isOrdinaryFile(_ url: URL) -> Bool {
+        guard url.path.hasPrefix("/"), !url.path.utf8.contains(0),
+              !url.path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            return false
+        }
+        return DependencyProjectValidator().isFileContentTarget(at: url)
     }
 }

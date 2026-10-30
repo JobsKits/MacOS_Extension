@@ -12,11 +12,9 @@
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、使用入口](#jobs-toc-heading-2)
 - [二、安装与卸载](#jobs-toc-heading-3)
-  - [【MacOS】安装Flutter版本管理Finder扩展.command](#jobs-toc-heading-4)
-  - [【MacOS】卸载Flutter版本管理Finder扩展.command](#jobs-toc-heading-5)
-- [三、Flutter 项目识别](#jobs-toc-heading-6)
-- [四、终端行为与项目配置](#jobs-toc-heading-7)
-- [五、工程与项目配置支持](#jobs-toc-heading-8)
+- [三、Flutter 项目识别](#jobs-toc-heading-4)
+- [四、终端行为与项目配置](#jobs-toc-heading-5)
+- [五、工程与项目配置支持](#jobs-toc-heading-6)
 - [五、验证与排查](#verification-troubleshooting)
 
 </details>
@@ -30,7 +28,7 @@
 
 独立的 macOS Finder 右键扩展，为指定 [**Flutter**](https://flutter.dev/) 项目安装或切换 [**fvm**](https://fvm.app) 管理的 SDK。右键直接进入系统 Terminal，版本查询、[**Homebrew**](https://brew.sh/) 工具链体检和 [**fzf**](https://formulae.brew.sh/formula/fzf) 交互选择均在终端中进行；宿主仅在后台转交请求，不显示管理窗口或 Dock 图标。
 
-本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，源码、文档与版本由总仓统一管理。取得总仓即可获得本工程，无需单独远端或子模块下载；工程仍可独立构建、安装与卸载。
+本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，源码、文档与版本由总仓统一管理。取得总仓即可获得本工程，无需单独远端或子模块下载；旧源码工程仍可独立构建供调试，菜单由同仓聚合包管理。
 
 本地文档保留 `[toc]`，由总仓根目录的 [目录过滤器](../.jobs-markdown-toc/README.md) 统一管理；新克隆后在总仓根目录安装一次，整文件暂存时生成远端折叠目录。
 
@@ -38,7 +36,7 @@
 
 | 入口 | 行为 |
 | --- | --- |
-| 父目录的总安装器 | 勾选“安装/切换 Flutter SDK（FVM）”，构建并启用本功能 |
+| 父目录的总管理器 | 勾选“安装/切换 Flutter SDK（FVM）”，构建并启用本功能 |
 | [独立安装脚本](#jobs-toc-heading-4) | 只构建、注册并启用本工程 |
 | Finder 右键项目文件夹 | 选择“安装/切换 Flutter SDK（FVM）”进入终端 |
 | 直接运行 `JobsFlutterVersionMgr.app` | 在后台检查、注册和启用扩展，完成后退出；不打开 Terminal |
@@ -50,25 +48,21 @@
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与卸载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter版本管理Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】安装Flutter版本管理Finder扩展.command](./【MacOS】安装Flutter版本管理Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 独立构建、注册并启用本工程的“安装/切换 Flutter SDK（FVM）”Finder 扩展。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止，不自动改 `xcode-select`。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
-- 安装过程不下载 [**fvm**](https://fvm.app)、[**fzf**](https://formulae.brew.sh/formula/fzf) 或 Flutter SDK，这些由右键动作在终端中另行确认。日志为系统临时目录中的 `JobsFlutterVersionMgrInstall.log`。
+本入口转交 [JobsFlutterTools](../JobsFlutterTools/README.md)，只管理 `sdk-manage`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-### <span id="jobs-toc-heading-5" data-jobs-toc="v2">[【MacOS】卸载Flutter版本管理Finder扩展.command](./【MacOS】卸载Flutter版本管理Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-> **目的：** 停用、注销本功能的 Finder 菜单，并移除已登记的自有 App 构建产物。
+安装日志为系统临时目录中的 `JobsFlutterToolsInstall.log`；卸载日志为聚合管理入口同名 `.log`，以面板底部日志为准。
 
-- 阅读内置自述并回车，核对真实注册路径与待删除的自有 App；必须输入 `YES` 才继续，其它输入取消，非交互输入直接退出。
-- 只删除 Bundle ID 双重核验通过的 `JobsFlutterVersionMgr.app`；保留工程源码、项目 `.fvmrc`、SDK 缓存与工具链。
-- 日志为系统临时目录中的 `【MacOS】卸载Flutter版本管理Finder扩展.log`。
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
-## <span id="jobs-toc-heading-6" data-jobs-toc="v2">三、Flutter 项目识别 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、Flutter 项目识别 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 仅对单个真实普通文件夹显示菜单，也支持该项目目录的 Finder 空白处右键。多选、普通文件、应用文件包、别名和符号链接不作为目标。只检查所选目录根层的 `pubspec.yaml`，不递归查找项目。
 
@@ -88,7 +82,7 @@ dependencies: {flutter: {sdk: flutter}}
 
 验证器采用保守的清单结构识别，拒绝含歧义的重复依赖键；复杂 YAML 锚点、多文档或跨行 flow 映射不属于原生菜单支持范围。遇到这种清单，可先改为上述标准块格式。
 
-## <span id="jobs-toc-heading-7" data-jobs-toc="v2">四、终端行为与项目配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、终端行为与项目配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 业务脚本先展示内置自述与影响范围，执行只读检查后，按实际缺失或损坏的依赖提供安装与修复。已有健康工具复用；查询历史与最新 Flutter 发布版本后通过 fzf 选择。取消选择不会切换项目版本。
 
@@ -101,7 +95,7 @@ FVM 属于电脑工具，项目通过 `.fvmrc` 记录指定 SDK 版本；`.fvm/`
 
 选定版本后先查看目标和影响文件，最终确认提示为“👉 直接回车执行安装 / 切换；输入任意内容后回车取消：”。直接回车执行，任意非空输入（包括空格）取消；之后按终端提示准备所选 SDK、设置项目 FVM 版本并校验结果。不会改变全局 Flutter 默认版本。其它项目继续使用各自配置。
 
-## <span id="jobs-toc-heading-8" data-jobs-toc="v2">五、工程与项目配置支持 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、工程与项目配置支持 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```text
 ./
@@ -111,12 +105,11 @@ FVM 属于电脑工具，项目通过 `.fvmrc` 记录指定 SDK 版本；`.fvm/`
 ├── JobsFlutterShared/                # 项目识别与请求类型
 ├── Scripts/                         # 版本管理和构建后挂载脚本
 ├── Tests/                           # 隔离验证
-├── 【MacOS】安装Flutter版本管理Finder扩展.command
-├── 【MacOS】卸载Flutter版本管理Finder扩展.command
+├── 【MacOS】管理Flutter版本管理Finder扩展.command
 └── work/                            # 本工程独立构建时的本地产物（忽略）
 ```
 
-`Scripts/` 的实际入口与依赖见 [脚本说明](./Scripts/README.md)。总安装器的构建产物放在总仓 `work/`，本工程独立安装入口使用本工程 `work/`；产物承担系统注册路径，清理前先停用并注销对应扩展。
+`Scripts/` 的实际入口与依赖见 [脚本说明](./Scripts/README.md)。总管理器的构建产物放在总仓 `work/`，本工程独立安装入口使用本工程 `work/`；产物承担系统注册路径，清理前先停用并注销对应扩展。
 
 | 项目项 | 当前值 |
 | --- | --- |
@@ -147,7 +140,7 @@ ruby ./Tests/FlutterVersionCommandTests.rb
 
 这项测试需要 [**Ruby**](https://www.ruby-lang.org/) / Minitest 与系统 JXA，使用私有假工具覆盖依赖链、版本列表、离线缓存、取消、配置快照、并发改动、失败对齐及 SDK 核验，不安装 Homebrew、FVM、fzf 或真实 Flutter SDK。
 
-总安装器的映射与集成测试见 [FlutterInstallerIntegrationTests.rb](../Tests/FlutterInstallerIntegrationTests.rb)；只复制本工程目录独立使用时，运行本工程的终端业务与原生行为测试。
+总管理器的映射与集成测试见 [FlutterInstallerIntegrationTests.rb](../Tests/FlutterInstallerIntegrationTests.rb)；只复制本工程目录独立使用时，运行本工程的终端业务与原生行为测试。
 
 | 现象 | 排查 |
 | --- | --- |

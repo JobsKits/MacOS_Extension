@@ -23,6 +23,14 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理IPA免编译重签Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
 在 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 中只选中一个普通 `.ipa` 文件，右键选择“IPA 免编译重签”，再到 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 阅读说明并回车。所选 IPA 自动传入，后续关联工程、选择设备、检查签名材料并重签；通过最终验证后覆盖原 IPA，再询问是否安装到设备。
 
 由 Jobs 维护，当前为 [MacOS@Extension](../README.md) 中的独立功能目录；有自己的工程、Scheme、宿主、扩展及安装 / 卸载入口，不新增独立 [**Git**](https://git-scm.com/) 仓库。重签业务完整打包在 App 内，安装后不依赖原 `JobsCommand@iOS` 目录。
@@ -53,17 +61,17 @@
 
 1、准备 [**macOS**](https://www.apple.com/macos/) 12.0+ 和完整 [**Xcode**](https://developer.apple.com/xcode)，完成首次启动组件配置；重签及设备安装还要求 `xcrun` 能找到可用的 `otool`、`devicectl`。安装器不下载 Xcode，也不修改 `xcode-select`。
 
-2、双击[安装入口](./【MacOS】安装IPA免编译重签Finder扩展.command)。阅读自述后直接回车安装；任意非空输入跳过，`Ctrl+C` 或输入结束取消。也可从[总安装面板](../README.md)单独勾选本功能，功能标识为 `ipa-resign`。
+2、双击[管理入口（安装模式）](./【MacOS】管理IPA免编译重签Finder扩展.command)。阅读自述并回车，选择安装 / 更新后立即执行，无需终端二次确认。也可从[总管理面板](../README.md)单独勾选本功能，功能标识为 `ipa-resign`。
 
 3、安装器构建当前工程，核验宿主 / 扩展身份及签名，精确注销同 ID 的旧副本登记，注册当前产物并刷新 Finder。安装本身不重签 IPA，也不安装手机 App；旧副本的 App 文件保留。
 
 4、仅选中一个普通 `.ipa` 后右键。首次派发按系统提示允许宿主控制 Terminal；若菜单未出现，在系统设置的 Finder 扩展中检查 `JobsIPAResigner` 是否启用。
 
-独立安装的产物位于 `./work/DerivedData/Build/Products/Debug/JobsIPAResigner.app`，系统从该位置加载扩展，安装后请保留。总安装器使用上级 `work/` 中本功能对应的构建目录；两种入口处理同一个扩展 ID。
+独立安装的产物位于 `./work/DerivedData/Build/Products/Debug/JobsIPAResigner.app`，系统从该位置加载扩展，安装后请保留。总管理器使用上级 `work/` 中本功能对应的构建目录；两种入口处理同一个扩展 ID。
 
 ### 2.2、<span id="uninstall">卸载影响与确认</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-双击[卸载入口](./【MacOS】卸载IPA免编译重签Finder扩展.command)，先回车查看待处理路径，再输入精确 `YES` 才停用、注销并移除已登记的本功能 App，随后刷新 Finder。其它输入取消；删除前复核 App 名称、Bundle ID 和真实目录类型。
+双击[管理入口（卸载模式）](./【MacOS】管理IPA免编译重签Finder扩展.command)，先阅读自述并回车，选择卸载模式后立即停用、注销并移除已登记的本功能 App，随后刷新 Finder，不要求终端二次确认；删除前复核 App 名称、Bundle ID 和真实目录类型。
 
 卸载保留源码、原独立脚本及已经重签的 IPA；不会恢复旧 IPA、撤销签名或卸载手机上的 App。Finder 会在安装 / 卸载时刷新，文件操作请先完成。
 
@@ -108,8 +116,7 @@ flowchart TD
 ├── JobsIPAResignShared/             # 普通 IPA 校验、URL 数据与系统工厂
 ├── Scripts/                        # 完整重签脚本、构建后注册、就近说明
 ├── Tests/                          # 菜单、参数传递与安装登记隔离回归
-├── 【MacOS】安装IPA免编译重签Finder扩展.command
-└── 【MacOS】卸载IPA免编译重签Finder扩展.command
+└── 【MacOS】管理IPA免编译重签Finder扩展.command
 ```
 
 | 配置项 | 当前值（依据工程与源码，2026-10-23） |

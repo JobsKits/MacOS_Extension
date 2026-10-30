@@ -10,6 +10,9 @@ import Foundation
 
 enum FinderMenuFeature: String, CaseIterable {
     case open
+    case fileContent = "file-content"
+    case fileMerge = "file-merge"
+    case fileSplit = "file-split"
     case podInstall = "pod-install"
     case flutterPubGet = "flutter-pub-get"
     case cleanBuildArtifacts = "clean-build-artifacts"
@@ -21,6 +24,14 @@ enum FinderMenuFeature: String, CaseIterable {
         /// 对任意单个本地文件或文件夹提供终端入口
         case .open:
             return "用终端打开 —— 任意单个本地文件或文件夹"
+        case .fileContent:
+            return "用终端查看文件内容 —— 单个普通文件，大文件确认后读取"
+        /// 仅完整选中同一组分卷时提供合并。
+        case .fileMerge:
+            return "合并分卷 —— 多选同一完整分卷组"
+        /// 仅普通单文件可拆分，原文件始终保留。
+        case .fileSplit:
+            return "拆分文件 —— 单个普通文件"
         /// 同层存在工程包和 Podfile 时提供原生安装命令
         case .podInstall:
             return "Pod Install 兼容入口 —— 菜单已归入 iOS / CocoaPods 辅助工具"
@@ -52,8 +63,9 @@ struct FinderMenuFeatureConfiguration {
         }
 
         guard let configuredValue = fallbackBundle.object(forInfoDictionaryKey: infoDictionaryKey) as? String else {
-            return Set(FinderMenuFeature.allCases)
-        };return features(from: configuredValue)
+            return Set(FinderMenuFeature.allCases).subtracting([.fileMerge, .fileSplit])
+        }
+        return features(from: configuredValue)
     }
 
     static func save(_ features: Set<FinderMenuFeature>) throws {

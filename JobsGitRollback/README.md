@@ -22,7 +22,7 @@
 
 在 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 的“Git操作 → Git 提交回退”中打开 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac)，选择当前 [**Git**](https://git-scm.com/) 工作树的回退模式和目标。macOS 12 或更新系统，安装需要完整 [**Xcode**](https://developer.apple.com/xcode/)，运行需要健康 Git 和 [**fzf**](https://github.com/junegunn/fzf)；不自动安装依赖。
 
-本目录归 [MacOS@Extension](../README.md) 统一管理，无独立 Git 仓库。菜单由 [JobsProjectTools](../JobsProjectTools/README.md) 聚合，本目录两个入口只启停 `git-rollback` 单项；Windows 对应包见[双端目录](../../WindowsOS@Extension/JobsGitRollback/README.md)。
+本目录归 [MacOS@Extension](../README.md) 统一管理，无独立 Git 仓库。菜单由 [JobsProjectTools](../JobsProjectTools/README.md) 聚合，本目录唯一管理入口只启停 `git-rollback` 单项；Windows 对应包见[双端目录](../../WindowsOS@Extension/JobsGitRollback/README.md)。
 
 | 模式 | 目标与效果 |
 | --- | --- |
@@ -43,9 +43,19 @@
 
 ## 二、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-双击[安装入口](./【MacOS】安装Git提交回退Finder扩展.command)启用统一菜单里的本项；[卸载入口](./【MacOS】卸载Git提交回退Finder扩展.command)仅关闭本项。也可在[总安装面板](../【MacOS】🧩安装Finder扩展.command)勾选。请保留完整 `MacOS@Extension` 目录，不能只带走本功能目录。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Git提交回退Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-转发入口复用统一安装器内置自述和确认。统一包保留其它已启用项目；最后一项关闭才停用整个统一扩展。安装、卸载均不对任何目标仓库执行 reset。产物与日志位置、扩展登记及 Finder 刷新见[统一包说明](../JobsProjectTools/README.md)的“安装与逐项启停”。本目录的 Xcode 工程可独立构建供调试；正常安装使用统一包，避免重复“Git操作”菜单。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+本入口转交 [JobsProjectTools](../JobsProjectTools/README.md)，只管理 `git-rollback`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
+
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
+
+诊断保留在终端；聚合工程的构建、配置与登记边界见包说明。
+
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 三、<span id="operation">操作、确认与恢复边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

@@ -11,8 +11,6 @@
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、安装与卸载](#install)
-  - [【MacOS】安装Flutter运行Finder扩展.command](#jobs-toc-heading-3)
-  - [【MacOS】卸载Flutter运行Finder扩展.command](#jobs-toc-heading-4)
 - [二、运行与环境](#use)
 - [三、后台、日志与停止](#lifecycle)
 - [四、目录与实现边界](#structure)
@@ -45,31 +43,27 @@
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter运行Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装Flutter运行Finder扩展.command](./【MacOS】安装Flutter运行Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 独立构建、注册并启用本工程的“从终端运行 Flutter 项目”Finder 扩展。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；也可使用父仓安装面板勾选“从终端运行 Flutter 项目”。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；安装器会构建、启用本扩展并重启 Finder，确认前显示影响范围。
-- 构建产物固定在 `./work/DerivedData/Build/Products/Debug/`。安装过程不运行目标 Flutter 项目、不安装 SDK；日志为系统临时目录中的 `JobsFlutterRunnerInstall.log`。
+本入口转交 [JobsFlutterTools](../JobsFlutterTools/README.md)，只管理 `run`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载Flutter运行Finder扩展.command](./【MacOS】卸载Flutter运行Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-> **目的：** 停用、注销本功能的 Finder 菜单，并移除已登记的自有 App 构建产物。
+安装日志为系统临时目录中的 `JobsFlutterToolsInstall.log`；卸载日志为聚合管理入口同名 `.log`，以面板底部日志为准。
 
-- 阅读内置自述并回车，先展示真实注册路径，输入 `YES` 才移除经 Bundle ID 核验的 App 并刷新 Finder。
-- 只移除菜单与宿主，不停止已经独立运行的 Flutter 会话；卸载前先按[第三章](#lifecycle)方式输入 `s` 停止。
-- 保留工程源码、会话日志与用户数据。日志为系统临时目录中的 `【MacOS】卸载Flutter运行Finder扩展.log`。
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 二、<span id="use">运行与环境</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-需要 macOS 12.0 及以上、完整 [**Xcode**](https://developer.apple.com/xcode/)、可用 Flutter SDK，以及目标设备对应的平台工具。iOS 使用当前 Xcode 的 `xcrun simctl`；不会自动运行 `brew install`、安装 Xcode runtime 或修改 `xcode-select`。Android 设备需已通过 Flutter 自身的工具链检查；AVD 需预先在 Android Studio Device Manager 中配置。
+需要 macOS 12.0 及以上、完整 [**Xcode**](https://developer.apple.com/xcode/)、可用 Flutter SDK，以及目标设备对应的平台工具。iOS 使用当前 Xcode 的 `xcrun simctl`；不会自动运行 `brew install`、安装 Xcode runtime 或修改 `xcode-select`。Android 支持启动已有 AVD，或缺失时内置选择型号、系统镜像、确认下载和创建；创建需要可用 Java 与 SDK Command-line Tools，详见[Android 初始化与运行](./Scripts/README.md#runtime)。
 
 1、在 Finder 右键单个真实 Flutter 项目文件夹，或进入该项目后右键空白处，点击“从终端运行 Flutter 项目”。宿主为 `LSUIElement` 后台进程，不创建管理窗口或 Dock 图标；Terminal 转发完成后退出。
 
-2、在终端阅读自述后回车继续，非空输入取消；用 `↑/↓` 选择实际设备，回车确认，`Esc` 取消（未安装 fzf 时回退为输入编号）。设备按项目已有的 `ios/`、`android/`、`macos/`、`web/` 等平台目录过滤。设备列表为空时可重新加载；有 `ios/` 才提供 iOS 模拟器入口，有 `android/` 才提供已有 Android AVD 启动入口。iOS 缺 runtime 时按明确提示先在 Xcode 安装，再重新加载。
+2、在终端阅读自述后回车继续，非空输入取消；用 `↑/↓` 选择实际设备，回车确认，`Esc` 取消（未安装 fzf 时回退为输入编号）。设备按项目已有的 `ios/`、`android/`、`macos/`、`web/` 等平台目录过滤。设备列表为空时可重新加载；有 `ios/`、`android/` 才分别提供“启动已有 / 缺失时初始化”入口。Android 子层支持 `←` 返回，优先复用已装镜像，最终确认才下载和创建，不覆盖已有 AVD；等待精确目标开机及被 Flutter 识别后继续。iOS 缺 runtime 时按明确提示先在 Xcode 安装，再重新加载。
 
 3、查看实时日志。输入 `r` 热重载、`R` 热重启、`s` 停止、`d` 离开；构建阶段尚无 Flutter appId 时，热重载会提示稍后重试。终端关闭不作为停止信号。
 
@@ -116,8 +110,7 @@ FIFO 控制通道使用读写模式的保活 fd，Flutter stdin 单独以只读�
 ├── Tests/FlutterRunnerShellTests.rb             # 运行 / 后台生命周期隔离检查
 ├── Tests/FlutterRunnerJSONTests.rb              # JSON、YAML、设备与 plist 参数检查
 ├── Tests/FlutterRunLaunchdSmoke.rb              # 真 launchd + 假 Flutter 的断连存活检查
-├── 【MacOS】安装Flutter运行Finder扩展.command      # 独立安装入口（裸露双击脚本）
-└── 【MacOS】卸载Flutter运行Finder扩展.command      # 精确卸载入口（裸露双击脚本）
+└── 【MacOS】管理Flutter运行Finder扩展.command
 ```
 
 Finder 在显示菜单和点击时分别检查项目，避免菜单打开后切换路径误执行。URL scheme 为 `jobsflutterrunner://run`，路径只作为数据参数；重复、畸形及含 NUL 的 URL 拒绝。终端请求载体使用私有目录与权限，路径中的空格、引号、反斜线、控制符均按数据转义；后台启动前再保存会话脚本，载体清理不影响 Worker。
@@ -181,6 +174,7 @@ xcrun swiftc \
   -o ./work/FlutterRunTransportTests
 ./work/FlutterRunTransportTests
 ruby ./Tests/FlutterRunnerShellTests.rb
+ruby ./Tests/FlutterRunnerAndroidTests.rb
 ruby ./Tests/FlutterRunnerJSONTests.rb
 ruby ./Tests/FlutterRunnerLogTests.rb
 ruby ../Tests/FlutterInstallerIntegrationTests.rb
@@ -207,7 +201,7 @@ ruby ./Tests/FlutterRunLaunchdSmoke.rb
 | `Failed to index parameter type` / `Failed to check availability in Spotlight` | 若主体为 `WF*`、`ActionKit`、`is.workflow.actions.*`，属于 macOS 快捷指令索引诊断。运行器折叠为一条系统提示，完整内容仍在 `run.log`；索引末尾 `Errored: 0` 只表示该索引过程的结果，不代表 Flutter 已构建成功。 |
 | 长时间停在 `Fetching from …SwiftyGif.git` 等依赖地址 | Flutter 正在等待 Xcode 的 Swift Package Manager 取包。Flutter 3.44 起默认启用并自动迁移，首次运行会下载插件的原生依赖，见[官方说明](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers)。检查该会话的 Flutter、`xcodebuild -resolvePackageDependencies` 与 Git 子进程及后续日志；有存活进程且无最终退出码时，不能凭系统索引消息判定构建失败。 |
 | `Target Integrity`：部署目标低于 15.0 | 新版 Xcode 要求 iOS 部署目标至少 15.0。项目 `Runner` 侧会由 Flutter 自动升级，但 `ios/Podfile` 的 `post_install` 里若显式写了 `IPHONEOS_DEPLOYMENT_TARGET = '13.0'`，生成的 `Pods.xcodeproj` 仍会是 13.0 并导致构建失败。把该值改为 `'15.0'`，再 `cd ios && pod install` 重新生成 Pods 即可；`pod install` 关于 base configuration 的提示在 Flutter 项目中通常可忽略。 |
-| 卸载 | 使用[独立卸载脚本](#jobs-toc-heading-4)，先展示路径，输入 `YES` 才移除经 Bundle ID 核验的 App 并刷新 Finder。 |
+| 卸载 | 使用[本功能管理入口](./【MacOS】管理Flutter运行Finder扩展.command)，选定卸载后立即执行，移除经 Bundle ID 核验的 App 并刷新 Finder，无需终端二次确认。 |
 
 验证日期：2026-10-21。Debug 原生构建、App / appex 深度签名、两份业务资源逐字节核对、路径 / URL / 私有载体检查通过；父安装映射 19 项 / 108 断言，运行 Shell 39 项 / 192 断言，JSON helper 28 项 / 323 断言均通过。真实 launchd 配合假 Flutter 的入口退出、HUP 存活、日志增长、崩溃后重新运行、重连、热重载与停止通过；该冒烟测试需要当前桌面登录会话的 `launchctl bootstrap gui/<UID>` 权限，非 GUI 上下文会按设计提示失败。隔离构建自动产生的临时 LaunchServices / PlugInKit 登记已精确注销，该隔离测试阶段未启用此扩展或打开宿主，也不安装 SDK 或触碰用户项目。安装后的真实应用运行补验见下段；Finder 菜单实际点击及新建模拟器未做本轮自动化验收。
 

@@ -149,18 +149,20 @@ class GitRollbackCommandTests < Minitest::Test
     assert_equal @head, git('rev-parse', 'HEAD').strip
   end
 
-  def test_individual_installers_forward_only_rollback_feature
+  def test_individual_manager_forwards_only_rollback_feature
     feature = File.join(@root, 'MacOS@Extension', 'JobsGitRollback')
-    aggregate = File.join(@root, 'MacOS@Extension', 'JobsProjectTools')
+    aggregate = File.join(@root, 'MacOS@Extension', 'JobsProjectTools', 'Scripts')
     FileUtils.mkdir_p([feature, aggregate])
-    %w[安装 卸载].each do |mode|
-      entry = File.join(feature, "【MacOS】#{mode}Git提交回退Finder扩展.command")
-      original = File.expand_path("../【MacOS】#{mode}Git提交回退Finder扩展.command", __dir__)
-      FileUtils.cp(original, entry)
-      target = File.join(aggregate, "【MacOS】#{mode}项目工具Finder扩展.command")
-      File.write(target, "print -r -- \"$1\"\nexit 7\n")
-      output, status = Open3.capture2e('/bin/zsh', entry)
-      assert_equal "git-rollback\n", output
+    entry = File.join(feature, 'Scripts/ManageExtension.zsh')
+    original = File.expand_path('../Scripts/ManageExtension.zsh', __dir__)
+    FileUtils.mkdir_p(File.dirname(entry))
+    FileUtils.cp(original, entry)
+    target = File.join(aggregate, 'ManageProjectTools.zsh')
+    FileUtils.mkdir_p(File.dirname(target))
+    File.write(target, "print -r -- \"${(j:|:)@}\"\nexit 7\n")
+    %w[install uninstall].each do |operation|
+      output, status = Open3.capture2e('/bin/zsh', entry, '--action', operation, '--non-interactive')
+      assert_includes output, "#{operation}|git-rollback"
       assert_equal 7, status.exitstatus
     end
   end

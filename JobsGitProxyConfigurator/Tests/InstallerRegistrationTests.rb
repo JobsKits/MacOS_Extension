@@ -10,8 +10,8 @@ require 'fileutils'
 
 class InstallerRegistrationTests < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
-  INSTALLER = File.join(ROOT, '【MacOS】安装Git动态代理Finder扩展.command')
-  UNINSTALLER = File.join(ROOT, '【MacOS】卸载Git动态代理Finder扩展.command')
+  INSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
+  UNINSTALLER = File.join(ROOT, 'Scripts/ManageExtension.zsh')
   HELPER = File.join(ROOT, 'Scripts/EnableFinderExtension.zsh')
   APP_ID = 'com.jobs.gitproxyconfigurator'
   EXTENSION_ID = "#{APP_ID}.findersync"
@@ -84,30 +84,39 @@ class InstallerRegistrationTests < Minitest::Test
     assert_includes output, 'killall Finder exit=9'
   end
 
-  def test_legacy_entry_points_forward_only_the_selected_menu_and_cli_flags
-    %w[安装 卸载].each do |operation|
+  def test_manager_forwards_only_the_selected_menu_and_restart_policy
+    %w[install uninstall].each do |operation|
       directory = File.join(@directory, 'JobsGitProxyConfigurator')
-      group = File.join(@directory, 'JobsProjectTools')
+      group = File.join(@directory, 'JobsProjectTools', 'Scripts')
       FileUtils.mkdir_p([directory, group])
-      entry = File.join(directory, "【MacOS】#{operation}Git动态代理Finder扩展.command")
-      FileUtils.cp(operation == '安装' ? INSTALLER : UNINSTALLER, entry)
-      target = File.join(group, "【MacOS】#{operation}项目工具Finder扩展.command")
-      File.write(target, "#!/bin/zsh\nprint -r -- \"${(j:|:)@}\"\n")
-      flag = operation == '安装' ? '--install' : '--uninstall'
-      output, status = Open3.capture2e('/bin/zsh', entry, flag, '--skip-finder-restart')
+      entry = File.join(directory, 'Scripts/ManageExtension.zsh')
+      FileUtils.mkdir_p(File.dirname(entry))
+      FileUtils.cp(INSTALLER, entry)
+      target = File.join(group, 'ManageProjectTools.zsh')
+      FileUtils.mkdir_p(File.dirname(target))
+      File.write(target, "#!/bin/zsh\nprint -r -- \"forward:${(j:|:)@}|restart=$JOBS_SKIP_FINDER_RESTART\"\n")
+      output, status = Open3.capture2e('/bin/zsh', entry, '--action', operation, '--non-interactive', '--skip-finder-restart')
       assert status.success?, output
-      assert_equal "git-proxy-configure|#{flag}|--skip-finder-restart", output.strip
+      assert_includes output, "forward:#{operation}|git-proxy-configure|restart=1"
       assert_empty calls
     end
   end
 
-  def test_group_installer_requires_tty_without_explicit_cli_authorization
-    entry = File.join(ROOT, '..', 'JobsProjectTools', '【MacOS】安装项目工具Finder扩展.command')
-    output, status = Open3.capture2e('/bin/zsh', entry, 'git-proxy-configure', stdin_data: "\n")
-    refute status.success?, output
-    assert_includes output, '请在可交互终端运行'
-    assert_empty calls
-  end
+def test_group_manager_non_tty_opens_gui_without_installing
+  entry = File.join(ROOT, '..', 'JobsProjectTools', 'Scripts/ManageExtension.zsh')
+  source = File.read(entry).sub(/^manager_main "\$@"\s*\z/, '')
+  source += <<~'ZSH'
+    manager_open_gui() { print -r -- OPEN_GUI; }
+    run_install_operation() { return 99; }
+    run_uninstall_operation() { return 99; }
+    manager_main --action install --features git-proxy-configure
+  ZSH
+  output, status = Open3.capture2e('/bin/zsh', '-c', source, entry)
+  assert status.success?, output
+  assert_includes output, 'OPEN_GUI'
+  assert_empty calls
+end
+
 
   private
 

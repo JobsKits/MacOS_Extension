@@ -1,0 +1,151 @@
+#!/bin/zsh
+# shell: zsh
+# App 是公开管理入口；只接受面板操作与范围，不接受后台执行开关。
+launch_management_error() {
+  print -u2 -r -- "$1"
+  /usr/bin/osascript - "$1" <<'APPLESCRIPT'
+on run arguments
+  display alert "Finder 扩展管理器无法启动" message (item 1 of arguments) as critical buttons {"好"} default button "好"
+end run
+APPLESCRIPT
+  return 2
+}
+# App 可能被系统从临时目录运行；让用户明确选择外置脚本所在目录。
+choose_management_package() {
+  /usr/bin/osascript - "$1" "$2" <<'APPLESCRIPT'
+on run arguments
+  try
+    set packageFolder to choose folder with prompt ("无法在 App 运行位置找到内部管理器，系统可能隔离了 App 路径。请选择同时包含「" & (item 1 of arguments) & "」和 Scripts 的原始文件夹。" & return & "已查找：" & (item 2 of arguments))
+    return POSIX path of packageFolder
+  on error messageText number errorNumber
+    if errorNumber is -128 then return ""
+    error messageText number errorNumber
+  end try
+end run
+APPLESCRIPT
+}
+# 同名 App 与准确的 worker 必须属于同一个包，不搜索其它机器或旧副本。
+validate_management_package() {
+  local package_root="$1" application_name="$2" worker_name="$3"
+  [[ -f "$package_root/$application_name/Contents/MacOS/LaunchManager" && -f "$package_root/Scripts/$worker_name" && -r "$package_root/Scripts/$worker_name" ]]
+}
+# App 已独立于启动终端；只关闭该 tty 上已无任何进程的完成页。
+close_completed_launcher_terminal() {
+  local terminal_tty="$1"
+  [[ "$terminal_tty" == /dev/tty* && "$terminal_tty" != *$'\n'* ]] || return 0
+  /usr/bin/osascript - "$terminal_tty" >/dev/null 2>&1 <<'APPLESCRIPT' &!
+on run arguments
+  set launchTTY to item 1 of arguments
+  repeat 100 times
+    if application "Terminal" is not running then return
+    tell application "Terminal"
+      repeat with targetWindow in windows
+        repeat with targetTab in tabs of targetWindow
+          if tty of targetTab is launchTTY then
+            if not busy of targetTab and (count of processes of targetTab) is 0 then
+              try
+                set terminalDevice to text 6 thru -1 of launchTTY
+                set ttyProcessIDs to my terminal_process_ids(terminalDevice)
+                if ttyProcessIDs is "" then
+                  close targetTab
+                  return
+                end if
+              on error
+                return
+              end try
+            end if
+          end if
+        end repeat
+      end repeat
+    end tell
+    delay 0.1
+  end repeat
+end run
+on terminal_process_ids(terminalDevice)
+  return do shell script "/bin/ps -t " & quoted form of terminalDevice & " -o pid= 2>/dev/null; result=$?; if [ $result -le 1 ]; then exit 0; else exit $result; fi"
+end terminal_process_ids
+APPLESCRIPT
+}
+# 所有参数作为数组透传，中文、空格与 Shell 特殊字符不会被再次解释。
+launch_management_app() {
+  local application_root="${ZSH_ARGZERO:A:h:h:h}" entry="" option="" terminal_tty=""
+  local package_root="" selected_root="" diagnose_paths=0
+  local arguments=()
+  entry="${application_root:h}/Scripts/ManageFinderExtensions.zsh"
+  while (( $# > 0 )); do
+    option="$1"
+    case "$option" in
+      --package-root)
+        (( $# >= 2 )) && [[ -n "$2" && -z "$package_root" ]] || { launch_management_error '包目录不能为空或重复。'; return 2; }
+        package_root="${2:A}"
+        shift 2
+        ;;
+      --diagnose-paths)
+        diagnose_paths=1
+        shift
+        ;;
+      --launcher-tty)
+        (( $# >= 2 )) && [[ "$2" == /dev/tty* ]] || { launch_management_error '启动终端标识无效。'; return 2; }
+        terminal_tty="$2"
+        shift 2
+        ;;
+      --action)
+        (( $# >= 2 )) && [[ "$2" == install || "$2" == uninstall ]] || { launch_management_error '操作必须是 install 或 uninstall。'; return 2; }
+        arguments+=(--action "$2")
+        shift 2
+        ;;
+      --scope|--features)
+        (( $# >= 2 )) && [[ -n "$2" ]] || { launch_management_error '功能范围不能为空。'; return 2; }
+        if [[ "$option" == --features && "${entry:t}" == ManageExtension.zsh ]]; then
+          arguments+=(--features "$2")
+        else
+          arguments+=(--scope "$2")
+        fi
+        shift 2
+        ;;
+      --scope=*|--features=*)
+        [[ -n "${option#*=}" ]] || { launch_management_error '功能范围不能为空。'; return 2; }
+        if [[ "$option" == --features=* && "${entry:t}" == ManageExtension.zsh ]]; then
+          arguments+=(--features "${option#*=}")
+        else
+          arguments+=(--scope "${option#*=}")
+        fi
+        shift
+        ;;
+      --action=*)
+        [[ "${option#*=}" == install || "${option#*=}" == uninstall ]] || { launch_management_error '操作必须是 install 或 uninstall。'; return 2; }
+        arguments+=(--action "${option#*=}")
+        shift
+        ;;
+      *) launch_management_error "不支持的面板参数：$option"; return 2 ;;
+    esac
+  done
+  [[ -n "$package_root" ]] || package_root="${application_root:h}"
+  entry="$package_root/Scripts/${entry:t}"
+  if (( diagnose_paths )); then
+    print -l -r -- "App运行路径：$application_root" "包目录：$package_root" "内部管理器：$entry"
+    if validate_management_package "$package_root" "${application_root:t}" "${entry:t}"; then
+      print -r -- '路径校验：通过'
+      return 0
+    fi
+    print -r -- '路径校验：失败；请选择同时包含同名 App 与 Scripts 的目录。'
+    return 2
+  fi
+  if ! validate_management_package "$package_root" "${application_root:t}" "${entry:t}"; then
+    selected_root="$(choose_management_package "${application_root:t}" "$entry")" || return 2
+    [[ -n "$selected_root" ]] || return 130
+    package_root="${selected_root:A}"
+    entry="$package_root/Scripts/${entry:t}"
+    validate_management_package "$package_root" "${application_root:t}" "${entry:t}" || {
+      launch_management_error "所选目录缺少同名 App 或可读的内部管理器。实际查找：$entry"
+      return 2
+    }
+  fi
+  [[ -z "$terminal_tty" ]] || close_completed_launcher_terminal "$terminal_tty"
+  exec /bin/zsh "$entry" --gui-session "${arguments[@]}"
+}
+# 只打开管理面板；安装与卸载等待用户在 GUI 点击操作按钮。
+main() {
+  launch_management_app "$@" # 校验面板参数并调用内部引导器，不运行终端。
+}
+main "$@"

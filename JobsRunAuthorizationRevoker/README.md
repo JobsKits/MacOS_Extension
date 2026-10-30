@@ -9,8 +9,7 @@
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、安装与卸载](#installation)
-  - [【MacOS】安装解除运行授权Finder扩展.command](#jobs-toc-heading-3)
-  - [【MacOS】卸载解除运行授权Finder扩展.command](#jobs-toc-heading-4)
+  - [【MacOS】管理解除运行授权Finder扩展.command](#jobs-toc-heading-3)
 - [二、操作与独立调用](#usage)
 - [三、工程结构与分发](#layout)
 - [四、验证与排查](#verification)
@@ -22,12 +21,12 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**选中一个可执行格式文件 → 右键“🔒 解除运行授权” → Terminal 核对路径并回车 → 清除该文件所有执行位。** 由 Jobs 维护，当前状态：维护中。
+**选中一个可执行格式文件 → 右键“🔓 解除运行授权” → Terminal 核对路径并回车 → 清除该文件所有执行位。** 由 Jobs 维护，当前状态：维护中。
 
 | 能力 | 当前行为 |
 | --- | --- |
 | 显示范围 | 仅单个脚本或原生可执行文件；普通文档（即使有执行位）、目录、应用包、符号链接、多选和空白菜单隐藏。 |
-| 权限状态 | 有任一 POSIX 执行位时，“🔒 解除运行授权”可点、“🔓 运行授权”置灰；无执行位时反向置灰，两项保留显示。 |
+| 权限状态 | 有任一 POSIX 执行位时，“🔓 解除运行授权”可点、“🔒 运行授权”置灰；无执行位时反向置灰，两项保留显示。 |
 | 权限操作 | `/bin/chmod a-x`，清除所有者、组和其它用户的 POSIX 执行位，保留读写位；不受当前 `umask` 过滤。 |
 | 交互 | Terminal 展示文件路径后，回车继续；任意非空输入（包括空格）、Ctrl+C 或 EOF 停止。 |
 | 只读入口 | `--check --file <绝对路径>`，不创建日志、不修改权限。 |
@@ -35,34 +34,42 @@
 
 Finder 支持 `command/sh/bash/zsh/ksh/csh/tcsh/fish/py/pyw/rb/pl/swift/js/mjs/lua/tcl/awk/expect/scpt/applescript`（后缀不区分大小写）、无扩展名且以 `#!` 开头的脚本，以及单架构或 Universal Mach-O 的 `MH_EXECUTE` 文件；不把动态库、对象文件或 Java 类视为原生可执行。执行状态按 POSIX `0111` 的任一执行位判断，与解除全部执行位的语义一致。两项须分别安装；格式资格与是否已授权独立。独立终端脚本仍保留普通单文件的通用权限操作语义。
 
-这是 [macOS Finder](https://support.apple.com/guide/mac-help/welcome/mac) 的独立 App + Finder Sync 工程，与[运行授权](../JobsRunAuthorizer/README.md)分别安装、分别卸载，并接入[总安装面板](../README.md)。整个目录可独立复制；不依赖兄弟工程或外部脚本，不建立内部 Git。[Windows 对应功能](../../WindowsOS@Extension/JobsRunAuthorizationRevoker/README.md)通过当前用户的文件执行权限实现。
+这是 [macOS Finder](https://support.apple.com/guide/mac-help/welcome/mac) 的独立 App + Finder Sync 工程，与[运行授权](../JobsRunAuthorizer/README.md)分别安装、分别卸载，并接入[总管理面板](../README.md)。整个目录可独立复制；不依赖兄弟工程或外部脚本，不建立内部 Git。[Windows 对应功能](../../WindowsOS@Extension/JobsRunAuthorizationRevoker/README.md)通过当前用户的文件执行权限实现。
 
 **清除执行位不等于恢复某次授权前的完整权限快照，也不能阻止解释器读取脚本。** ACL、系统策略与文件可信性不属于本入口的处理范围。需要再次增加执行位时使用“运行授权”。
 
 ## 一、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装解除运行授权Finder扩展.command](./【MacOS】安装解除运行授权Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理解除运行授权Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
+### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】管理解除运行授权Finder扩展.command](./【MacOS】管理解除运行授权Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 独立构建并启用“解除运行授权”菜单。
 
-- 展示本地源码、产物和日志位置，直接回车安装；非空输入跳过，EOF 停止。
+- 展示本地源码、产物和日志位置，选择安装模式后立即执行，无需终端二次确认。
 - 检查完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK，构建两个 target 并核验 Bundle ID 和签名。
 - 精确注销同 ID 旧副本登记，注册当前 App / appex，启动后台初始化并刷新 Finder。
 - 产物保留在 `./work/DerivedData/Build/Products/Debug/JobsRunAuthorizationRevoker.app`；日志为系统临时目录中的 `JobsRunAuthorizationRevokerInstall.log`。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载解除运行授权Finder扩展.command](./【MacOS】卸载解除运行授权Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+**卸载模式：**
 
 > **目的：** 移除本功能菜单及已登记产物。
 
-- 回车查看待处理路径，输入精确 `YES` 才继续。
+- 选择卸载模式后立即执行，不要求终端二次确认。
 - 只停用固定扩展并注销记录，删除名称、Bundle ID 和目录类型均核验通过的 App，刷新 Finder。
-- 保留源码和所有用户文件；卸载不改变任何文件权限。日志为系统临时目录中的 `【MacOS】卸载解除运行授权Finder扩展.log`。
+- 保留源码和所有用户文件；卸载不改变任何文件权限。日志为系统临时目录中的 管理入口同名 `.log`（以面板底部日志为准）。
 
-依赖 macOS 12.0+、完整 Xcode、Finder Sync、Terminal 和系统 zsh；无第三方业务依赖。第一次派发可能要求允许 App 自动化控制 Terminal。总安装器的产物位于总仓 `work/`，安装器会处理同 ID 旧登记，构建产物应保留供系统运行。
+依赖 macOS 12.0+、完整 Xcode、Finder Sync、Terminal 和系统 zsh；无第三方业务依赖。第一次派发可能要求允许 App 自动化控制 Terminal。总管理器的产物位于总仓 `work/`，安装器会处理同 ID 旧登记，构建产物应保留供系统运行。
 
 ## 二、<span id="usage">操作与独立调用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-1、右键一个已有执行位的可执行格式文件，选择“🔒 解除运行授权”。桌面上的单个文件也适用；桌面空白处没有此项。
+1、右键一个已有执行位的可执行格式文件，选择“🔓 解除运行授权”。桌面上的单个文件也适用；桌面空白处没有此项。
 
 2、在 Terminal 核对路径和影响范围，再按回车。目标被删除、替换或变成链接时停止。
 
@@ -95,8 +102,7 @@ Finder 支持 `command/sh/bash/zsh/ksh/csh/tcsh/fish/py/pyw/rb/pl/swift/js/mjs/l
 ├── JobsRunRevocationShared/                 # 校验器、URL 请求、本地系统工厂
 ├── Scripts/                                # RevokeRun.zsh、构建后登记
 ├── Tests/                                  # 临时文件、菜单和注册替身回归
-├── 【MacOS】安装解除运行授权Finder扩展.command
-└── 【MacOS】卸载解除运行授权Finder扩展.command
+└── 【MacOS】管理解除运行授权Finder扩展.command
 ```
 
 | 配置 | 当前值（2026-10-24，依据工程与源码） |

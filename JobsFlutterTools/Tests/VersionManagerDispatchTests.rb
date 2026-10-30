@@ -95,4 +95,35 @@ class VersionManagerDispatchTests < Minitest::Test
     assert_equal 31, status.exitstatus, output + error
     assert_equal ['--project', @project], File.binread(@trace).force_encoding('UTF-8').split("\0")
   end
+
+  def test_dependency_import_dispatch_preserves_path_and_worker_failure_without_binding_java
+    prepare_fvm
+    File.write(File.join(@project, '.java-version'), 'unresolved-fixture')
+    write_worker('ManageProjectJava.zsh', 'pj_bind_project_java() { return 23; }')
+    write_worker('ImportFlutterDependencies.zsh', 'printf "%s\0" "$@" > "$JOBS_DISPATCH_TRACE"; exit 37')
+    output, error, status = dispatch('import-dependencies')
+    assert_equal 37, status.exitstatus, output + error
+    assert_equal [@project], File.binread(@trace).force_encoding('UTF-8').split("\0")
+    refute File.exist?(File.join(@root, 'NEVER'))
+  end
+
+  def test_dependency_import_dispatches_a_flutter_root_without_lib
+    prepare_fvm
+    Dir.rmdir(File.join(@project, 'lib'))
+    write_worker('ImportFlutterDependencies.zsh', 'printf "%s\0" "$@" > "$JOBS_DISPATCH_TRACE"; exit 37')
+    output, error, status = dispatch('import-dependencies')
+    assert_equal 37, status.exitstatus, output + error
+    assert_equal [@project], File.binread(@trace).force_encoding('UTF-8').split("\0")
+    refute File.exist?(File.join(@root, 'NEVER'))
+  end
+
+  def test_dependency_import_exception_does_not_expand_other_sdk_actions
+    prepare_fvm
+    Dir.rmdir(File.join(@project, 'lib'))
+    write_worker('InspectFlutterSdkVersion.zsh', 'printf "%s\0" "$@" > "$JOBS_DISPATCH_TRACE"; exit 37')
+    output, error, status = dispatch('sdk-version')
+    assert_equal 1, status.exitstatus, output + error
+    assert_includes error, '请选择 Flutter 项目根目录。'
+    refute File.exist?(@trace)
+  end
 end

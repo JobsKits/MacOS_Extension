@@ -21,6 +21,8 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 `InspectFlutterSdkVersion.zsh` 是 Finder“查看当前 Flutter SDK 版本”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再判定 SDK 来源（[**FVM**](https://fvm.app) 项目 SDK 或系统 SDK），实际执行该 SDK 的 `flutter --version --machine`，最后与 `.fvmrc` 配置和 `pubspec.yaml` 的 `environment` 约束核对。全程**只读**：不安装工具、不下载 SDK、不修改任何项目文件。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、目录与调用 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->

@@ -19,16 +19,22 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Android模拟器Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
 > Jobs 维护的独立 macOS Finder 扩展。仅在系统桌面空白处显示“新建 Android 模拟器”，打开 Terminal 完成环境检查、选择机型及系统映像、创建并启动 Android AVD。
 
 | 入口 | 行为 |
 | --- | --- |
 | 桌面空白右键 | 新建 Android AVD，不要求 Flutter 项目。 |
 | 普通文件夹空白、选中的文件 / 文件夹 | 不显示本菜单。 |
-| [独立安装](./【MacOS】安装Android模拟器Finder扩展.command) | 回车后由聚合管理器安装本叶，保留其它已选功能；非空输入跳过。 |
-| [独立卸载](./【MacOS】卸载Android模拟器Finder扩展.command) | 回车后只关闭本叶，保留共享 App、其它菜单与全部模拟器数据。 |
+| [管理入口：安装 / 更新](./【MacOS】管理Android模拟器Finder扩展.command) | 选择安装模式后立即执行，只增加对应功能，保留其它已装菜单。 |
+| [管理入口：卸载](./【MacOS】管理Android模拟器Finder扩展.command) | 选择卸载模式后立即执行，只移除对应菜单，保留其它功能与业务数据。 |
 
-当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `android-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的管理入口只启停 `android-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行与依赖</span><!-- jobs-toc:heading-end -->
 
@@ -68,8 +74,7 @@ ANDROID_SIM_PROXY=http://127.0.0.1:7890 /bin/zsh ./Scripts/CreateAndroidSimulato
 ├── JobsAndroidSimulatorShared/        # 桌面白名单、固定 URL 请求
 ├── Scripts/                          # 自包含创建核心与注册帮助脚本
 ├── Tests/                            # 隔离脚本、传输、宿主和安装回归
-├── 【MacOS】安装Android模拟器Finder扩展.command
-└── 【MacOS】卸载Android模拟器Finder扩展.command
+└── 【MacOS】管理Android模拟器Finder扩展.command
 ```
 
 | 标识 | 值 |

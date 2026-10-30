@@ -162,7 +162,7 @@ class RunAuthorizationMenuTests < Minitest::Test
       controller.targeted = folder
       controller.selected = [file]
       let singleMenu = extensionInstance.menu(for: .contextualMenuForItems)
-      expect(singleMenu?.items.map(\.title) == ["🔓 运行授权"], "one executable-format file exposes exactly one action")
+      expect(singleMenu?.items.map(\.title) == ["🔒 运行授权"], "one executable-format file exposes exactly one action")
       expect(singleMenu?.autoenablesItems == false, "automatic AppKit validation cannot override explicit permission state")
       expect(singleMenu?.items.first?.isEnabled == true, "authorization is enabled without execute bits")
       expect(singleMenu?.items.first?.target === extensionInstance, "menu target is the real extension instance")
@@ -170,7 +170,7 @@ class RunAuthorizationMenuTests < Minitest::Test
       for mode in [0o755, 0o654, 0o645] {
           try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path)
           let executableMenu = extensionInstance.menu(for: .contextualMenuForItems)
-          expect(executableMenu?.items.map(\.title) == ["🔓 运行授权"], "execute bits retain the authorization menu")
+          expect(executableMenu?.items.map(\.title) == ["🔒 运行授权"], "execute bits retain the authorization menu")
           expect(executableMenu?.items.first?.isEnabled == false, "any user/group/other execute bit disables authorization")
           TestWorkspace.reset()
           click(singleMenu)

@@ -1,4 +1,4 @@
-> 本功能的右键入口已迁入 [JobsFlutterTools](../JobsFlutterTools/README.md)。以下保留旧独立工程的实现说明；新安装使用统一菜单与项目 FVM。当前平台入口为 `Flutter开发相关辅助工具 → Flutter打包 → iOS / Android / 鸿蒙`，终端仅选择包型，不再选择平台。
+> 本功能的右键入口已迁入 [JobsFlutterTools](../JobsFlutterTools/README.md)。以下保留旧独立工程的实现说明；新安装使用统一菜单与项目 FVM。当前平台入口为 `Flutter开发相关辅助工具 → Flutter打包 → iOS / Android / 鸿蒙`，Android 终端仅选择包型；鸿蒙的“📦 打包鸿蒙（HAP + APP）”一次生成两种 release 包，无需再次选择。
 
 # JobsFlutterPackager · Flutter打包
 
@@ -45,21 +45,19 @@
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与卸载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-运行 [安装入口](./【MacOS】安装Flutter打包Finder扩展.command)，阅读自述后直接回车安装；任意非空输入（包括空格）跳过，EOF 停止。入口验证完整 [**Xcode**](https://developer.apple.com/xcode) 与 macOS SDK，只构建本工程，校验两个 Bundle ID、签名和脚本资源，再注册当前 App 与扩展。它会注销同 ID 的旧路径登记但保留旧 App 文件，最后初始化宿主并刷新 Finder。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter打包Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-- 宿主 ID：`com.jobs.JobsFlutterPackager`。
-- 扩展 ID：`com.jobs.JobsFlutterPackager.findersync`。
-- 构建产物：`./work/DerivedData/Build/Products/Debug/JobsFlutterPackager.app`。系统依赖该路径启动扩展，安装后保留。
-- URL：`jobsflutterpackager://package/run?project=<URL编码的绝对路径>`，只接受唯一 `project` 参数。
-- 首次操作按系统提示允许宿主控制 Terminal；菜单未出现时到系统设置的 Finder 扩展中检查启用状态。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-运行 [卸载入口](./【MacOS】卸载Flutter打包Finder扩展.command)，先回车查看路径，再精确输入 `YES` 才卸载。只注销本扩展及已核验宿主，删除其 App 构建产物并刷新 Finder；保留源码、Flutter SDK、项目和已生成的 IPA / APK / AAB。卸载不终止已经在终端开始的 Flutter 构建。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-安装前不需要 Flutter / fzf。使用打包菜单时必须有健康 fzf；缺少时显示 `brew install fzf` 并停止，不自动安装。Android 要求 JDK 17 和项目现有 Android / Gradle 环境；iOS 项目含 Podfile 时要求已有 [**CocoaPods**](https://cocoapods.org/)。
+本入口转交 [JobsFlutterTools](../JobsFlutterTools/README.md)，只管理 `package-ios,package-android,package-ohos`，其中鸿蒙动作固定同时构建 HAP 与 APP，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-鸿蒙要求工程已有 `ohos/build-profile.json5`、`ohos/oh-package.json5`，并准备可用 Node.js / npm、ohpm、Hvigor（`hvigorw`）、Java 和 HarmonyOS SDK。SDK 根目录通过 `DEVECO_SDK_HOME` 指定，兼容 `HOS_SDK_HOME`；可用 `DEVECO_STUDIO_HOME` / `TOOL_HOME` 指定 DevEco 应用或命令行工具。未指定时仅自动采用唯一已安装的 DevEco，多个版本要求明确选择。所有工具都执行健康检查，再核对每个所选包型的 CLI 能力；不安装升级、不改签名、不创建平台目录。
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-`OHOS_SDK_HOME` 与 `DEVECO_SDK_HOME` 的 SDK 结构不同，不无条件互设。现有 Flutter 的 `ohos-sdk` 配置可能优先于环境变量，实际构建以 SDK 配置与日志为准。Java 沿用既有配置或 DevEco JBR；profile 模式要求工程已有相应 `buildModeSet`。环境路径细节见[鸿蒙适配项目环境指导](https://gitcode.com/CPF-Flutter/flutter_samples/blob/master/ohos/docs/03_environment/OpenHarmony-flutter环境搭建指导.md)。
+安装日志为系统临时目录中的 `JobsFlutterToolsInstall.log`；卸载日志为聚合管理入口同名 `.log`，以面板底部日志为准。
+
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、运行与日志 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -108,7 +106,7 @@
 
 业务需要解析依赖、下载缺失依赖和构建。没有离线演示或假包回退；失败不把旧 IPA 当作成功，不执行 `flutter clean`、全局环境修改、Git 提交或推送。
 
-鸿蒙核对非空 HAP / APP，允许构建命令成功后复用现有增量产物并提示核对模式和签名；`-unsigned` 包会明确警告。生成包不代表真机安装、签名校验或应用市场审核通过。工具路径仅作用于当前终端进程及子进程。
+鸿蒙逐步核对非空 HAP / APP，全部构建完成后再次复核已记录的包仍存在且非空；允许构建命令成功后复用现有增量产物并提示核对模式和签名；`-unsigned` 包会明确警告。生成包不代表真机安装、签名校验或应用市场审核通过。工具路径仅作用于当前终端进程及子进程。
 
 ## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、目录与调用边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -120,8 +118,7 @@
 ├── JobsFlutterPackagingShared/          # 项目判定、URL、桌面策略、系统创建工厂
 ├── Scripts/                            # 自包含打包脚本与构建后启用，见就近 README
 ├── Tests/                              # 隔离行为回归，不运行真实 Flutter 构建
-├── 【MacOS】安装Flutter打包Finder扩展.command
-└── 【MacOS】卸载Flutter打包Finder扩展.command
+└── 【MacOS】管理Flutter打包Finder扩展.command
 ```
 
 ```mermaid

@@ -9,18 +9,18 @@
 
 - [🔥 前言](#jobs-toc-heading-1)
 - [一、适用场景](#jobs-toc-heading-2)
-- [二、环境先决条件](#jobs-toc-heading-3)
-- [三、运行方式](#jobs-toc-heading-4)
-  - [3.1、原生 UI 勾选安装](#jobs-toc-heading-5)
-  - [3.2、App 内查看和修改功能](#jobs-toc-heading-6)
-  - [3.3、Xcode 手动运行](#jobs-toc-heading-7)
-- [四、实现边界](#jobs-toc-heading-8)
-  - [4.1、直接执行 pod install](#jobs-toc-heading-9)
-  - [4.2、代码地图更新与缺失组件安装](#jobs-toc-heading-10)
-- [五、排查说明](#jobs-toc-heading-11)
+  - [1.1、文件拆分与分卷合并](#file-volumes)
+- [二、环境先决条件](#jobs-toc-heading-4)
+- [三、运行方式](#jobs-toc-heading-5)
+  - [3.1、原生 UI 勾选安装](#jobs-toc-heading-6)
+  - [3.2、App 内查看和修改功能](#jobs-toc-heading-7)
+  - [3.3、Xcode 手动运行](#jobs-toc-heading-8)
+- [四、实现边界](#jobs-toc-heading-9)
+  - [4.1、直接执行 pod install](#jobs-toc-heading-10)
+  - [4.2、代码地图更新与缺失组件安装](#jobs-toc-heading-11)
+- [五、排查说明](#jobs-toc-heading-12)
 - [六、安装与卸载](#install-uninstall)
-  - [【MacOS】安装用终端打开Finder扩展.command](#jobs-toc-heading-13)
-  - [【MacOS】卸载用终端打开Finder扩展.command](#jobs-toc-heading-14)
+  - [【MacOS】管理用终端打开Finder扩展.command](#jobs-toc-heading-14)
 - [七、本仓目录与脚本入口](#repository-layout-and-entrypoints)
   - [EnableFinderExtension.zsh](#jobs-toc-heading-16)
   - [清理构建产物](#jobs-toc-heading-17)
@@ -35,11 +35,11 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
-> **本工程提供 3 个 Finder 菜单功能：`用终端打开`｜`清理 Android / OpenHarmony 构建产物`｜`更新代码地图（.codegraph）`。** `Pod Install` 和 iOS 构建清理进入 [JobsIOSTools](../JobsIOSTools/README.md) 子菜单，空白 Commit 并 Push 进入 [JobsProjectTools](../JobsProjectTools/README.md) 的“Git操作”；Flutter 完整工程清理由 [JobsFlutterTools](../JobsFlutterTools/README.md) 提供。宿主保留原动作实现与六项配置兼容。
+> **本工程提供 6 个 Finder 菜单功能：`用终端打开`｜`用终端查看文件内容`｜`合并分卷`｜`拆分文件`｜`清理 Android / OpenHarmony 构建产物`｜`更新代码地图（.codegraph）`。** `Pod Install` 和 iOS 构建清理进入 [JobsIOSTools](../JobsIOSTools/README.md) 子菜单，空白 Commit 并 Push 进入 [JobsProjectTools](../JobsProjectTools/README.md) 的“Git操作”；Flutter 完整工程清理由 [JobsFlutterTools](../JobsFlutterTools/README.md) 提供。宿主提供九项配置，含原六项动作兼容。
 
 ![image-20260628203344107](./assets/image-20260628203344107.png)
 
-`JobsTerminalOpener` 是一个 [**Swift**](https://www.swift.org/) macOS App + Finder Sync Extension 工程。三个现行菜单共用一个扩展，首次安装时可以逐项勾选；App 保留六项配置供原动作兼容，修改本包当前功能后不需要重新编译。
+`JobsTerminalOpener` 是一个 [**Swift**](https://www.swift.org/) macOS App + Finder Sync Extension 工程。六个现行菜单共用一个扩展，首次安装时可以逐项勾选；App 保留九项配置供原动作兼容，修改本包当前功能后不需要重新编译。
 
 本工程源码、文档与版本由 [MacOS@Extension](../README.md) 统一管理，工程目录随总仓一起取得，保留独立构建、安装与卸载能力。
 
@@ -49,15 +49,44 @@
 - 点击一级右键菜单里的 `用终端打开`。
 - 如果选中项是普通文件夹，会让系统 `Terminal.app` 新开窗口并 `cd` 到该文件夹。
 - 如果选中项是文件或包文件，会让系统 `Terminal.app` 新开窗口并 `cd` 到它所在的父目录。
+- 右键单个可读取的普通文件，点击 `📄 用终端查看文件内容`，在新终端中只读显示正文；文件夹、多选、链接、替身和特殊文件不提供此项。默认超过 `1 MiB`（`1048576` 字节）先显示大小与阈值，精确输入 `YES` 才读取，回车或输入结束取消；`Ctrl+C` 中止。
 - `Pod Install` 位于 `iOS / CocoaPods 辅助工具` 子菜单；目标同层须有普通 `Podfile` 和 `*.xcodeproj`，无需已有 `*.xcworkspace`。本包不加入外层 Pod 入口，下面的实现说明用于原动作与传输兼容。
 - Flutter 根目录的依赖和完整清理操作进入 `Flutter开发相关辅助工具`；本扩展提供单独的 Android / OpenHarmony 两平台清理。
 - 右键 Flutter、Android 或 OpenHarmony 工程文件夹，或在这些工程根目录内部空白处右键时，显示 `清理 Android / OpenHarmony 构建产物`。Flutter 入口只清两平台产物，保留 iOS、桌面平台与 Flutter 共享缓存；iOS 原生清理位于 iOS 辅助子菜单。点击后预览，输入 `CLEAN` 才删除对应产物。
 - 右键普通文件夹时，显示 `更新代码地图（.codegraph）`，让 `Terminal.app` 新开窗口，检查 CodeGraph 后更新目标文件夹的地图；缺失组件时，终端等待回车确认后补齐安装链。
 - `在终端创建空白 Commit 并 Push` 位于 `Git操作` 子菜单，只对有效 Git 普通文件夹显示。统一包复用本工程的终端实现，执行前继续校验工作树、分支、暂存区和推送远程。
 - 依赖操作不会向父目录或子目录递归查找工程；右键位置不是对应工程的标准根目录时，不显示相关入口。
-- 当前入口只处理单个选中项；多选时不展示菜单，避免打开结果不明确。
+- 除“合并分卷”要求完整多选外，其余入口只处理单个选中项；混组、缺卷或多选普通文件不显示合并。
 
-## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、环境先决条件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### 1.1、<span id="file-volumes">文件拆分与分卷合并</span>
+
+| 菜单 | 显示条件与输入 | 输出 |
+| --- | --- | --- |
+| 🧩 合并分卷 | 同目录完整选中同名、同总数的至少两个非空普通分卷；`@1of2` 与 `@01of2` 视为同一卷号；缺卷、重复、混组、目录、链接、多选夹杂普通文件均隐藏 | 所选分卷目录下的完整原文件名 |
+| ✂️ 拆分文件 | 仅一个可读普通文件；文件夹、链接、替身和多选隐藏 | `完整原文件名.chunks/完整原文件名@序号of总数` |
+
+两项在总管理器“文件与通用工具”组分别勾选，ID 为 `file_merge` / `file_split`，包内动作 `file-merge` / `file-split`。它们复用本包宿主、终端与持久化配置；安装或移除一个动作保留其它已启用功能，最后一项移除后才卸载整个包。已有配置不自动开启新动作。
+
+点击后在 Terminal 展示固定自述，回车继续、Ctrl+C 取消。拆分使用 fzf 选择 50 / 100 / 1900 MiB 或自定义正整数 MiB；自定义空行返回标准选择，Esc 取消。文件未超过所选上限时提示并跳过。块数先按上限求整，块大小再均衡分配，单卷不超过上限；编号按总数补零。拆分生成 `.chunks` 目录，便于避免不同扩展名相撞。合并只处理明确选中的分卷，按数值卷号排序，不扫描或加入邻近文件；兼容原 `merge.command` / `split.command` 的分卷格式。
+
+大小、SHA-256 以及源文件状态校验通过后才发布；两个动作始终保留原文件和全部原分卷，没有删除提示。已有目标（包括空目录、符号链接）拒绝覆盖；系统 JXA 调用 Darwin `renamex_np(RENAME_EXCL)` 独占发布完整文件或目录，文件系统不支持时保留候选并报错，不执行普通移动回退。临时候选在同一父目录，失败或中断时保留，日志为系统临时目录 `JobsFileVolumes.log.*`。路径以参数逐项传递，私有载体权限 0600、目录 0700，终端输入只包含一条短命令；控制字符路径拒绝，空格、中文、引号与 Shell 元字符保持字面量。
+
+也可在交互终端显式运行：
+
+```shell
+/bin/zsh ./Scripts/FileVolumes.zsh \
+  split \
+  "/实际路径/镜像.iso"
+
+/bin/zsh ./Scripts/FileVolumes.zsh \
+  merge \
+  "/实际路径/镜像.iso@1of2" \
+  "/实际路径/镜像.iso@2of2"
+```
+
+`split <文件路径> --limit-bytes <正整数字节>` 可直接指定上限，仍保留首屏回车确认，用于命令行和隔离回归。无交互终端拒绝运行；不会安装或升级依赖，也不会修改 Shell 配置。部署前可运行 `ruby Tests/FileVolumesTests.rb`：只使用临时夹具检查真实流式往返、完整组资格、源件保留、独占发布冲突及 Swift 私有载体。当前已完成源码类型检查与隔离回归，真实 Finder 菜单须重新管理安装后验收。
+
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">二、环境先决条件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 检查项 | 要求 | 说明 |
 | --- | --- | --- |
@@ -69,7 +98,7 @@
 | [**Flutter**](https://flutter.dev/) | 终端环境可执行 `flutter` | 只有使用 `flutter pub get` 入口时需要；命令不可用时，Terminal 会直接显示错误。 |
 | [**CodeGraph**](https://github.com/colbymchenry/codegraph) | 健康 CLI；需要安装时还检查实际上游依赖 | 健康 CLI 直接复用；缺失时经 [**Homebrew**](https://brew.sh/) 准备 Node/npm，再将官方 npm 包安装到用户独立目录。终端回车确认安装；Homebrew 自身缺失时另选系统或用户目录。 |
 | Git 空白推送 | 终端环境可执行 `git` | 当前文件夹必须在 Git 工作树内，当前分支可推送，且暂存区必须为空。 |
-| 本地文件目标 | Finder 中只选中一个本地 `file://` 项目 | 多选、网络挂载异常、权限受限目录都可能让菜单不展示或打开失败。 |
+| 本地文件目标 | 合并完整选中同组分卷，其余动作只选单个本地项目 | 不支持的选择、网络挂载异常或权限受限会隐藏菜单或报错。 |
 
 建议运行前先做基础自检：
 
@@ -86,29 +115,29 @@ codegraph --version
 git --version
 ```
 
-## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">三、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-### <span id="jobs-toc-heading-5" data-jobs-toc="v2">3.1、原生 UI 勾选安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-6" data-jobs-toc="v2">3.1、原生 UI 勾选安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-1、双击上级目录的 `../【MacOS】🧩安装Finder扩展.command`。
+1、双击上级目录的 `../【MacOS】🧩管理Finder扩展.command`。
 
-2、阅读脚本自述并按回车，随后在 macOS 原生复选框窗口中逐项选择右键菜单功能，或点击“全部安装”。
+2、阅读脚本自述并按回车，随后在 macOS 原生复选框窗口中逐项选择右键菜单功能，或全选后点击“安装 / 更新”。
 
-3、`JobsTerminalOpener` 当前三项归并为一次工程构建；iOS 和 Git 子菜单分别构建对应统一包。
+3、`JobsTerminalOpener` 当前六项归并为一次工程构建；iOS 和 Git 子菜单分别构建对应统一包。
 
 4、需要更换功能组合时，可以重新运行安装脚本，也可以直接在已安装 App 内修改。
 
-### <span id="jobs-toc-heading-6" data-jobs-toc="v2">3.2、App 内查看和修改功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-7" data-jobs-toc="v2">3.2、App 内查看和修改功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-1、打开 `JobsTerminalOpener` App，窗口中的“可选功能”区域会把六项功能各列一行。
+1、打开 `JobsTerminalOpener` App，窗口中的“可选功能”区域会把九项功能各列一行。
 
 2、复选框会显示当前生效状态；可以逐项勾选，也可以点击“全部选择”或“全部取消”。
 
 3、点击“保存功能选择”。Finder 扩展会在下一次生成右键菜单时读取新配置，关闭当前菜单并重新右键即可生效。
 
-4、原六项记录保留，但本包菜单只使用当前三项；Pod、Flutter 和空白 Commit 的旧勾选不会恢复外层入口。对应子菜单的功能选择使用各自包配置，仍受项目条件校验。
+4、原六项记录保留，但本包菜单只使用当前六项；Pod、Flutter 和空白 Commit 的旧勾选不会恢复外层入口。对应子菜单的功能选择使用各自包配置，仍受项目条件校验。
 
-### <span id="jobs-toc-heading-7" data-jobs-toc="v2">3.3、Xcode 手动运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-8" data-jobs-toc="v2">3.3、Xcode 手动运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 1、用 [**Xcode**](https://developer.apple.com/xcode) 打开 `JobsTerminalOpener.xcodeproj`。
 
@@ -116,14 +145,23 @@ git --version
 
 3、Xcode 构建阶段会自动注册宿主 App 的 `jobsterminalopener://` URL Scheme，停止旧的宿主 App / Finder Sync 扩展进程，注册并启用 `com.jobs.JobsTerminalOpener.FinderSyncExtension`，成功后会重启 Finder 刷新右键菜单缓存。
 
-4、如果本机还没有保存过功能选择，手动构建默认启用全部六项功能；已有保存记录时继续沿用 App 中的选择。回到 Finder，右键任意文件或文件夹即可使用符合当前目录条件的菜单入口。
+4、如果本机还没有保存过功能选择，手动构建默认启用全部九项功能；已有保存记录时继续沿用 App 中的选择。回到 Finder，右键任意文件或文件夹即可使用符合当前目录条件的菜单入口。
 
 5、首次重新安装后，构建阶段可能会等待几十秒，用来等 `pluginkit` 从空状态异步登记到可启用状态。
 
-## <span id="jobs-toc-heading-8" data-jobs-toc="v2">四、实现边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">四、实现边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - Finder Sync Extension 可以进入 Finder 右键一级菜单区域，但最终位置由 macOS 决定，不能保证排在系统菜单项前面。
-- 本包当前三项共用一个宿主 App 和一个 Finder Sync Extension；宿主界面保留六项记录兼容，根安装 UI 按现行归属分别选择 Terminal、iOS 和 Git 功能。
+- 本包当前六项共用一个宿主 App 和一个 Finder Sync Extension；宿主界面保留九项记录兼容，根安装 UI 按现行归属分别选择 Terminal、iOS 和 Git 功能。
+- 文件内容动作 `file-content` 在 Finder、宿主和终端重复检查目标；终端用系统 [**Perl**](https://www.perl.org/) 安全打开同一个只读文件句柄。大小门禁前不采样正文；确认后最多采样 `8 KiB`。ASCII / UTF-8 文本分块显示，保留中文并将终端控制字符转义；二进制、其它编码或无法确认为文本时另行询问，确认后显示十六进制，不执行文件。每次最多读取打开时的文件长度，后续追加内容留给下次查看，原文件不写入，不复制正文到日志。
+- `JOBS_FILE_VIEWER_MAX_BYTES` 可覆盖确认阈值，单位为字节，取值是 `1` 到 `9223372036854775807` 的十进制整数；空值、负数、小数、前导零或越界值报错停止。Finder 启动的终端继承新窗口 Shell 的环境，可在自己的终端配置中设置；也可直接运行下面的只读命令验证。此变量只控制大文件询问，不绕过二进制确认。
+
+  ```shell
+  JOBS_FILE_VIEWER_MAX_BYTES=2097152 /bin/zsh \
+    ./Scripts/ViewFileContent.zsh \
+    "/实际文件路径/说明.txt"
+  ```
+
 - `JobsTerminalEnabledFeatures` 提供首次运行的构建默认值；安装器或 App 保存过选择后，Finder 扩展每次生成右键菜单都会优先读取本机配置，因此后续修改不需要重新构建。
 - 扩展默认监控 `/`，用于覆盖 Finder 中任意位置的文件和文件夹右键菜单。
 - 扩展读取 Finder 传入的本地 `file://` URL 和工程标记文件，以确定菜单资格及工程类型；不执行工程脚本。点击后通过 `jobsterminalopener://open` 把路径和动作类型交给宿主 App 处理。
@@ -142,7 +180,7 @@ git --version
 - Finder Sync Extension 保留 App Sandbox；本机自用版通过 `com.apple.security.temporary-exception.files.absolute-path.read-only` 给 `/` 增加只读例外。
 - 菜单入口只在 Finder 选中单个本地项目时出现。
 
-### <span id="jobs-toc-heading-9" data-jobs-toc="v2">4.1、直接执行 `pod install` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-10" data-jobs-toc="v2">4.1、直接执行 `pod install` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 现行菜单位于 `iOS / CocoaPods 辅助工具 → Pod Install`，总安装面板中与 `Pod Update` 相邻，UI 标识仍为 `pod_install`；iOS 包的固定动作是 `ios-pod-install`。本工程保留原 URL 动作 `pod-install` 供兼容与传输验证，实际终端命令仍为 `pod install`。
 
@@ -170,7 +208,7 @@ swiftc \
 "${TMPDIR:-/tmp/}JobsTerminalProjectValidatorTests"
 ```
 
-### <span id="jobs-toc-heading-10" data-jobs-toc="v2">4.2、代码地图更新与缺失组件安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-11" data-jobs-toc="v2">4.2、代码地图更新与缺失组件安装 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 菜单与功能开关仍各占一项，保留已有 `codegraph-bootstrap` 标识。点击后在新 Terminal 窗口展示目标和影响范围，回车继续；需要安装时再明确提示“回车确认安装，输入其它内容取消”。
 
@@ -196,7 +234,7 @@ swiftc \
 ruby ./Tests/CodeGraphDependencyCommandTests.rb
 ```
 
-## <span id="jobs-toc-heading-11" data-jobs-toc="v2">五、排查说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-12" data-jobs-toc="v2">五、排查说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 右键菜单未出现：
   - 确认 `JobsTerminalFinderSync.entitlements` 保留了 `com.apple.security.app-sandbox`；Finder Sync Extension 去掉 sandbox 后可能无法被 `pluginkit` 登记出来。
@@ -272,24 +310,33 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 
 ## 六、<span id="install-uninstall">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；本工程可单独拷走安装，不依赖其它工程源码。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理用终端打开Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-13" data-jobs-toc="v2">[【MacOS】安装用终端打开Finder扩展.command](./【MacOS】安装用终端打开Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 独立构建、注册并启用本工程的“用终端打开”等六项功能Finder 扩展。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
+
+每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
+
+本目录只保留一个裸露的管理脚本，与本 README 平级，统一提供安装 / 更新和卸载。原有独立构建能力仍保留。
+
+### <span id="jobs-toc-heading-14" data-jobs-toc="v2">[【MacOS】管理用终端打开Finder扩展.command](./【MacOS】管理用终端打开Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 独立构建、注册并启用本工程的“用终端打开”等九项功能 Finder 扩展。
 
 - 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止，不自动改 `xcode-select`。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
-- 六项功能的勾选默认值由宿主 App 提供，可在其主窗口调整后即时生效。日志为系统临时目录中的 `JobsTerminalOpenerInstall.log`。
+- 选择安装模式后立即执行，无需终端二次确认；构建产物固定在 `./work/DerivedData/Build/Products/Debug/`，注册后打开宿主 App 并重启 Finder。
+- 九项功能的勾选默认值由宿主 App 提供，可在其主窗口调整后即时生效。日志为系统临时目录中的 `JobsTerminalOpenerInstall.log`。
+- 总面板功能 ID 为 `file_content`，对应本包动作 `file-content`。独立管理器显式传入 `--features file-content` 安装时与已有选择取并集；卸载同一动作时保留兄弟功能，最后一项关闭后才卸载整个扩展。旧产物缺少默认值元数据时仍按旧六项恢复，不自动把新增入口视为已开启。
 
-### <span id="jobs-toc-heading-14" data-jobs-toc="v2">[【MacOS】卸载用终端打开Finder扩展.command](./【MacOS】卸载用终端打开Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+**卸载模式：**
 
 > **目的：** 卸载 JobsTerminalOpener 的 Finder 扩展，移除对应右键菜单入口并保留工程源码。
 
 - 阅读自述并回车，检查系统工具，显示当前扩展注册状态与待处理路径。
-- 停用扩展，停止宿主 APP 和扩展进程，再注销相应 Finder Sync 注册；必须输入 `YES` 才继续。
+- 停用扩展，停止宿主 APP 和扩展进程，再注销相应 Finder Sync 注册；选择卸载即执行，无需终端二次确认。
 - 清理对应构建 APP、运行标记、旧日志及 Automator 服务残留；源码目录保留，结束时重启 Finder。
-- 日志为系统临时目录中的 `【MacOS】卸载用终端打开Finder扩展.command.log`。
+- 日志为系统临时目录中的 管理入口同名 `.log`（以面板底部日志为准）。
 
 ## 七、<span id="repository-layout-and-entrypoints">本仓目录与脚本入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -297,8 +344,7 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 
 ```text
 .
-├── 【MacOS】安装用终端打开Finder扩展.command
-├── 【MacOS】卸载用终端打开Finder扩展.command
+├── 【MacOS】管理用终端打开Finder扩展.command
 ├── assets/
 ├── icon.png
 ├── JobsTerminalFinderSync/
@@ -321,14 +367,19 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 │   ├── DependencyProjectValidatorTests.swift
 │   ├── CodeGraphDependencyCommandTests.rb
 │   ├── TerminalRequestTransportFixture.swift
+│   ├── FileVolumesTests.rb
+│   ├── FileContentViewerTests.rb
 │   └── TerminalRequestTransportTests.rb
 └── Scripts/
+    ├── CleanBuildArtifacts.zsh
+    ├── FileVolumes.zsh
+    ├── ViewFileContent.zsh
     └── EnableFinderExtension.zsh
 ```
 
 * `JobsTerminalOpener/` 保存宿主 APP；`JobsTerminalFinderSync/` 保存 Finder 扩展与菜单逻辑；`JobsTerminalOpener.xcodeproj/` 保存工程和构建阶段配置。
-* `JobsTerminalShared/` 保存六项功能选择与依赖项目识别的共享实现。
-* `Scripts/` 保存构建后自动注册入口；工程根的裸露双击脚本提供独立安装与卸载入口。
+* `JobsTerminalShared/` 保存九项功能选择与依赖项目识别的共享实现。
+* `Scripts/` 保存构建后自动注册入口；工程根只保留一个裸露管理脚本，统一提供独立安装 / 更新与卸载。
 
 ### <span id="jobs-toc-heading-16" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
 
@@ -346,7 +397,7 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 <a id="build-artifacts"></a>
 ### <span id="jobs-toc-heading-17" data-jobs-toc="v2">清理构建产物</span><!-- jobs-toc:heading-end -->
 
-总安装器中勾选“清理 Android / OpenHarmony 构建产物”，沿用 `clean_build_artifacts` 安装标识与 `clean-build-artifacts` 功能 / URL 动作。选中一个已识别的 Flutter、Android 或 OpenHarmony 工程文件夹，或在对应工程根目录内部空白处右键时，显示同名入口。空白菜单只提供此清理功能，点击时重新读取当前目录，忽略残留选中项。未知目录、文件、目录包、多选及普通桌面空白隐藏；iOS 清理位于 `iOS / CocoaPods 辅助工具 → 清理 iOS/Xcode 构建产物`。Flutter 完整清理使用 `Flutter开发相关辅助工具 → Flutter清理维护工具 → 清理当前Flutter项目构建产物`。安装和菜单识别本身不会清理工程。
+总管理器中勾选“清理 Android / OpenHarmony 构建产物”，沿用 `clean_build_artifacts` 安装标识与 `clean-build-artifacts` 功能 / URL 动作。选中一个已识别的 Flutter、Android 或 OpenHarmony 工程文件夹，或在对应工程根目录内部空白处右键时，显示同名入口。空白菜单只提供此清理功能，点击时重新读取当前目录，忽略残留选中项。未知目录、文件、目录包、多选及普通桌面空白隐藏；iOS 清理位于 `iOS / CocoaPods 辅助工具 → 清理 iOS/Xcode 构建产物`。Flutter 完整清理使用 `Flutter开发相关辅助工具 → Flutter清理维护工具 → 清理当前Flutter项目构建产物`。安装和菜单识别本身不会清理工程。
 
 #### <span id="jobs-toc-heading-18" data-jobs-toc="v2">菜单标题与工程识别</span><!-- jobs-toc:heading-end -->
 

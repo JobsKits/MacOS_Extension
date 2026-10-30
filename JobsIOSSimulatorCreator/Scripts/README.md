@@ -20,6 +20,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 此目录由 [**macOS**](https://www.apple.com/macos/) Finder 扩展宿主调用；核心业务全部位于 [`CreateIOSSimulator.zsh`](./CreateIOSSimulator.zsh)，复制单个脚本也能独立运行，不依赖原始 `JobsCommand@iOS` 目录或当前工作目录。
 
 | 入口 / 行为 | 实际结果 |

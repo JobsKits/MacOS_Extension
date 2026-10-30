@@ -9,8 +9,6 @@
 
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、安装与卸载](#installation)
-  - [【MacOS】安装iOS模拟器Finder扩展.command](#jobs-toc-heading-3)
-  - [【MacOS】卸载iOS模拟器Finder扩展.command](#jobs-toc-heading-4)
 - [二、使用方式](#usage)
 - [三、依赖、自检与影响范围](#requirements)
 - [四、目录与安装单元](#layout)
@@ -34,7 +32,7 @@
 | 选择与取消 | 使用健康的 fzf；系统版本面板用 `←` 返回型号选择，Esc / Ctrl+C 取消；缺失或不健康的 fzf 明确报错并停止交互，不继续编号选择。 |
 | 创建结果 | 自动命名并避开已有同名设备，创建并启动新设备；失败保留日志和已创建 UDID 便于重试。 |
 
-本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立 `.xcodeproj`、Scheme、Bundle ID、安装与卸载入口；没有独立 Git 或子模块。业务从[原初始化脚本](../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md)整理，脚本随 App 打包，不依赖原脚本仍在磁盘上。不执行原脚本的 Simulator 清场，不影响已有设备。
+本工程是 [MacOS@Extension](../README.md) 中的普通源码目录，包含独立 `.xcodeproj`、Scheme、Bundle ID、统一管理入口；没有独立 Git 或子模块。业务从[原初始化脚本](../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md)整理，脚本随 App 打包，不依赖原脚本仍在磁盘上。不执行原脚本的 Simulator 清场，不影响已有设备。
 
 两个入口嵌入逐字节相同的核心：完整列出 iPhone / iPad，按本机已装系统的兼容性调整推荐顺序（本机无可搭配系统的型号带“（本机无可搭配系统）”标注）→ 选定机型后只列匹配该型号的 Runtime，并打印“本机已装 N 个系统，其中 M 个匹配”（未确认支持的系统带“（未确认支持）”标注）→ `simctl create` 最终校验 → 启动。独立 `.command` 是核心规范源，右键脚本保留自包含副本并随 App 打包；两者均可脱离另一份文件运行，回归测试检查核心块一致，避免平行维护时分叉。不会把某个新 Runtime 的支持列表当成全部可选机型。
 
@@ -46,27 +44,23 @@
 | 桌面右键 | 直接体检工具链后进入相同核心，保留已有设备与调试会话，不安装或升级工具。 |
 | 两侧 `--help` / `--check` | 在清场、安装及创建前分流；无 TTY 也可只读运行。 |
 
-当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的原名安装／卸载入口只启停 `ios-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
+当前菜单安装由 [JobsDesktopTools](../JobsDesktopTools/README.md) 统一承载。本目录的管理入口只启停 `ios-simulator-create` 这一叶；需要同仓 `JobsDesktopTools/` 源码。聚合扩展按固定顺序排列三项新建、两项修复和动态文件显示开关，保留逐叶选择；普通目录背景仅显示文件开关。安装产物统一在 `../JobsDesktopTools/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app`，安装／卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。本目录原工程、旧 Bundle ID、旧 URL 和隔离回归仍保留，后文源码标识用于兼容实现参考，不是当前安装器注册目标。
 
 ## 一、<span id="installation">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-两个入口都是工程根目录下裸露的双击脚本，独立于总仓安装器；安装入口转交相邻聚合包，仅本目录的业务脚本仍可独立运行。也可运行[总安装器](../【MacOS】🧩安装Finder扩展.command)，只勾选“新建 iOS 模拟器”后点击安装。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理iOS模拟器Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[【MacOS】安装iOS模拟器Finder扩展.command](./【MacOS】安装iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
-> **目的：** 在统一桌面菜单中启用“新建 iOS 模拟器”这一叶。
+启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-- 先决条件是完整 [**Xcode**](https://developer.apple.com/xcode/)：脚本体检 `xcodebuild`、macOS SDK、`pluginkit` 等系统命令与工具链健康，缺失时明确停止；只装 Command Line Tools 不够。
-- 直接回车安装，输入任意字符（包括空格）后回车跳过；构建产物使用上方聚合 App 路径，成功后按需刷新 Finder，不打开业务 URL。安装过程不创建、不删除任何模拟器或运行时。
-- 首次按系统提示启用 `JobsDesktopTools` 的 Finder 扩展；右键后若系统询问该宿主控制 Terminal，允许后继续。日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
+本入口转交 [JobsDesktopTools](../JobsDesktopTools/README.md)，只管理 `ios-simulator-create`，需要保留同仓聚合工程源码。旧宿主、扩展与 Xcode 工程仍供实现参考和隔离验证；常规菜单安装不再注册本目录的旧独立扩展。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[【MacOS】卸载iOS模拟器Finder扩展.command](./【MacOS】卸载iOS模拟器Finder扩展.command)</span><!-- jobs-toc:heading-end -->
+需要 macOS 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。安装成功后启用本入口对应功能并保留其它已装选择；卸载仅减去对应功能，仍有其它项时保留共享 App 和登记，最后一项才停用聚合扩展。源码、用户工程、SDK、模拟器、业务数据和既有业务配置保留；安装与卸载只管理菜单，不执行菜单业务。操作完成后刷新 Finder，请先结束 Finder 文件搬移。
 
-> **目的：** 只关闭本叶菜单，最后一叶关闭时停用聚合扩展，保留共享 App 和业务数据。
+安装 / 卸载日志为系统临时目录中的 `JobsDesktopToolsInstall.log`。
 
-- 阅读管理器自述后直接回车关闭本叶；任意非空输入、Ctrl+C 或输入结束停止，也可使用总卸载器。
-- 只关闭本叶；保留聚合 App 的其它功能、已有模拟器、运行时和源码。
-- 安装与卸载日志统一为系统临时目录 `JobsDesktopToolsInstall.log`。
+也可从 [总管理面板](../【MacOS】🧩管理Finder扩展.command) 选择一个或多个功能，在同一面板切换安装 / 更新或卸载。
 
 ## 二、<span id="usage">使用方式</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -107,8 +101,7 @@
 ├── JobsIOSSimulatorFinderSync/        # 仅桌面空白菜单
 ├── Scripts/                          # 创建业务与构建后启用入口
 ├── Tests/                            # 原生协议及隔离脚本回归
-├── 【MacOS】安装iOS模拟器Finder扩展.command
-└── 【MacOS】卸载iOS模拟器Finder扩展.command
+└── 【MacOS】管理iOS模拟器Finder扩展.command
 ```
 
 | 标识 | 值 |
@@ -120,7 +113,7 @@
 | 安装面板功能 ID | `ios-simulator-create` |
 | 唯一业务 URL | `jobsiossimulatorcreator://simulator/create`，拒绝其它动作和附加参数 |
 
-总安装器产物位于仓库 `work/JobsIOSSimulatorCreatorDerivedData/`，独立安装器产物位于本工程 `work/DerivedData/`。系统直接注册相应位置的 App / appex，使用期间保留该目录，清理前先卸载。两种安装方式使用相同 Bundle ID，不同时维护多份注册副本。
+总管理器产物位于仓库 `work/JobsIOSSimulatorCreatorDerivedData/`，独立安装器产物位于本工程 `work/DerivedData/`。系统直接注册相应位置的 App / appex，使用期间保留该目录，清理前先卸载。两种安装方式使用相同 Bundle ID，不同时维护多份注册副本。
 
 ## 五、<span id="flow">模块与业务流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -182,7 +175,7 @@ JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 xcodebuild \
 
 宿主与菜单既有验收：Xcode **27.1 / 27A9275**、macOS arm64 的 Debug 双 target 构建与 ad-hoc 深度签名验证通过；安装注册 10 项 / 66 断言、原生传输与菜单 66 断言、父安装映射 19 项 / 108 断言通过。真实只读 `--check` 已核验同一 Xcode 的 Device Hub。桌面范围回归 `Tests/DesktopFinderMenuTests.rb` 直接执行真实菜单源码，177 条 Swift 菜单断言通过。
 
-本机已完成 8 个相关扩展的增量构建、深度签名和原路径启用校验，并统一刷新一次 Finder；其它四项扩展的注册路径与启用状态保留。现行产物使用总安装器的 `work/<工程名>DerivedData/` 位置。**真实桌面与普通文件夹空白右键均已验证：桌面只新增“新建 iOS 模拟器”；普通空文件夹保留原有通用菜单，不显示模拟器入口。** 验收截图属于本机 `work/` 生成产物，当前工作树未携带，不作为可分发文件链接。没有创建或启动真实模拟器，系统自动化授权和实际创建仍按实机运行验收。
+本机已完成 8 个相关扩展的增量构建、深度签名和原路径启用校验，并统一刷新一次 Finder；其它四项扩展的注册路径与启用状态保留。现行产物使用总管理器的 `work/<工程名>DerivedData/` 位置。**真实桌面与普通文件夹空白右键均已验证：桌面只新增“新建 iOS 模拟器”；普通空文件夹保留原有通用菜单，不显示模拟器入口。** 验收截图属于本机 `work/` 生成产物，当前工作树未携带，不作为可分发文件链接。没有创建或启动真实模拟器，系统自动化授权和实际创建仍按实机运行验收。
 
 桌面与普通文件夹菜单已完成实机验证；编译、菜单与隔离回归不替代真实系统授权和创建设备的验收。原生回归在本工程目录可用以下命令独立运行，输出程序位于系统临时目录：
 

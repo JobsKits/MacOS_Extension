@@ -17,6 +17,20 @@ struct FlutterToolsLauncher {
             throw failure("App 缺少 Flutter 工具资源，请重新安装。")
         }
         let request = try prepare(projectURL: projectURL, action: action, toolsURL: toolsURL)
+        if action == .projectSetup {
+            do {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                process.arguments = [request.directoryURL.appendingPathComponent("Tools/OpenSetupWindow.zsh").path, "--project", projectURL.standardizedFileURL.path]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try process.run()
+            } catch {
+                try? FileManager.default.removeItem(at: request.directoryURL)
+                throw error
+            }
+            return
+        }
         do { try dispatch(commandLine: request.commandLine) }
         catch { try? FileManager.default.removeItem(at: request.directoryURL); throw error }
     }
@@ -25,6 +39,9 @@ struct FlutterToolsLauncher {
             throw failure("此 Flutter 功能未安装或选择配置已变化，请重新运行总安装器勾选。")
         }
         guard FlutterProjectValidator().isFlutterProject(at: projectURL) else { throw failure("请选择合法 Flutter 项目根目录。") }
+        guard action != .packageHarmony || FlutterProjectValidator().isHarmonyFlutterProject(at: projectURL) else {
+            throw failure("鸿蒙打包需要当前 Flutter 工程包含普通 ohos 目录、build-profile.json5 和 oh-package.json5，请先完成鸿蒙适配。")
+        }
         var template = Array(FileManager.default.temporaryDirectory.appendingPathComponent("JobsFlutterTools-XXXXXX").path.utf8CString)
         guard let path = mkdtemp(&template) else { throw failure("无法建立私有载体。") }
         let directory = URL(fileURLWithPath: String(cString: path), isDirectory: true)

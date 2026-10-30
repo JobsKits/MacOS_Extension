@@ -107,14 +107,30 @@ private extension AppDelegate {
             writeLog("invalid terminal action=\(actionValue)")
             return
         }
+        if action == .fileContent, (!path.hasPrefix("/") || path.utf8.contains(0)) {
+            writeLog("invalid file content absolute path")
+            return
+        }
         guard let feature = FinderMenuFeature(rawValue: actionValue),
               FinderMenuFeatureConfiguration.enabledFeatures(fallbackBundle: Bundle.main).contains(feature) else {
             writeLog("disabled terminal action=\(actionValue)")
             return
         }
 
+        let paths = components.queryItems?.filter { $0.name == "path" }.compactMap(\.value) ?? []
+        if action == .fileMerge || action == .fileSplit {
+            guard paths.allSatisfy({ $0.hasPrefix("/") && !$0.utf8.contains(0) }) else {
+                return
+            }
+        } else if paths.count != 1 {
+            return
+        }
         didHandleTerminalOpenRequest = true
         do {
+            if action == .fileMerge || action == .fileSplit {
+                _ = try terminalOpener.openFileVolumes(from: paths.map { URL(fileURLWithPath: $0) }, action: action)
+                return
+            }
             let fileURL = URL(fileURLWithPath: path)
             let directoryURL = try terminalOpener.openTerminal(from: fileURL, action: action)
             writeLog("terminal action=\(action.rawValue) from host \(directoryURL.path)")
@@ -142,6 +158,14 @@ private extension AppDelegate {
         /// 普通打开终端请求失败
         case .open:
             alert.messageText = "用终端打开失败"
+        case .fileContent:
+            alert.messageText = "查看文件内容失败"
+        /// 分卷合并失败。
+        case .fileMerge:
+            alert.messageText = "合并分卷失败"
+        /// 单文件拆分失败。
+        case .fileSplit:
+            alert.messageText = "拆分文件失败"
         /// 在目标文件夹执行 pod install 请求失败
         case .podInstall:
             alert.messageText = "执行 pod install 失败"

@@ -194,6 +194,7 @@ main() {
   (( $# > 0 )) || return 1
   for feature in "$@"; do
     (( ${FEATURES[(Ie)$feature]} )) || { print -u2 "未知功能：$feature"; return 1; }
+    [[ "$operation" != install || "$feature" != git-sourcetree ]] || { print -u2 '“用 Sourcetree 打开”已移除；旧配置仅支持卸载。'; return 1; }
   done
   read_configuration
   if [[ "$operation" == install ]]; then install_features "$@"; else uninstall_features "$@"; fi

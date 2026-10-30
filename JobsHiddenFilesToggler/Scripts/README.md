@@ -19,6 +19,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 > 本目录只承载 [**Xcode**](https://developer.apple.com/xcode) 编译后的扩展启用脚本。实际隐藏文件偏好切换在 [后台宿主源码](../JobsHiddenFilesToggler/) 内实现，不依赖外部业务脚本。
 
 ## 一、<span id="build-helper">编译后启用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
@@ -33,7 +35,7 @@
 
 | 配置 / 文件 | 行为 |
 | --- | --- |
-| `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` | 跳过编译后注册、启用与 Finder 刷新；独立和总安装器负责后续注册 |
+| `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` | 跳过编译后注册、启用与 Finder 刷新；独立和总管理器负责后续注册 |
 | `JobsHiddenFilesTogglerBuildPhase.log` | 系统临时目录中的构建后启用日志 |
 | `JobsHiddenFilesTogglerNeedsFinderRestart` | 系统临时目录中的初始化未完成标记 |
 
@@ -43,7 +45,7 @@
 
 ## 三、<span id="entrypoints">安装与验证入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-日常使用 [独立安装入口](../【MacOS】安装显示隐藏文件Finder扩展.command)，卸载使用 [独立卸载入口](../【MacOS】卸载显示隐藏文件Finder扩展.command)。两个入口与功能 [README](../README.md) 平级。
+日常安装与卸载统一使用 [独立管理入口](../【MacOS】管理显示隐藏文件Finder扩展.command)，与功能 [README](../README.md) 平级。终端只唤起 GUI 后结束，在面板选定安装 / 更新或卸载并点击按钮执行，不要求终端二次确认。
 
 在功能根目录运行隔离测试，不会真实注册或刷新：
 

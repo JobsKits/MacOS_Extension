@@ -9,6 +9,28 @@ import Foundation
 
 /// 只识别当前真实普通目录的 Flutter SDK 依赖，不递归搜索子目录。
 struct FlutterProjectValidator {
+    /// 鸿蒙打包只接受已经适配的工程；菜单识别不启动 SDK 或读取签名内容。
+    func isHarmonyFlutterProject(at directoryURL: URL) -> Bool {
+        guard isFlutterProject(at: directoryURL) else {
+            return false
+        }
+        for name in ["lib", "ohos"] {
+            let url = directoryURL.appendingPathComponent(name, isDirectory: true)
+            guard let value = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isAliasFileKey]),
+                  value.isDirectory == true, value.isSymbolicLink != true, value.isAliasFile != true else {
+                return false
+            }
+        }
+        for name in ["build-profile.json5", "oh-package.json5"] {
+            let url = directoryURL.appendingPathComponent("ohos").appendingPathComponent(name)
+            guard let value = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey]),
+                  value.isRegularFile == true, value.isSymbolicLink != true, value.isAliasFile != true else {
+                return false
+            }
+        }
+        return true
+    }
+
     func isFlutterProject(at directoryURL: URL) -> Bool {
         guard directoryURL.isFileURL,
               let directory = try? directoryURL.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isAliasFileKey]),

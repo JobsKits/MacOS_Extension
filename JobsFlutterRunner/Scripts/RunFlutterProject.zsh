@@ -2,7 +2,7 @@
 # 脚本自述：
 # - 脚本名称：从终端运行 Flutter 项目。
 # - 核心用途：终端选择设备，独立后台运行 Flutter，并查看日志及控制热重载。
-# - 影响范围：Flutter 构建可更新项目依赖和构建目录；按需创建、启动所选 iOS 模拟器。
+# - 影响范围：Flutter 构建可更新项目依赖和构建目录；按需创建、启动 iOS / Android 模拟器，确认后下载所选 Android SDK 组件。
 # - 运行提示：先回车确认；关闭终端只离开日志，输入 s 才停止后台任务。
 # - 选择方式：终端内优先用 fzf 上下键 + 输入筛选选择；fzf 不可用或非终端时自动回退编号输入。
 
@@ -23,6 +23,11 @@ LOCK_FD=""
 QUERY_PID=""
 REPLY=""
 FZF_BIN=""
+ANDROID_RUN_SDK=""
+ANDROID_RUN_EMULATOR=""
+ANDROID_RUN_AVDMANAGER=""
+ANDROID_RUN_SDKMANAGER=""
+ANDROID_RUN_ADB=""
 typeset -a ROWS=()
 
 intro_line() {
@@ -39,7 +44,7 @@ show_script_intro_and_wait() {
   intro_line title '从终端运行 Flutter 项目'
   intro_line body '1、选择设备后构建、运行当前 Flutter 项目；沿用项目 FVM SDK 或终端 Flutter。'
   intro_line body '2、Flutter 由当前登录会话的 launchd 托管，关闭 Terminal 不影响运行。'
-  intro_line body '3、iOS 可选择已有模拟器；没有时内置选择型号、系统版本、创建及启动流程。'
+  intro_line body '3、iOS / Android 可启动已有模拟器；缺失时选择型号、系统版本并确认创建，Android 镜像与缺失运行组件会单独确认下载。'
   intro_line body '4、可能下载项目依赖、生成构建文件；项目声明的 FVM SDK 缺失时会确认后下载，不安装或升级全局 Flutter / Xcode。'
   intro_line body '5、日志与会话保存在用户资源库 Application Support/JobsFlutterRunner/sessions。'
   intro_line body '6、回车继续，非空或 Ctrl+C 取消；运行后 d 离开日志，s 停止后台任务。'
@@ -257,8 +262,12 @@ fzf_ready() {
 
 # 每行是 "id\tdisplay"：只展示 display，输出整行以便回取原始 id。
 fzf_pick_row() {
-  local heading="$1" row="" answer="" pick_status=0
-  local -a lines=()
+  local heading="$1" parent="${2:-0}" row="" answer="" pick_status=0 header='↑/↓ 选择；输入即筛选；Esc 取消'
+  local -a lines=() navigation=()
+  if [[ "$parent" == 1 ]]; then
+    navigation=(--expect=left)
+    header+='；← 返回上一层'
+  fi
   for row in "${ROWS[@]}"; do
     if [[ "$row" == *$'\t'* ]]; then
       lines+=("$row")
@@ -272,27 +281,32 @@ fzf_pick_row() {
     --height=40% --min-height=12 --border \
     --delimiter=$'\t' --with-nth=2.. \
     --prompt="${heading}› " \
-    --header='↑/↓ 选择；输入即筛选；Esc 取消' 2>> "$LOG_FILE")"
+    --header="$header" "${navigation[@]}" 2>> "$LOG_FILE")"
   pick_status=$?
   # 退出码 2 是参数不兼容等运行错误，去掉装饰类参数再试一次；130 是用户取消，不再重试。
   if (( pick_status == 2 )); then
     answer="$(printf '%s\n' "${lines[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
       "$FZF_BIN" --no-multi --layout=reverse --height=40% \
-      --delimiter=$'\t' --with-nth=2.. --prompt="${heading}› " 2>> "$LOG_FILE")"
+      --delimiter=$'\t' --with-nth=2.. --prompt="${heading}› " --header="$header" "${navigation[@]}" 2>> "$LOG_FILE")"
     pick_status=$?
   fi
+  if [[ "$parent" == 1 && "${answer%%$'\n'*}" == left ]]; then
+    REPLY=__back__
+    return 0
+  fi
   (( pick_status == 0 )) || return 1
+  [[ "$parent" != 1 ]] || answer="${answer#*$'\n'}"
   [[ -n "$answer" ]] || return 1
   REPLY="${answer%%$'\t'*}"
   return 0
 }
 
 select_row() {
-  local heading="$1" answer="" row="" index=1
+  local heading="$1" parent="${2:-0}" answer="" row="" index=1
   (( ${#ROWS} > 0 )) || return 1
   if fzf_ready; then
     log "$heading"
-    fzf_pick_row "$heading" || return 1
+    fzf_pick_row "$heading" "$parent" || return 1
     return 0
   fi
   log "$heading"
@@ -321,7 +335,7 @@ refresh_devices() {
     [[ -n "$table" ]] || ROWS=()
   else
     ROWS=()
-    log "⚠ 设备查询失败，可重新加载或选择 iOS 模拟器；详情：$output"
+    log "⚠ 设备查询失败，可重新加载或选择 iOS / Android 模拟器；详情：$output"
     if [[ -s "$output" ]]; then
       log '➤ 最近输出：'
       /usr/bin/tail -n 5 "$output" | while IFS= read -r line; do log "  $line"; done
@@ -521,42 +535,224 @@ wait_for_simulator_recognition() {
   die '模拟器已启动，但 Flutter 尚未识别；保留模拟器，请检查 flutter doctor 后重试。'
 }
 
-# Android SDK 原生命令列出 AVD；单独 launchd 作业防止模拟器跟随终端断连。
-start_android_emulator() {
-  local emulator="" candidate="" output="$LOG_FILE.avds" avd="" digest="" avd_session="" avd_label=""
-  local -a candidates=("${ANDROID_HOME:-}/emulator/emulator" "${ANDROID_SDK_ROOT:-}/emulator/emulator"
-    "$HOME/Library/Android/sdk/emulator/emulator" "${commands[emulator]:-}")
-  for candidate in "${candidates[@]}"; do
-    if [[ -n "$candidate" && -x "$candidate" && ! -d "$candidate" ]]; then
-      emulator="${candidate:A}"
-      break
-    fi
+# 只选择同一 SDK 内的工具，避免命令行工具与 emulator 指向不同安装。
+resolve_android_tools() {
+  local candidate="" tool="" root="" command_path="${commands[emulator]:-}"
+  local -a roots=("${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk")
+  [[ -z "$command_path" ]] || roots+=("${command_path:A:h:h}")
+  ANDROID_RUN_SDK=""
+  ANDROID_RUN_AVDMANAGER=""
+  ANDROID_RUN_SDKMANAGER=""
+  for root in "${roots[@]}"; do
+    [[ -n "$root" && -d "$root" ]] || continue
+    [[ -d "$root/emulator" || -d "$root/cmdline-tools" ]] || continue
+    ANDROID_RUN_SDK="${root:A}"
+    break
   done
-  [[ -n "$emulator" ]] || { log '⚠ 未找到 Android SDK emulator；设置 ANDROID_HOME / ANDROID_SDK_ROOT，或先从 Android Studio 启动模拟器。'; return 1; }
-  run_bounded 30 "$output" "$emulator" -list-avds || { log "⚠ 无法读取 Android AVD：$output"; return 1; }
+  [[ -n "$ANDROID_RUN_SDK" ]] || { log '⚠ 未找到 Android SDK；先运行“初始化 Android 模拟器”准备工具链，或设置 ANDROID_HOME。'; return 1; }
+  ANDROID_RUN_EMULATOR="$ANDROID_RUN_SDK/emulator/emulator"
+  ANDROID_RUN_ADB="$ANDROID_RUN_SDK/platform-tools/adb"
+  for candidate in "$ANDROID_RUN_SDK/cmdline-tools/latest/bin" "$ANDROID_RUN_SDK"/cmdline-tools/*/bin(N/); do
+    [[ -x "$candidate/avdmanager" && -x "$candidate/sdkmanager" ]] || continue
+    ANDROID_RUN_AVDMANAGER="$candidate/avdmanager"
+    ANDROID_RUN_SDKMANAGER="$candidate/sdkmanager"
+    break
+  done
+  export ANDROID_HOME="$ANDROID_RUN_SDK" ANDROID_SDK_ROOT="$ANDROID_RUN_SDK"
+  log "Android SDK：$ANDROID_RUN_SDK"
+}
+# 清单只包含安全 AVD 名称；已有设备无需依赖 Java 或 avdmanager。
+read_android_avds() {
+  local output="$LOG_FILE.avds" avd=""
+  [[ -x "$ANDROID_RUN_EMULATOR" ]] || { ROWS=(); return 0; }
+  run_bounded 30 "$output" "$ANDROID_RUN_EMULATOR" -list-avds || { log "⚠ 无法读取 Android AVD：$output"; return 1; }
   ROWS=()
   while IFS= read -r avd; do
     avd="${avd%$'\r'}"
     [[ "$avd" =~ '^[A-Za-z0-9_.-]+$' ]] && ROWS+=("${avd}"$'\t'"${avd}")
   done < "$output"
-  (( ${#ROWS} > 0 )) || { log 'ℹ 尚无 Android AVD，请先在 Android Studio Device Manager 创建，然后重新加载。'; return 1; }
-  select_row '选择已配置的 Android AVD：' || return 1
-  avd="$REPLY"
-  digest="$(printf '%s\0%s' "$emulator" "$avd" | /usr/bin/shasum -a 256)"
+}
+# 本机 ABI 只列稳定手机 / 平板镜像，优先复用已下载的完整映像。
+android_image_rows() {
+  local abi="$1" properties="" directory="" package=""
+  for properties in "$ANDROID_RUN_SDK"/system-images/*/*/"$abi"/source.properties(N); do
+    directory="${properties:h}"
+    [[ -f "$directory/system.img" ]] || continue
+    package="system-images;${${directory#"$ANDROID_RUN_SDK/system-images/"}//\//;}"
+    print -r -- "$package" | /usr/bin/grep -Eq "^system-images;android-[0-9]+(\.[0-9]+)?(-ext[0-9]+)?;(google_apis|google_apis_playstore|default);${abi}$" || continue
+    print -r -- "$package"$'\t'"${package#system-images;}（已安装）"
+  done
+}
+# 下载明确选中的缺失组件，许可证保留本人交互，不更新其它 SDK 包。
+install_android_packages() {
+  local package=""
+  (( $# > 0 )) || return 0
+  [[ -x "$ANDROID_RUN_SDKMANAGER" ]] || { log '⚠ 缺少 sdkmanager，请先在 Android Studio 安装 Android SDK Command-line Tools。'; return 1; }
+  log '来源：Google Android SDK Repository（https://dl.google.com/android/repository/）'
+  log "目标：$ANDROID_RUN_SDK"
+  for package in "$@"; do
+    log "➤ 安装：$package（许可证请本人阅读后选择）"
+    "$ANDROID_RUN_SDKMANAGER" --sdk_root="$ANDROID_RUN_SDK" --install "$package" --channel=0 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+    (( pipestatus[1] == 0 )) || { log "✖ 安装失败：$package"; return 1; }
+  done
+}
+# 只供有界任务的子进程调用：exec 保持创建器为被计时 PID，避免超时后管道子进程继续创建。
+create_android_avd_command() {
+  exec "$ANDROID_RUN_AVDMANAGER" create avd -n "$1" -k "$2" --device "$3" <<< no
+}
+# 型号 → 系统 → 确认分层返回，写入只发生在最终确认之后。
+create_android_emulator() {
+  local output="$LOG_FILE.android-models" table="" models="" model="" image="" abi="" answer="" avd="" row="" avd_home=""
+  local -a packages=()
+  [[ -x "$ANDROID_RUN_AVDMANAGER" ]] || { log '⚠ 缺少 avdmanager，请先在 Android Studio 安装 Android SDK Command-line Tools（含可用 Java），再重试。'; return 1; }
+  run_bounded 45 "$output" "$ANDROID_RUN_AVDMANAGER" list device || { log "⚠ 读取 Android 型号失败，请检查 Java / Command-line Tools：$output"; return 1; }
+  models="$(/usr/bin/awk '
+    /^[[:space:]]*id:/ { id=$0; sub(/^[^"]*"/, "", id); sub(/".*$/, "", id) }
+    /^[[:space:]]*Name:/ && id ~ /^[A-Za-z0-9_.-]+$/ {
+      name=$0; sub(/^[[:space:]]*Name:[[:space:]]*/, "", name)
+      if (tolower(id " " name) !~ /wear|watch|tv|television|automotive|desktop/) print id "\t" name
+    }' "$output")"
+  [[ -n "$models" ]] || { log "⚠ 未找到 Android 手机 / 平板型号：$output"; return 1; }
+  case "$(/usr/bin/uname -m)" in
+    arm64) abi=arm64-v8a ;;
+    x86_64) abi=x86_64 ;;
+    *) log '⚠ 当前主机架构不支持此 Android 模拟器初始化流程。'; return 1 ;;
+  esac
+  while true; do
+    ROWS=("${(@f)models}" $'__back__\t返回 Flutter 设备列表')
+    select_row '选择 Android 模拟器型号：' 1 || return 1
+    [[ "$REPLY" != __back__ ]] || return 1
+    model="$REPLY"
+    while true; do
+      table="$(android_image_rows "$abi")"
+      ROWS=()
+      [[ -z "$table" ]] || ROWS=("${(@f)table}")
+      ROWS+=($'__download__\t从 Google 官方源选择其它系统镜像' $'__back__\t返回型号选择')
+      select_row '选择 Android 系统镜像：' 1 || return 1
+      [[ "$REPLY" != __back__ ]] || break
+      image="$REPLY"
+      if [[ "$image" == __download__ ]]; then
+        [[ -x "$ANDROID_RUN_SDKMANAGER" ]] || { log '⚠ 缺少 sdkmanager，无法读取官方镜像。'; return 1; }
+        log '➤ 从 Google Android SDK Repository 查询稳定系统镜像：https://dl.google.com/android/repository/'
+        run_bounded 90 "$LOG_FILE.android-images" "$ANDROID_RUN_SDKMANAGER" --sdk_root="$ANDROID_RUN_SDK" --list --channel=0 || { log "⚠ 镜像清单查询失败：$LOG_FILE.android-images"; return 1; }
+        table="$(/usr/bin/awk -F '|' -v abi="$abi" '{ p=$1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", p); if (p ~ ("^system-images;android-[0-9]+(\\.[0-9]+)?(-ext[0-9]+)?;(google_apis|google_apis_playstore|default);" abi "$")) print p "\t" p }' "$LOG_FILE.android-images" | /usr/bin/sort -u)"
+        [[ -n "$table" ]] || { log "⚠ 官方清单没有匹配 $abi 的稳定手机 / 平板镜像。"; continue; }
+        ROWS=("${(@f)table}" $'__back__\t返回系统镜像选择')
+        select_row '选择要下载的 Android 系统镜像：' 1 || return 1
+        [[ "$REPLY" != __back__ ]] || continue
+        image="$REPLY"
+      fi
+      packages=()
+      [[ -f "$ANDROID_RUN_SDK/${(j:/:)${(s:;:)image}}/system.img" ]] || packages+=("$image")
+      [[ -x "$ANDROID_RUN_EMULATOR" ]] || packages+=(emulator)
+      [[ -x "$ANDROID_RUN_ADB" ]] || packages+=(platform-tools)
+      avd="Jobs_${model}_$(/bin/date '+%Y%m%d_%H%M%S')_$$"
+      avd_home="${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-${ANDROID_EMULATOR_HOME:-$HOME/.android}}/avd}"
+      log "将新建：$avd / $model / $image"
+      (( ${#packages} == 0 )) || log "确认后下载：${(j:、:)packages}；目标：$ANDROID_RUN_SDK"
+      IFS= read -r 'answer?回车确认下载所需组件并创建；b 返回系统选择；其它输入取消：' || return 1
+      [[ "$answer" != b ]] || continue
+      [[ -z "$answer" ]] || return 1
+      install_android_packages "${packages[@]}" || return 1
+      [[ -x "$ANDROID_RUN_EMULATOR" && -x "$ANDROID_RUN_ADB" && -f "$ANDROID_RUN_SDK/${(j:/:)${(s:;:)image}}/system.img" ]] || { log '✖ Android 组件安装后复检失败，未创建设备。'; return 1; }
+      read_android_avds || return 1
+      for row in "${ROWS[@]}"; do
+        [[ "${row%%$'\t'*}" != "$avd" ]] || { log '✖ 同名 AVD 已存在，未覆盖。'; return 1; }
+      done
+      [[ ! -e "$avd_home/$avd.ini" && ! -L "$avd_home/$avd.ini" && ! -e "$avd_home/$avd.avd" && ! -L "$avd_home/$avd.avd" ]] || { log '✖ AVD 名称已有遗留目录，未覆盖。'; return 1; }
+      run_bounded 60 "$LOG_FILE.android-create" create_android_avd_command "$avd" "$image" "$model" || { log "✖ 创建失败，未自动重试或覆盖设备：$LOG_FILE.android-create"; return 1; }
+      read_android_avds || return 1
+      for row in "${ROWS[@]}"; do
+        if [[ "${row%%$'\t'*}" == "$avd" ]]; then
+          REPLY="$avd"
+          return 0
+        fi
+      done
+      log '✖ 创建命令成功但没有找到新 AVD，已停止，请检查 Device Manager。'
+      return 1
+    done
+  done
+}
+# 用 AVD 名称精确匹配 adb 序列号，避免误选其它已连接手机或模拟器。
+android_serial_for_avd() {
+  local avd="$1" serial="" state="" rest="" name=""
+  run_bounded 10 "$LOG_FILE.adb-devices" "$ANDROID_RUN_ADB" devices || return 1
+  while read -r serial state rest; do
+    [[ "$serial" == emulator-<-> && "$state" == device ]] || continue
+    run_bounded 5 "$LOG_FILE.adb-name" "$ANDROID_RUN_ADB" -s "$serial" emu avd name || continue
+    name="$(/usr/bin/head -n 1 "$LOG_FILE.adb-name")"
+    if [[ "${name%$'\r'}" == "$avd" ]]; then
+      REPLY="$serial"
+      return 0
+    fi
+  done < "$LOG_FILE.adb-devices"
+  return 1
+}
+# 等待目标 Android 完成开机，再等待同一 serial 出现在 Flutter 中。
+wait_for_android_avd() {
+  local avd="$1" serial="" started=$SECONDS
+  log "ℹ 等待 Android 模拟器就绪：$avd"
+  while (( SECONDS - started < 240 )); do
+    if android_serial_for_avd "$avd"; then
+      serial="$REPLY"
+      if run_bounded 10 "$LOG_FILE.android-boot" "$ANDROID_RUN_ADB" -s "$serial" shell getprop sys.boot_completed &&
+          [[ "$(/usr/bin/tr -d '\r\n ' < "$LOG_FILE.android-boot")" == 1 ]]; then
+        wait_for_simulator_recognition "$serial"
+        return $?
+      fi
+    fi
+    /bin/sleep 3
+  done
+  log "⚠ Android 未在 240 秒内完成开机；保留设备，请检查模拟器日志并重新加载：$avd"
+  return 1
+}
+# 已有设备直接启动，空清单进入初始化；launchd 保留模拟器独立生命周期。
+start_android_emulator() {
+  local avd="" answer="" digest="" avd_session="" avd_label=""
+  resolve_android_tools || return 1
+  read_android_avds || return 1
+  if (( ${#ROWS} > 0 )); then
+    ROWS+=($'__create__\t创建新的 Android 模拟器' $'__back__\t返回 Flutter 设备列表')
+    select_row '选择 Android 模拟器：' 1 || return 1
+    [[ "$REPLY" != __back__ ]] || return 1
+    avd="$REPLY"
+  else
+    log 'ℹ 尚无 Android AVD，进入内置初始化流程。'
+    avd=__create__
+  fi
+  if [[ "$avd" == __create__ ]]; then
+    create_android_emulator || return 1
+    avd="$REPLY"
+  fi
+  run_bounded 20 "$LOG_FILE.emulator-version" "$ANDROID_RUN_EMULATOR" -version || { log "⚠ emulator 不可用：$LOG_FILE.emulator-version"; return 1; }
+  if [[ ! -x "$ANDROID_RUN_ADB" ]]; then
+    IFS= read -r 'answer?缺少 platform-tools；输入 YES 下载到当前 SDK，其它取消：' || return 1
+    [[ "$answer" == YES ]] || return 1
+    install_android_packages platform-tools || return 1
+    [[ -x "$ANDROID_RUN_ADB" ]] || { log '✖ platform-tools 安装后仍缺 adb。'; return 1; }
+  fi
+  run_bounded 10 "$LOG_FILE.adb-version" "$ANDROID_RUN_ADB" version || { log "⚠ adb 不可用：$LOG_FILE.adb-version"; return 1; }
+  if android_serial_for_avd "$avd"; then
+    wait_for_android_avd "$avd"
+    return $?
+  fi
+  digest="$(printf '%s\0%s' "$ANDROID_RUN_EMULATOR" "$avd" | /usr/bin/shasum -a 256)"
   digest="${digest%% *}"
   avd_label="com.jobs.flutterrunner.avd.$digest"
   avd_session="$STATE_ROOT/android-$digest"
   [[ ! -L "$STATE_ROOT" && ! -L "$avd_session" ]] || die '模拟器会话目录不能是符号链接。'
   /bin/mkdir -p "$avd_session" || die '无法创建模拟器会话目录。'
   if /bin/launchctl print "gui/$UID/$avd_label" 2>/dev/null | /usr/bin/grep -Fq 'state = running'; then
-    log 'ℹ 该 AVD 已由后台启动，请在设备列表选择对应设备。'
-    return
+    log 'ℹ 该 AVD 已由后台启动，继续等待设备就绪。'
+    wait_for_android_avd "$avd"
+    return $?
   fi
   /bin/launchctl bootout "gui/$UID/$avd_label" >/dev/null 2>&1
-  json_helper emulator-plist "$avd_session" "$avd_label" "$emulator" "$avd" >/dev/null || die '无法生成 Android 模拟器后台配置。'
+  json_helper emulator-plist "$avd_session" "$avd_label" "$ANDROID_RUN_EMULATOR" "$avd" >/dev/null || die '无法生成 Android 模拟器后台配置。'
   /bin/launchctl bootstrap "gui/$UID" "$avd_session/job.plist" >> "$LOG_FILE" 2>&1 || { log "⚠ AVD 启动失败，详情：$LOG_FILE"; return 1; }
-  log "✔ 已请求后台启动 AVD：$avd；就绪后在设备列表选择，尚未出现可重新加载。"
+  log "✔ 已请求后台启动 AVD：$avd"
   log "模拟器日志：$avd_session/emulator.log"
+  wait_for_android_avd "$avd"
 }
 
 choose_device() {
@@ -564,13 +760,13 @@ choose_device() {
     refresh_devices
     (( ${#ROWS} > 0 )) || log 'ℹ 暂无当前项目可运行的设备；连接手机、启动模拟器后可重新加载。'
     [[ ! -d "$PROJECT_PATH/ios" ]] || ROWS+=($'ios\tiOS 模拟器（启动已有 / 缺失时初始化）')
-    [[ ! -d "$PROJECT_PATH/android" ]] || ROWS+=($'android-avd\t启动已有 Android 模拟器')
+    [[ ! -d "$PROJECT_PATH/android" ]] || ROWS+=($'android-avd\tAndroid 模拟器（启动已有 / 缺失时初始化）')
     ROWS+=($'refresh\t重新加载设备列表')
     select_row '选择 Flutter 运行设备：' || exit 0
     case "$REPLY" in
       refresh) continue ;;
       ios) select_ios_simulator && return ;;
-      android-avd) start_android_emulator ;;
+      android-avd) start_android_emulator && return ;;
       *) DEVICE_ID="$REPLY"; return ;;
     esac
   done

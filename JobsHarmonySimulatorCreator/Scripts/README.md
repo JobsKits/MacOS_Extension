@@ -18,6 +18,8 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 本目录携带独立的官方 Emulator CLI 创建流程和 Finder 注册辅助脚本；运行时不读取 README，也不依赖其它仓库脚本。平台、安装入口及风险见[功能 README](../README.md)。
 
 | 文件 | 职责 |

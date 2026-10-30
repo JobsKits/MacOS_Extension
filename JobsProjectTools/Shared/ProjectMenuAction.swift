@@ -23,7 +23,7 @@ enum ProjectMenuAction: String, CaseIterable {
 
     var isGitAction: Bool {
         switch self {
-        /// 有效 Git 工作树下的七项动作。
+        /// 包含旧配置兼容标识；实际菜单只显示六项 Git 动作。
         case .gitSourcetree, .gitPull, .gitRollback, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
             return true
         /// IDE 入口保留一级菜单。
@@ -43,7 +43,7 @@ enum ProjectMenuAction: String, CaseIterable {
         /// iOS Xcode 项目入口。
         case .xcode:
             return "🛠️ 用 Xcode 打开项目"
-        /// 仅在安装 Sourcetree 后显示。
+        /// 旧配置兼容标识，不再生成菜单。
         case .gitSourcetree:
             return "🌳 用 Sourcetree 打开"
         /// 拉取当前仓库。
@@ -91,9 +91,9 @@ enum ProjectMenuAction: String, CaseIterable {
             /// iOS Xcode 项目入口。
             case .xcode:
                 return isXcode
-            /// 应用安装状态随菜单生成和点击实时复核。
+            /// 用户已移除此入口，旧配置也不能重新显示或派发。
             case .gitSourcetree:
-                return isGit && SourcetreeApplication.installedURL() != nil
+                return false
             /// Git 菜单沿用独立的工作树门禁。
             case .gitPull, .gitRemote, .gitRemoteCopy, .gitProxy, .gitEmptyCommitPush:
                 return isGit

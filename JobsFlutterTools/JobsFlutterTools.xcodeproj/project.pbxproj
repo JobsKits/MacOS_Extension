@@ -166,6 +166,7 @@
 				01D000000000000000000010 /* Sources */,
 				01D000000000000000000011 /* Frameworks */,
 				01D000000000000000000012 /* Resources */,
+				01D000000000000000000015 /* Build Setup Window */,
 				01D000000000000000000013 /* Embed App Extensions */,
 				01D000000000000000000014 /* Enable Finder Extension */,
 			);
@@ -234,6 +235,18 @@
 /* End PBXProject section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		01D000000000000000000015 /* Build Setup Window */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ("$(SRCROOT)/Scripts/Tools/SetupProjectWindow.swift", "$(SRCROOT)/Scripts/BuildSetupWindow.zsh",);
+			name = "Build Setup Window";
+			outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Tools/JobsFlutterSetup",);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "/bin/zsh \"${SRCROOT}/Scripts/BuildSetupWindow.zsh\"\n";
+		};
 		01D000000000000000000014 /* Enable Finder Extension */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

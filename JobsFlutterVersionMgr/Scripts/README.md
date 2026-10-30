@@ -22,6 +22,8 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
+[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+
 `ManageFlutterVersion.zsh` 是 Finder“安装 / 切换 Flutter SDK（FVM）”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再检查工具链，通过 [**fzf**](https://formulae.brew.sh/formula/fzf) 选择历史或最新 SDK，最后使用 [**FVM**](https://fvm.app) 安装 / 切换精确版本。FVM 是电脑上的工具，每个项目通过自己的 `.fvmrc` 固定 SDK。
 
 ```zsh

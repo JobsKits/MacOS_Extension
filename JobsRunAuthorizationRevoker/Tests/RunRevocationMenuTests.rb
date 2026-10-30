@@ -162,7 +162,7 @@ class RunRevocationMenuTests < Minitest::Test
       controller.targeted = folder
       controller.selected = [file]
       let singleMenu = extensionInstance.menu(for: .contextualMenuForItems)
-      expect(singleMenu?.items.map(\.title) == ["🔒 解除运行授权"], "one executable-format file exposes exactly one action")
+      expect(singleMenu?.items.map(\.title) == ["🔓 解除运行授权"], "one executable-format file exposes exactly one action")
       expect(singleMenu?.autoenablesItems == false, "automatic AppKit validation cannot override explicit permission state")
       expect(singleMenu?.items.first?.isEnabled == true, "revocation is enabled with execute bits")
       expect(singleMenu?.items.first?.target === extensionInstance, "menu target is the real extension instance")
@@ -174,7 +174,7 @@ class RunRevocationMenuTests < Minitest::Test
       }
       try manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
       let nonExecutableMenu = extensionInstance.menu(for: .contextualMenuForItems)
-      expect(nonExecutableMenu?.items.map(\.title) == ["🔒 解除运行授权"], "no execute bits retain the revocation menu")
+      expect(nonExecutableMenu?.items.map(\.title) == ["🔓 解除运行授权"], "no execute bits retain the revocation menu")
       expect(nonExecutableMenu?.items.first?.isEnabled == false, "revocation is disabled without execute bits")
       TestWorkspace.reset()
       click(singleMenu)

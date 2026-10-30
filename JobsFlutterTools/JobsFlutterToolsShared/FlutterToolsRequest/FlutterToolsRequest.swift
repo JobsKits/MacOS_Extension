@@ -8,13 +8,39 @@
 import Foundation
 
 enum FlutterToolsAction: String, CaseIterable {
+    case projectSetup = "project-setup"
     case run
     case pubGet = "pub-get"
+    case androidDependencies = "android-dependencies"
+    case podsDependencies = "pods-dependencies"
+    case spmDependencies = "spm-dependencies"
+    case ohosDependencies = "ohos-dependencies"
+    case nativeDependencies = "native-dependencies"
+    case flutterPrecache = "flutter-precache"
+    case webDependencies = "web-dependencies"
     case extract
+    case exportPrivateDependencies = "export-private-dependencies"
+    case importPrivateDependencies = "import-private-dependencies"
+    case importDependencies = "import-dependencies"
+    case exportGradleDependencies = "export-gradle-dependencies"
+    case importGradleDependencies = "import-gradle-dependencies"
+    case exportPodsDependencies = "export-pods-dependencies"
+    case importPodsDependencies = "import-pods-dependencies"
+    case exportSpmDependencies = "export-spm-dependencies"
+    case importSpmDependencies = "import-spm-dependencies"
+    case exportOhosDependencies = "export-ohos-dependencies"
+    case importOhosDependencies = "import-ohos-dependencies"
+    case exportNativeDependencies = "export-native-dependencies"
+    case importNativeDependencies = "import-native-dependencies"
+    case exportPrecacheDependencies = "export-precache-dependencies"
+    case importPrecacheDependencies = "import-precache-dependencies"
+    case exportWebDependencies = "export-web-dependencies"
+    case importWebDependencies = "import-web-dependencies"
     case sdkVersion = "sdk-version"
     case sdkManage = "sdk-manage"
     case harmonySdkManage = "ohos-sdk-manage"
     case javaManage = "java-manage"
+    case gradleDownload = "gradle-download"
     case package
     case codegen
     case packageIOS = "package-ios"
@@ -31,20 +57,72 @@ enum FlutterToolsAction: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .projectSetup:
+            return "🚀 一键配置 Flutter 项目"
         case .run:
             return "▶️ 从终端运行 Flutter 项目"
         case .pubGet:
-            return "📥 拉取Flutter第三方依赖"
+            return "📥 拉取 Flutter Pub 依赖"
+        case .androidDependencies:
+            return "🤖 拉取 Android 原生依赖"
+        case .podsDependencies:
+            return "🥥 拉取 CocoaPods 依赖"
+        case .spmDependencies:
+            return "🧬 拉取 Swift Package 依赖"
+        case .ohosDependencies:
+            return "🕊️ 拉取 OpenHarmony 依赖"
+        case .nativeDependencies:
+            return "🧱 准备原生库与构建依赖（组合操作）"
+        case .flutterPrecache:
+            return "🗃️ 下载Flutter平台资源"
+        case .webDependencies:
+            return "🌐 拉取 Web 工程依赖"
+        case .exportPrivateDependencies:
+            return "🔐 提取Flutter项目工程私库依赖"
+        case .importPrivateDependencies:
+            return "📥 导入Flutter项目工程私库依赖"
         case .extract:
-            return "🧩 提取Flutter第三方依赖"
+            return "🧩 提取 Flutter Pub 依赖"
+        case .importDependencies:
+            return "📤 导入 Flutter Pub 依赖"
+        case .exportGradleDependencies:
+            return "🧩 提取 Gradle 分发与依赖缓存"
+        case .importGradleDependencies:
+            return "📤 导入 Gradle 分发与依赖缓存"
+        case .exportPodsDependencies:
+            return "🧩 提取 CocoaPods 依赖"
+        case .importPodsDependencies:
+            return "📤 导入 CocoaPods 依赖"
+        case .exportSpmDependencies:
+            return "🧩 提取 Swift Package 依赖"
+        case .importSpmDependencies:
+            return "📤 导入 Swift Package 依赖"
+        case .exportOhosDependencies:
+            return "🧩 提取 OpenHarmony 依赖"
+        case .importOhosDependencies:
+            return "📤 导入 OpenHarmony 依赖"
+        case .exportNativeDependencies:
+            return "🧩 提取 原生构建缓存"
+        case .importNativeDependencies:
+            return "📤 导入 原生构建缓存"
+        case .exportPrecacheDependencies:
+            return "🧩 提取 Flutter 平台资源"
+        case .importPrecacheDependencies:
+            return "📤 导入 Flutter 平台资源"
+        case .exportWebDependencies:
+            return "🧩 提取 Web 依赖"
+        case .importWebDependencies:
+            return "📤 导入 Web 依赖"
         case .sdkVersion:
-            return "🔎 查看当前Flutter项目的SDK版本"
+            return "🔎 查看当前Flutter项目工程的SDK版本"
         case .sdkManage:
-            return "🔀 安装/切换Flutter SDK版本"
+            return "🔀 安装/切换Flutter SDK"
         case .harmonySdkManage:
-            return "🕊️ 安装/切换 Flutter@OpenHarmony SDK"
+            return "🕊️ 安装/切换Flutter@OpenHarmony SDK"
         case .javaManage:
-            return "☕ 安装/切换Java环境"
+            return "☕ 安装/切换Java SDK"
+        case .gradleDownload:
+            return "📚 下载Gradled分发与构建插件"
         case .package:
             return "📦 Flutter打包"
         case .packageIOS:
@@ -52,7 +130,7 @@ enum FlutterToolsAction: String, CaseIterable {
         case .packageAndroid:
             return "🤖 Android"
         case .packageHarmony:
-            return "🌸 OpenHarmony"
+            return "📦 打包鸿蒙（HAP + APP）"
         case .codegen:
             return "⚙️ Flutter自动化生产代码"
         case .nativeDoctor:
@@ -74,9 +152,27 @@ enum FlutterToolsAction: String, CaseIterable {
         }
     }
 
-    static let development: [Self] = [.run, .pubGet, .extract, .sdkVersion, .sdkManage, .harmonySdkManage, .javaManage, .package, .codegen]
+    static let dependencyFetch: [Self] = [
+        .pubGet, .androidDependencies, .podsDependencies,
+        .spmDependencies, .ohosDependencies, .webDependencies
+    ]
+    static let dependencyExports: [Self] = [
+        .extract, .exportPrivateDependencies, .exportGradleDependencies, .exportPodsDependencies,
+        .exportSpmDependencies, .exportOhosDependencies, .exportNativeDependencies,
+        .exportPrecacheDependencies, .exportWebDependencies
+    ]
+    static let dependencyImports: [Self] = [
+        .importDependencies, .importPrivateDependencies, .importGradleDependencies, .importPodsDependencies,
+        .importSpmDependencies, .importOhosDependencies, .importNativeDependencies,
+        .importPrecacheDependencies, .importWebDependencies
+    ]
+    static let environments: [Self] = [.sdkManage, .harmonySdkManage, .javaManage]
+    static let resources: [Self] = [.gradleDownload, .flutterPrecache, .nativeDependencies]
+    static let dependencyArchives: [Self] = dependencyExports + dependencyImports
+    static let dependencyPreparation: [Self] = [.androidDependencies, .podsDependencies, .spmDependencies, .ohosDependencies, .nativeDependencies, .flutterPrecache, .webDependencies]
+    static let development: [Self] = [.projectSetup, .run, .codegen]
     static let packaging: [Self] = [.packageIOS, .packageAndroid, .packageHarmony]
-    static let doctors: [Self] = [.nativeDoctor, .harmonyDoctor]
+    static let doctors: [Self] = [.sdkVersion, .nativeDoctor, .harmonyDoctor]
     static let repairs: [Self] = [.repairAndroid, .repairImports, .repairNamespace, .repairPackageImports]
     static let cleaning: [Self] = [.cleanBuildArtifacts, .maintenance]
 }

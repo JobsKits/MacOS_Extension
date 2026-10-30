@@ -150,6 +150,7 @@ typeset FP_MODE="release" FP_FLAVOR="" FP_OUTPUT_DIR=""
 typeset FP_BUILD_MARKER=""
 typeset FP_OHOS_TARGET="" FP_OHOS_FLUTTER_SDK=""
 typeset -a FP_FLUTTER=()
+typeset -a FP_HARMONY_ARTIFACTS=()
 
 # 只给展示文字着色，日志保留纯文本。
 fp_intro_line() {
@@ -467,6 +468,7 @@ fp_report_harmony_outputs() {
         [[ -d "$output_root" ]] || continue
         while IFS= read -r -d '' file; do
             [[ -s "$file" ]] || continue
+            FP_HARMONY_ARTIFACTS+=("$file")
             if [[ -n "$FP_BUILD_MARKER" && ! "$file" -nt "$FP_BUILD_MARKER" ]]; then
                 fp_log "ℹ 构建命令成功，复用现存产物，请核对模式与签名：$file"
             fi
@@ -532,8 +534,9 @@ fp_report_outputs() {
 }
 
 fp_build() {
-    local target=""
+    local target="" artifact=""
     local -a targets=() args=()
+    FP_HARMONY_ARTIFACTS=()
     fp_run_step 'flutter pub get' "${FP_FLUTTER[@]}" pub get || return $?
     if [[ "$FP_PLATFORM" == ios ]]; then
         targets=(ipa)
@@ -551,6 +554,13 @@ fp_build() {
         FP_BUILD_MARKER="$(/usr/bin/mktemp "${FP_LOG_FILE:h}/build-start.XXXXXX")" || return 1
         fp_run_step "flutter build $target" "${FP_FLUTTER[@]}" "${args[@]}" || return $?
         fp_report_outputs "$target" || return $?
+    done
+    # APP 构建可能重建输出树，最后复核先前登记的 HAP 与 APP 仍然存在。
+    for artifact in "${FP_HARMONY_ARTIFACTS[@]}"; do
+        [[ -f "$artifact" && ! -L "$artifact" && -s "$artifact" ]] || {
+            fp_error "最终产物复核失败，已生成的包被后续构建移除或清空：$artifact"
+            return 1
+        }
     done
     fp_log "✔ Flutter打包完成；日志：$FP_LOG_FILE"
 }
