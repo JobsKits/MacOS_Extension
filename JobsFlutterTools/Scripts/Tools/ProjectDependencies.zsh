@@ -2,7 +2,16 @@
 # 脚本自述：只供 source；按目标处理 Maven、Pods、SPM、OHPM、Web 锁定包及原生构建依赖。
 # 使用调用者选择的 Flutter / Java 和日志；不修改全局仓库、不升级依赖、不启动 App。
 
-typeset -g PD_PLATFORM="" PD_KIND="" PD_XCODE_CONTAINER=""
+typeset -g PD_PLATFORM="" PD_KIND="" PD_XCODE_CONTAINER="" PD_SPM_BUILD_CACHE=""
+# 共享模块只加载定义，安装与目录选择仍由实际业务显式调用。
+pd_load_toolchain_support() {
+    source "${${(%):-%x}:A:h}/【MacOS】工程依赖工具链.zsh/【MacOS】工程依赖工具链.zsh"
+}
+# 所有依赖准备与最终构建使用同一份入口、flavor 和模式。
+pd_require_configuration() {
+    (( ${#SR_ARGS} )) || sr_choose_configuration || return $?
+    sr_validate_arguments
+}
 # 只展示当前宿主能处理且项目实际存在的平台，不生成缺失平台目录。
 pd_choose_platform() {
     local kind="$1" requested="${2:-}" target="" rows="" allowed=""
@@ -85,9 +94,10 @@ pd_pods_dependencies() {
 # 配置生成只按工程当前 Flutter 策略运行；不为拉取依赖切换全局 SPM 开关。
 pd_apple_configuration() {
     local help_file="$PE_RUN_DIR/apple-build-help.log"
+    pd_require_configuration || return $?
     SF_COMMAND_TIMEOUT=60 sf_run_diagnostic apple-build-help "$SF_FLUTTER" build "$SR_TARGET" --help || return $?
     if /usr/bin/grep -q -- '--config-only' "$help_file"; then
-        local -a args=(build "$SR_TARGET" --config-only --debug)
+        local -a args=(build "$SR_TARGET" --config-only "${SR_ARGS[@]}")
         [[ "$SR_TARGET" != ios ]] || args+=(--no-codesign)
         SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic apple-configuration "$SF_FLUTTER" "${args[@]}"
     else
@@ -112,31 +122,29 @@ pd_choose_xcode_container() {
 # SPM 解析 Xcode 工程引用的全部包，已有 Package.resolved 时要求沿用锁定版本。
 pd_spm_dependencies() {
     local option=-project locked=""
+    pd_require_configuration && pd_choose_xcode_container || return $?
+    pd_load_toolchain_support && pt_prepare_spm_build_cache || return $?
     pd_apple_configuration && pd_choose_xcode_container || return $?
     [[ "$PD_XCODE_CONTAINER" != *.xcworkspace ]] || option=-workspace
     local source_packages="$SF_PROJECT/.jobs/dependencies/spm" parent=""
     for parent in "$SF_PROJECT/.jobs" "$SF_PROJECT/.jobs/dependencies" "$source_packages"; do
         [[ ! -L "$parent" && ( ! -e "$parent" || -d "$parent" ) ]] || { pe_log '✖ 项目 SPM 缓存目录身份异常。'; return 2; }
     done
-    local -a args=(-resolvePackageDependencies "$option" "$PD_XCODE_CONTAINER" -clonedSourcePackagesDirPath "$source_packages")
+    local -a args=(-resolvePackageDependencies "$option" "$PD_XCODE_CONTAINER" -clonedSourcePackagesDirPath "$PD_SPM_BUILD_CACHE")
     setopt localoptions NO_NOMATCH
     for locked in "$PD_XCODE_CONTAINER/xcshareddata/swiftpm/Package.resolved" \
         "$PD_XCODE_CONTAINER/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" \
         "$SF_PROJECT/$SR_TARGET"/*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved(N); do
         if [[ -f "$locked" && ! -L "$locked" ]]; then args+=(-onlyUsePackageVersionsFromResolvedFile); break; fi
     done
-    pe_log "📥 来源：Xcode 工程 / Package.swift 声明的 Swift 包与二进制制品；目标：$source_packages。"
+    pe_log "📥 来源：Xcode 工程 / Package.swift 声明的 Swift 包与二进制制品；构建缓存：$PD_SPM_BUILD_CACHE；快照兼容目录：$source_packages。"
     SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic spm-dependencies /usr/bin/xcodebuild "${args[@]}"
 }
 # OHPM 包与 Hvigor 插件分开同步，使用项目 wrapper，不安装全局最新版构建器。
 pd_ohos_dependencies() {
-    local ohpm="$(command -v ohpm 2>/dev/null)" hvigor="$SF_PROJECT/ohos/hvigorw"
+    pd_load_toolchain_support && pt_prepare_ohos_toolchain || return $?
+    local ohpm="$PT_OHPM" hvigor="$PT_HVIGOR"
     [[ -f "$SF_PROJECT/ohos/oh-package.json5" && ! -L "$SF_PROJECT/ohos/oh-package.json5" ]] || return 2
-    [[ -x "$ohpm" ]] || { pe_log '✖ 缺少 OHPM；请先配置 DevEco / OpenHarmony 工具链并在当前终端激活。'; return 3; }
-    if [[ ! -f "$hvigor" || -L "$hvigor" ]]; then
-        hvigor="$(command -v hvigorw 2>/dev/null)"
-        [[ -n "$hvigor" && -f "$hvigor" ]] || { pe_log '✖ 缺少项目 / DevEco 配套 hvigorw；请先激活工程所需的 Hvigor 工具链。'; return 3; }
-    fi
     SF_COMMAND_TIMEOUT=30 sf_run_diagnostic ohpm-version "$ohpm" --version || return $?
     pe_log '📥 来源：oh-package.json5、锁文件与 hvigor-config.json5 声明的源；目标：oh_modules、Hvigor 正常缓存。'
     (
@@ -155,6 +163,7 @@ pd_web_dependencies() {
             if [[ -f "$directory/$file" && ! -L "$directory/$file" ]]; then selected="$file"; (( count++ )); fi
         done
         (( count == 1 )) || { pe_log "✖ $directory 缺少唯一 JS 锁文件，请先确认依赖版本与包管理器。"; return 3; }
+        pd_load_toolchain_support && pt_prepare_web_toolchain "$directory" "$selected" || return $?
         local -a args
         case "$selected" in
             package-lock.json|npm-shrinkwrap.json) tool="$(command -v npm)"; args=(ci) ;;
@@ -165,7 +174,8 @@ pd_web_dependencies() {
                 SF_COMMAND_TIMEOUT=30 sf_run_diagnostic yarn-version "$tool" --version || return $?
                 if /usr/bin/grep -Eq '^1\.' "$PE_RUN_DIR/yarn-version.log"; then args=(install --frozen-lockfile); else args=(install --immutable); fi ;;
         esac
-        [[ -x "$tool" ]] || { pe_log "✖ 缺少 $selected 对应的包管理器，请先准备工程要求的 Node.js 与包管理器。"; return 3; }
+        tool="$PT_PACKAGE_MANAGER"
+        [[ -x "$tool" ]] || return 3
         pe_log "📥 来源：$directory/package.json 与 $selected 的仓库；目标：工程 node_modules。锁文件安装会执行工程生命周期脚本，npm ci 会重建 node_modules。"
         ( cd -- "$directory" && SF_COMMAND_DIRECTORY="$directory" SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic web-dependencies "$tool" "${args[@]}" ) || return $?
     done
@@ -175,8 +185,7 @@ pd_web_dependencies() {
 pd_native_dependencies() {
     local command="$SR_TARGET" seconds="${JOBS_NATIVE_DEPENDENCY_TIMEOUT:-3600}"
     [[ "$seconds" == <-> && "$seconds" -ge 30 && "$seconds" -le 14400 ]] || return 2
-    (( ${#SR_ARGS} )) || sr_choose_configuration || return $?
-    sr_validate_arguments || return $?
+    pd_require_configuration || return $?
     case "$SR_TARGET" in android) command=apk ;; ios|macos|web) ;; ohos) command=hap ;; *) return 2 ;; esac
     local -a args=(build "$command" "${SR_ARGS[@]}")
     [[ "$SR_TARGET" != ios ]] || args+=(--no-codesign)
@@ -192,6 +201,7 @@ pd_native_dependencies() {
 }
 # one-click 复用独立菜单相同内核；Pub 已先完成，仅处理当前已选择目标。
 pd_run_target_dependencies() {
+    pd_require_configuration || return $?
     case "$SR_TARGET" in
         android) pd_step android 'Android Maven 原生依赖' pd_android_dependencies || return $? ;;
         ios|macos)

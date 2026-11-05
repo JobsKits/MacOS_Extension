@@ -5,6 +5,82 @@
 # - 影响范围：用户 Gradle 缓存、普通构建配置缓存与项目脚本执行；不改 Wrapper、AGP 或系统代理。
 # - 运行提示：自述回车后 fzf 选官方 / 镜像，Ctrl+C / Esc 取消；--check 只读不联网；source 只定义函数。
 
+# JOBS_SDK_RETRY_BEGIN
+# 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+jobs_sdk_stop_tree() {
+    local root="$1" child=""
+    for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
+        jobs_sdk_stop_tree "$child"
+    done
+    /bin/kill -TERM "$root" 2>/dev/null || true
+    /bin/kill -KILL "$root" 2>/dev/null || true
+}
+# 状态写标准错误，机器可读的标准输出不混入重试提示。
+jobs_sdk_retry_note() {
+    print -u2 -r -- "$2"
+    [[ -z "$1" ]] || print -r -- "$2" >> "$1"
+}
+# 本地确定错误应明确失败；下载超时、断流和未知获取失败则继续，无次数/总时长上限。
+jobs_sdk_retry() {
+    setopt LOCAL_OPTIONS LOCAL_TRAPS
+    local title="$1" acquisition_log="$2" attempt=1 result=0 delay="${JOBS_SDK_RETRY_DELAY:-2}" maximum="${JOBS_SDK_RETRY_MAX_DELAY:-30}"
+    local task_pid="" offset=0 failure="" interrupted=0 history="${2}.attempts.log"
+    shift 2
+    [[ "$delay" == <-> && "$maximum" == <-> && "$maximum" -gt 0 && "$delay" -le "$maximum" ]] || return 2
+    trap 'interrupted=130; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' INT
+    trap 'interrupted=143; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' TERM
+    trap 'interrupted=129; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' HUP
+    while true; do
+        jobs_sdk_retry_note "$acquisition_log" "▶ SDK 获取：$title；第 $attempt 次（失败自动重试，Ctrl+C 结束）"
+        offset=0
+        [[ ! -f "$acquisition_log" ]] || offset="$(/usr/bin/wc -c < "$acquisition_log")"
+        [[ "${JOBS_SDK_LOG_REPLACED:-0}" != 1 ]] || offset=0
+        # 显式继承 stdin；后台调用仍能进行工具自身的许可/认证交互。
+        "$@" <&0 &
+        task_pid=$!
+        result=0
+        wait "$task_pid" || result=$?
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        if [[ -f "$acquisition_log" ]]; then
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            print -r -- "━━ $title：第 $attempt 次，退出码 $result ━━" >> "$history"
+            /usr/bin/tail -c +$((offset + 1)) "$acquisition_log" >> "$history"
+        fi
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        # 部分获取器下载失败仍返回0，明确失败详情不能冒充SDK就绪。
+        if (( result == 0 )) && print -r -- "$failure" | /usr/bin/grep -Eqi 'Failed to download|Error downloading|Unable to download|Could not download|Download failed'; then
+            result=1
+        fi
+        (( result != 0 )) || return 0
+        # 超时的调用方应返回124；外部中断状态不能被重试循环吞掉。
+        case "$result" in 129|130|131|137|143) return "$result" ;; 126|127) return "$result" ;; esac
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            # 兼容调用方每次重建机器输出文件：缩短后从文件开头读取。
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        if print -r -- "$failure" | /usr/bin/grep -Eqi 'No available formula|No formulae found|Failed to find package|File exists|Permission denied|Operation not permitted|No space left on device|Read-only file system|Bad CPU type|Exec format error|unknown option|unrecognized option|invalid argument|version .* (does not exist|not found)|license[^[:cntrl:]]*(not accepted|rejected)|licenses?[^[:cntrl:]]*not accepted|HTTP[^[:cntrl:]]*(401|403|404)|returned error: (401|403|404)|Authentication failed|could not read Username'; then
+            jobs_sdk_retry_note "$acquisition_log" "✖ $title 遇到权限、许可、版本或本地环境错误（$result），已停止；请按原始日志处理。"
+            return "$result"
+        fi
+        jobs_sdk_retry_note "$acquisition_log" "⚠ $title 获取未完成（退出码 $result）；${delay} 秒后自动重试，保留已有缓存。"
+        /bin/sleep "$delay" &
+        task_pid=$!
+        wait "$task_pid" || { (( interrupted == 0 )) || return "$interrupted"; return 130; }
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        (( attempt++ ))
+        (( delay < maximum )) && delay=$(( delay * 2 ))
+        (( delay <= maximum )) || delay="$maximum"
+    done
+}
+# JOBS_SDK_RETRY_END
+
 typeset -g DG_PROJECT="" DG_JAVA_HOME="" DG_CHECK=0 DG_DISTRIBUTION_ONLY=0 DG_MIRROR=official
 typeset -g DG_VERSION="" DG_TYPE="" DG_URL="" DG_SHA="" DG_CURL="" DG_GRADLE="" DG_CACHE="" DG_LOCK=""
 typeset -g DG_WRAPPER_STAMP="" DG_TIMEOUT=900 DG_DOWNLOAD_TIMEOUT=300 DG_JAVA_MAJOR=""
@@ -129,8 +205,8 @@ dg_check_java_compatibility() {
     fi
 }
 # 下载单次有界，只有同一来源的临时片段可续传，失败保留供后次重试。
-dg_curl_download() {
-    local url="$1" target="$2" seconds="$3" result=0 attempt=0
+dg_curl_download_once() {
+    local url="$1" target="$2" seconds="$3" result=0 attempt=0 rejected=""
     local -a resume
     for attempt in 1 2; do
         resume=()
@@ -138,11 +214,26 @@ dg_curl_download() {
         pe_log "📥 来源：$url；目标：$target；尝试$attempt/2，连接10秒、单次${seconds}秒、低速30秒停止。"
         result=0
         pe_run_logged "$DG_CURL" --fail --location --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time "$seconds" --speed-time 30 --speed-limit 1024 "${resume[@]}" --output "$target" "$url" || result=$?
-        (( result == 0 )) && return 0
+        if (( result == 0 )); then
+            if [[ -n "$DG_SHA" && "$url" == *.zip ]]; then
+                if dg_verify_zip "$target"; then return 0; fi
+                pe_log "⚠ 本次Gradle分发摘要不符，保留损坏片段并继续获取：$target"
+                rejected="$(/usr/bin/mktemp "$target.rejected.XXXXXX")" || return 1
+                /bin/mv -f -- "$target" "$rejected" || return 1
+                [[ ! -e "$target" ]] || return 1
+                result=65
+            else
+                return 0
+            fi
+        fi
         # 416/不支持Range时只丢弃本次受管片段，第二次从头下载。
         if (( result == 22 || result == 33 )); then /bin/rm -f -- "$target"; fi
     done
     return "$result"
+}
+# SDK分发获取失败继续重试；项目构建和插件执行不进入此循环。
+dg_curl_download() {
+    jobs_sdk_retry 'Gradle分发 / 官方摘要' "$PE_LOG_FILE" dg_curl_download_once "$@"
 }
 # 采用Wrapper固定摘要，缺省仅从Gradle官方校验端点取摘要，镜像不能提供信任根。
 dg_fetch_checksum() {

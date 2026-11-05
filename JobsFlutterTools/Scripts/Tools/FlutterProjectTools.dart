@@ -1,5 +1,6 @@
 // Self-contained Flutter project diagnostics and maintenance, shared by macOS / Windows.
 // Uses the selected project's FVM SDK; no packages, global SDK installation or shell edits.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -23,12 +24,125 @@ bool confirm(String message, {String word = ''}) {
   final answer = stdin.readLineSync();
   return answer != null && answer == word;
 }
+String safeSdkLog(String value) => value
+    .replaceAllMapped(RegExp(r'([a-z][a-z0-9+.-]*://)[^\s/@]+@', caseSensitive: false), (m) => '${m[1]}***@')
+    .replaceAllMapped(RegExp(r'(https?://[^\s?#]+)[?#][^\s]*', caseSensitive: false), (m) => '${m[1]}?[已省略]')
+    .replaceAll(RegExp(r'(authorization|access[_-]?token|password|secret)\s*[:=]\s*[^\r\n]+', caseSensitive: false), '[已省略]');
+
+Future<void> stopSdkProcessTree(Process process) async {
+  if (Platform.isWindows) {
+    await Process.run(join(Platform.environment['SystemRoot'] ?? r'C:\Windows', 'System32/taskkill.exe'), ['/PID', '${process.pid}', '/T', '/F']);
+  } else {
+    final listing = await Process.run('/bin/ps', ['-eo', 'pid=,ppid=']);
+    final children = <int, List<int>>{};
+    for (final line in '${listing.stdout}'.split('\n')) {
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length != 2) continue;
+      final pid = int.tryParse(parts[0]), parent = int.tryParse(parts[1]);
+      if (pid != null && parent != null) (children[parent] ??= []).add(pid);
+    }
+    void stop(int pid) {
+      for (final child in children[pid] ?? <int>[]) { stop(child); }
+      Process.killPid(pid, ProcessSignal.sigkill);
+    }
+    stop(process.pid);
+  }
+}
+
 Future<ProcessResult> run(String command, List<String> args, String project,
-    {Map<String, String>? environment, int seconds = 120}) async {
+    {Map<String, String>? environment, int seconds = 120, bool liveProgress = false}) async {
+  final tool = command.split(RegExp(r'[/\\]')).last.toLowerCase();
+  final sdk = RegExp(r'^(flutter|dart)(\.(bat|cmd|exe))?$').hasMatch(tool) &&
+      args.isNotEmpty && ['--version', 'precache'].contains(args.first);
+  if (!sdk) return runOnce(command, args, project, environment: environment, seconds: seconds, liveProgress: liveProgress);
+  final log = File(join(Directory.systemTemp.path, 'JobsSdkAcquisition-$pid.log'));
+  Process? active;
+  var stopping = false;
+  Future<void> stop(ProcessSignal signal) async {
+    if (stopping) return;
+    stopping = true;
+    if (active != null) await stopSdkProcessTree(active!);
+    stderr.writeln('已停止 SDK 获取。日志：${log.path}');
+    exit(signal == ProcessSignal.sighup ? 129 : signal == ProcessSignal.sigint ? 130 : 143);
+  }
+  final signals = <StreamSubscription<ProcessSignal>>[ProcessSignal.sigint.watch().listen(stop)];
+  if (!Platform.isWindows) {
+    signals.add(ProcessSignal.sigterm.watch().listen(stop));
+    signals.add(ProcessSignal.sighup.watch().listen(stop));
+  }
+  var attempt = 0;
+  void report(String text) {
+    final safe = safeSdkLog(text);
+    stderr.writeln(safe);
+    log.writeAsStringSync('$safe\n', mode: FileMode.append);
+  }
+  try {
+    while (true) {
+      attempt++;
+      report('SDK 首次初始化：$command ${args.join(' ')}；第 $attempt 次；失败自动重试，Ctrl+C 停止；日志：${log.path}');
+      try {
+        final result = await runOnce(command, args, project, environment: environment,
+            seconds: seconds < 120 ? 120 : seconds, liveProgress: true,
+            sdkAcquisition: true, sdkLog: log, onProcess: (process) { active = process; });
+        active = null;
+        if ([129, 130, 137, 143, -1, -2, -9, -15, -1073741510].contains(result.exitCode)) exit([129,137,143].contains(result.exitCode) ? result.exitCode : 130);
+        final detail = cleanOutput(result);
+        final networkFailure = RegExp(r'Failed to download|Could not (GET|HEAD|download)|IO exception while downloading|Error downloading|Unable to (download|resolve)|Failed to fetch|transfer closed|unexpected end of (file|archive)', caseSensitive: false).hasMatch(detail);
+        if (RegExp(r'permission denied|access denied|no space left|disk.+full|invalid argument|unknown option|authentication failed', caseSensitive: false).hasMatch(detail)) fail(detail);
+        if (result.exitCode == 0 && !networkFailure) { report('SDK 初始化成功；共 $attempt 次。'); return result; }
+        report('SDK 获取失败（${result.exitCode}）：$detail');
+      } on TimeoutException catch (error) { report('$error；停止当次下载后自动重试。'); }
+      final delay = attempt >= 5 ? 30 : 2 * (1 << (attempt - 1));
+      report('$delay 秒后自动重试 SDK 获取。');
+      await Future<void>.delayed(Duration(seconds: delay));
+    }
+  } finally {
+    for (final signal in signals) { await signal.cancel(); }
+    if (active != null) await stopSdkProcessTree(active!);
+  }
+}
+
+String? macSdkRouteTaskCache;
+
+Future<ProcessResult> runOnce(String command, List<String> args, String project,
+    {Map<String, String>? environment, int seconds = 120, bool liveProgress = false, bool sdkAcquisition = false, File? sdkLog, void Function(Process)? onProcess}) async {
   // Process.start on Windows cannot directly execute .bat; command tokens are individually escaped.
   var executable = command;
   var arguments = args;
-  if (Platform.isWindows && RegExp(r'\.(bat|cmd)$', caseSensitive: false).hasMatch(command)) {
+  var childEnvironment = environment;
+  if (sdkAcquisition && Platform.isWindows) {
+    final route = join(File.fromUri(Platform.script).parent.path,
+        'SdkDownloadRoute.ps1${Platform.pathSeparator}SdkDownloadRoute.ps1');
+    if (!file(route)) fail('缺少随包 SDK 网络选路模块：$route');
+    executable = join(Platform.environment['SystemRoot'] ?? r'C:\Windows',
+        'System32/WindowsPowerShell/v1.0/powershell.exe');
+    arguments = ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', route,
+      '-RunTool', command, '-RunDirectory', project,
+      '-RunArgumentsBase64', base64Encode(utf8.encode(jsonEncode(args)))];
+  } else if (sdkAcquisition && Platform.isMacOS) {
+    final route = join(File.fromUri(Platform.script).parent.path,
+        '【MacOS】FlutterSDK网络选路.zsh/【MacOS】FlutterSDK网络选路.zsh');
+    if (!file(route)) fail('缺少随包 SDK 网络选路模块：$route');
+    if (macSdkRouteTaskCache == null) {
+      final cache = await Process.run('/bin/zsh', [route, '--cache-dir']);
+      if (cache.exitCode != 0) fail('无法建立 SDK 本任务网络缓存。');
+      macSdkRouteTaskCache = '${cache.stdout}'.trim();
+    }
+    var sdkRoot = '';
+    if (command.endsWith('/bin/flutter')) {
+      sdkRoot = File(command).resolveSymbolicLinksSync();
+      sdkRoot = Directory(File(sdkRoot).parent.parent.path).path;
+    } else if (dir(join(project, '.fvm/flutter_sdk'))) {
+      sdkRoot = Directory(join(project, '.fvm/flutter_sdk')).resolveSymbolicLinksSync();
+    }
+    childEnvironment = {...?environment,
+      'JOBS_FLUTTER_ROUTE_CACHE_DIR': macSdkRouteTaskCache!,
+      'JOBS_FLUTTER_ROUTE_CAPTURE_OUTPUT': '1',
+      'JOBS_FLUTTER_ROUTE_MODE': args.isNotEmpty && args.first == 'precache' ? 'platform' : 'dart'};
+    executable = '/bin/zsh';
+    arguments = [route, '--run', 'Flutter SDK网络准备与获取', '${sdkLog?.path ?? join(Directory.systemTemp.path, 'JobsSdkAcquisition-$pid.log')}.route',
+      sdkRoot, '', command, ...args];
+  } else if (Platform.isWindows && RegExp(r'\.(bat|cmd)$', caseSensitive: false).hasMatch(command)) {
     String quote(String s) {
       if (RegExp(r'["%\r\n\x00]').hasMatch(s)) fail('批处理参数含不支持的字符：$s');
       return '"$s"';
@@ -36,17 +150,43 @@ Future<ProcessResult> run(String command, List<String> args, String project,
     executable = join(Platform.environment['SystemRoot'] ?? r'C:\Windows', 'System32/cmd.exe');
     arguments = ['/d', '/v:off', '/s', '/c', '"${[command, ...args].map(quote).join(' ')}"'];
   }
-  final process = await Process.start(executable, arguments, workingDirectory: project, environment: environment);
-  final output = process.stdout.transform(utf8.decoder).join();
-  final error = process.stderr.transform(utf8.decoder).join();
-  int code;
-  try { code = await process.exitCode.timeout(Duration(seconds: seconds)); }
-  catch (_) {
-    if (Platform.isWindows) {
-      await Process.run(join(Platform.environment['SystemRoot'] ?? r'C:\Windows', 'System32/taskkill.exe'), ['/PID', '${process.pid}', '/T', '/F']);
-    } else { process.kill(ProcessSignal.sigkill); }
-    fail('命令超时（$seconds 秒）：$command ${args.join(' ')}');
+  final process = await Process.start(executable, arguments, workingDirectory: project, environment: childEnvironment);
+  onProcess?.call(process);
+  var lastOutput = DateTime.now();
+  Future<String> capture(Stream<List<int>> stream, IOSink display) async {
+    final captured = StringBuffer();
+    await for (final chunk in stream.transform(utf8.decoder)) {
+      captured.write(chunk);
+      lastOutput = DateTime.now();
+      sdkLog?.writeAsStringSync(safeSdkLog(chunk), mode: FileMode.append);
+      if (liveProgress) {
+        display.write(chunk);
+        await display.flush();
+      }
+    }
+    return captured.toString();
   }
+  final output = capture(process.stdout, stdout);
+  final error = capture(process.stderr, stderr);
+  int code;
+  Timer? idleTimer;
+  final idle = Completer<int>();
+  if (sdkAcquisition) {
+    idleTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (DateTime.now().difference(lastOutput).inMilliseconds >= seconds * 1000 && !idle.isCompleted) {
+        idle.completeError(TimeoutException('SDK 无输出超时', Duration(seconds: seconds)));
+      }
+    });
+  }
+  try {
+    code = sdkAcquisition
+        ? await Future.any([process.exitCode, idle.future])
+        : await process.exitCode.timeout(Duration(seconds: seconds));
+  } catch (_) {
+    await stopSdkProcessTree(process);
+    await Future.wait([output, error]);
+    rethrow;
+  } finally { idleTimer?.cancel(); }
   return ProcessResult(process.pid, code, await output, await error);
 }
 String cleanOutput(ProcessResult result) => '${result.stdout}\n${result.stderr}'.replaceAll(RegExp(r'\x1b\[[0-?]*[ -/]*[@-~]'), '').trim();
@@ -70,7 +210,7 @@ class Project {
     dart = join(sdk, Platform.isWindows ? 'bin/cache/dart-sdk/bin/dart.exe' : 'bin/cache/dart-sdk/bin/dart');
     if (!file(flutter) || !file(dart)) fail('FVM SDK 缺少 Flutter 或同源 Dart；不会回退全局 SDK。');
   }
-  Future<ProcessResult> flutterRun(List<String> args, {int seconds = 600, Map<String, String>? environment}) => run(flutter, args, root, seconds: seconds, environment: environment);
+  Future<ProcessResult> flutterRun(List<String> args, {int seconds = 600, Map<String, String>? environment}) => run(flutter, args, root, seconds: seconds, environment: environment, liveProgress: true);
 }
 
 class Checks {
@@ -89,7 +229,7 @@ String? findExecutable(String name, List<String> candidates) {
 }
 
 Future<void> diagnose(Project p, bool harmony) async {
-  stdout.writeln('${harmony ? '鸿蒙Flutter环境体检' : '原生Flutter项目体检'}\n项目：${p.root}\nFVM：${p.pin}\nSDK：${p.sdk}');
+  stdout.writeln('${harmony ? 'OpenHarmony Flutter 环境体检' : '原生Flutter项目体检'}\n项目：${p.root}\nFVM：${p.pin}\nSDK：${p.sdk}');
   stdout.writeln('检查可能访问工具配置的网络并初始化 SDK 缓存；不安装、切换或升级 SDK。');
   final checks = Checks();
   final environment = <String, String>{};
@@ -135,13 +275,12 @@ Future<void> diagnose(Project p, bool harmony) async {
     stdout.writeln('Flutter ${data['frameworkVersion']}；Dart ${data['dartSdkVersion']}');
   });
   await checks.check('同源 Dart', () async {
-    final result = await run(p.dart, ['--version'], p.root, seconds: 30);
+    final result = await run(p.dart, ['--version'], p.root, seconds: 30, liveProgress: true);
     if (result.exitCode != 0 || !cleanOutput(result).contains('Dart SDK version:')) fail(cleanOutput(result));
   });
   await checks.check('Flutter 基础环境 doctor', () async {
     final result = await p.flutterRun(['doctor', '-v'], environment: environment);
     final output = cleanOutput(result);
-    stdout.writeln(output);
     if (result.exitCode != 0 || RegExp(r'^\s*\[(?:!|✗|x)\]|Doctor found issues', multiLine: true, caseSensitive: false).hasMatch(output) || !RegExp(r'No issues found', caseSensitive: false).hasMatch(output)) fail('基础环境存在问题或无法确认健康结论。');
   });
   if (harmony) {
@@ -354,7 +493,7 @@ Future<void> maintenance(Project p) async {
   if (choice <= 4) {
     if (!confirm('将执行：${options[choice - 1]}。回车继续，其它输入取消：')) return;
     final commands = switch (choice) { 1 => [['pub', 'get']], 2 => [['clean'], ['pub', 'get']], 3 => [['pub', 'upgrade', '--major-versions']], _ => [['pub', 'cache', 'repair']] };
-    for (final args in commands) { final result = await p.flutterRun(args, seconds: 1800); stdout.writeln(cleanOutput(result)); if (result.exitCode != 0) fail('维护失败（${result.exitCode}），已停止。'); }
+    for (final args in commands) { final result = await p.flutterRun(args, seconds: 1800); if (result.exitCode != 0) fail('维护失败（${result.exitCode}），已停止。'); }
     return;
   }
   final pubCache = Platform.environment['PUB_CACHE'] ?? (Platform.isWindows ? join(Platform.environment['LOCALAPPDATA'] ?? home, 'Pub/Cache') : join(home, '.pub-cache'));

@@ -247,7 +247,7 @@ sr_install_native_dependencies() {
 sr_precache_target() {
     [[ "$SR_TARGET" != ohos ]] || { pe_log '➤ 鸿蒙适配 SDK 的平台资源以该 SDK 的 precache --ohos 实际结果为准。'; }
     sr_event "platforms.$SR_TARGET.flutter-cache" "platforms.$SR_TARGET" 'Flutter平台资源' running
-    SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic flutter-precache "$SF_FLUTTER" precache "--$SR_TARGET" || return $?
+    SF_COMMAND_TIMEOUT=1800 JOBS_SDK_LOG_REPLACED=1 JOBS_FLUTTER_ROUTE_MODE=platform jobs_flutter_sdk_retry 'Flutter平台资源' "$PE_RUN_DIR/flutter-precache.log" "$SF_FLUTTER_ROOT" "" sf_run_diagnostic flutter-precache "$SF_FLUTTER" precache "--$SR_TARGET" || return $?
     sr_event "platforms.$SR_TARGET.flutter-cache" "platforms.$SR_TARGET" 'Flutter平台资源' succeeded '' "${SF_FLUTTER_VERSION:+Flutter $SF_FLUTTER_VERSION}${SF_DART_VERSION:+ · Dart $SF_DART_VERSION}"
 }
 # 设备发现只接受目标平台，空列表提供重载和现有完整模拟器入口。
@@ -376,7 +376,11 @@ sr_verify_run() {
     exec {SR_CONTROL_FD}<>"$fifo" || return 1
     (
         cd -- "$SF_PROJECT" || exit 1
-        JAVA_HOME="$SF_JAVA_HOME" PATH="$SF_JAVA_HOME/bin:$PATH" GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.java.home=\"$SF_JAVA_HOME\"" "$SF_FLUTTER" run --machine -d "$SR_DEVICE" "${SR_ARGS[@]}" < "$fifo" 2>&1 | /usr/bin/tee "$PE_RUN_DIR/flutter-run.log" >(pe_filter_log >> "$PE_LOG_FILE") >(sr_machine_events > "$PE_RUN_DIR/flutter-run.events.jsonl")
+        if [[ -n "$SF_JAVA_HOME" ]]; then
+            export JAVA_HOME="$SF_JAVA_HOME" PATH="$SF_JAVA_HOME/bin:$PATH"
+            export GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.java.home=\"$SF_JAVA_HOME\""
+        fi
+        "$SF_FLUTTER" run --machine -d "$SR_DEVICE" "${SR_ARGS[@]}" < "$fifo" 2>&1 | /usr/bin/tee "$PE_RUN_DIR/flutter-run.log" >(pe_filter_log >> "$PE_LOG_FILE") >(sr_machine_events > "$PE_RUN_DIR/flutter-run.events.jsonl")
         exit ${pipestatus[1]}
     ) &
     pid=$!

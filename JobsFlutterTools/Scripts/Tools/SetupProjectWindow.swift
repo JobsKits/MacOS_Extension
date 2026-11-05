@@ -34,12 +34,21 @@ private struct SetupVersion: Decodable {
 
 private final class SetupHorizontalSplit: NSSplitView {
     override var dividerThickness: CGFloat { 14 }
+    var didDragDivider: (() -> Void)?
 
     override func drawDivider(in rect: NSRect) {
-        NSColor.separatorColor.setFill()
+        NSColor.windowBackgroundColor.setFill()
         rect.fill()
         NSColor.secondaryLabelColor.setFill()
         NSBezierPath(roundedRect: NSRect(x: rect.midX - 24, y: rect.midY - 2, width: 48, height: 4), xRadius: 2, yRadius: 2).fill()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let previousHeight = subviews.first?.frame.height
+        super.mouseDown(with: event)
+        if previousHeight != subviews.first?.frame.height {
+            didDragDivider?()
+        }
     }
 }
 
@@ -52,9 +61,14 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var web: WKWebView!
     private var split: SetupHorizontalSplit!
     private var summary: NSTextField!
+    private var heading: NSTextField!
+    private var projectLabel: NSTextField!
+    private var versionLabel: NSTextField!
     private var cancel: NSButton!
     private var columns: [String: NSStackView] = [:]
     private var labels: [String: NSTextField] = [:]
+    private var statusLabels: [String: NSTextField] = [:]
+    private var statusText: [String: String] = [:]
     private var versionLabels: [String: NSTextField] = [:]
     private var states: [String: String] = [:]
     private var master: Int32 = -1
@@ -62,6 +76,9 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var reader: DispatchSourceRead?
     private var rawLog: FileHandle!
     private var eventsTimer: Timer?
+    private var animationTimer: Timer?
+    private var dotCount = 0
+    private var manuallySizedMilestones = false
     private var eventsOffset: UInt64 = 0
     private var eventsBuffer = Data()
     private var finished = false
@@ -103,25 +120,41 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.delegate = self
         let content = NSView()
         window.contentView = content
-        let title = NSTextField(labelWithString: "SDK >>>>> 平台 >>>>> Gradle >>>>> 依赖与插件 >>>>> 运行条件")
-        title.font = .boldSystemFont(ofSize: 18)
+        heading = NSTextField(labelWithString: "Flutter 项目配置")
+        heading.font = .boldSystemFont(ofSize: 24)
+        versionLabel = NSTextField(labelWithString: "v\(toolVersion.version) · 构建 \(toolVersion.build)")
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.textColor = .secondaryLabelColor
+        let header = NSStackView(views: [heading, NSView(), versionLabel])
+        header.orientation = .horizontal
+        header.alignment = .firstBaseline
+        projectLabel = NSTextField(labelWithString: URL(fileURLWithPath: project).lastPathComponent)
+        projectLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        projectLabel.textColor = .secondaryLabelColor
+        projectLabel.lineBreakMode = .byTruncatingMiddle
+        projectLabel.toolTip = project
         summary = NSTextField(wrappingLabelWithString: "请在下方终端阅读自述并确认。fzf、方向键、返回及 Ctrl+C 均保留。")
+        summary.font = .systemFont(ofSize: 12)
         summary.textColor = .secondaryLabelColor
         let milestoneScroll = NSScrollView()
         milestoneScroll.hasHorizontalScroller = true
         milestoneScroll.hasVerticalScroller = true
-        milestoneScroll.borderType = .bezelBorder
+        milestoneScroll.autohidesScrollers = true
+        milestoneScroll.borderType = .noBorder
+        milestoneScroll.backgroundColor = .controlBackgroundColor
+        milestoneScroll.wantsLayer = true
+        milestoneScroll.layer?.cornerRadius = 8
         let line = NSStackView()
         line.orientation = .horizontal
         line.alignment = .top
         line.spacing = 0
-        line.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        line.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         for (index, phase) in phases.enumerated() {
             let (id, name) = phase
             let column = NSStackView()
             column.orientation = .vertical
             column.alignment = .leading
-            column.spacing = 7
+            column.spacing = 10
             column.distribution = .fill
             column.setHuggingPriority(.required, for: .vertical)
             column.widthAnchor.constraint(equalToConstant: 146).isActive = true
@@ -130,8 +163,8 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
             update(SetupEvent(id: id, parent: nil, title: name, state: "pending", message: nil))
             if index < phases.count - 1 {
                 let arrow = NSTextField(labelWithString: ">>>>>")
-                arrow.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
-                arrow.widthAnchor.constraint(equalToConstant: 48).isActive = true
+                arrow.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+                arrow.widthAnchor.constraint(equalToConstant: 44).isActive = true
                 arrow.textColor = .tertiaryLabelColor
                 line.addArrangedSubview(arrow)
             }
@@ -146,7 +179,7 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
         web.loadFileURL(tools.appendingPathComponent("SetupGUIAssets/terminal.html"), allowingReadAccessTo: tools.appendingPathComponent("SetupGUIAssets", isDirectory: true))
-        let hint = NSTextField(labelWithString: "原始输出完整保存在本机会话目录，可能包含敏感信息；复制或分享前请核对。")
+        let hint = NSTextField(wrappingLabelWithString: "原始输出已保存至本机会话目录；分享前请核对敏感信息。")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
         let open = NSButton(title: "打开日志目录", target: self, action: #selector(openLogs))
@@ -155,42 +188,98 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         split.isVertical = false
         split.dividerStyle = .thick
         split.delegate = self
+        split.didDragDivider = { [weak self] in
+            self?.manuallySizedMilestones = true
+        }
         split.toolTip = "上下拖动此分隔条，调整任务线与终端高度；终端内容仍可独立滚动。"
         split.addArrangedSubview(milestoneScroll)
         split.addArrangedSubview(web)
         let footer = NSStackView(views: [hint, open, cancel])
         footer.orientation = .horizontal
         footer.spacing = 12
-        for view in [title, summary!, split!, footer] {
+        for view in [header, projectLabel!, summary!, split!, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
             view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16).isActive = true
             view.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16).isActive = true
         }
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            summary.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 8),
+            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
+            projectLabel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
+            summary.topAnchor.constraint(equalTo: projectLabel.bottomAnchor, constant: 10),
             split.topAnchor.constraint(equalTo: summary.bottomAnchor, constant: 12),
             split.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -12),
             footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
         ])
         content.layoutSubtreeIfNeeded()
         split.adjustSubviews()
-        split.setPosition(212, ofDividerAt: 0)
+        fitMilestonesToContent()
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        144
+        64
     }
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        max(144, splitView.bounds.height - splitView.dividerThickness - 180)
+        max(64, splitView.bounds.height - splitView.dividerThickness - 180)
     }
 
     func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
         false
+    }
+
+    func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
+        view === web
+    }
+
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard let split, let milestones = split.subviews.first else {
+            return
+        }
+        // 手动拉高流程后缩矮窗口，仍为终端保留可用高度。
+        let limit = max(64, split.bounds.height - split.dividerThickness - 180)
+        if milestones.frame.height > limit {
+            split.setPosition(limit, ofDividerAt: 0)
+        }
+    }
+
+    private func fitMilestonesToContent() {
+        guard let split, !manuallySizedMilestones else {
+            return
+        }
+        // 子节点出现前只占一条流程的高度，把剩余空间交给终端。
+        let contentHeight = (columns.values.map { $0.fittingSize.height }.max() ?? 44) + 20
+        let limit = max(64, min(240, split.bounds.height * 0.36))
+        split.setPosition(min(max(64, contentHeight), limit), ofDividerAt: 0)
+    }
+
+    private func renderStatus(_ id: String) {
+        let suffix = states[id] == "running" && !finished ? String(repeating: ".", count: dotCount) : ""
+        statusLabels[id]?.stringValue = (statusText[id] ?? "") + suffix
+    }
+
+    private func refreshRunningAnimation() {
+        guard !finished, states.values.contains("running") else {
+            animationTimer?.invalidate()
+            animationTimer = nil
+            dotCount = 0
+            return
+        }
+        guard animationTimer == nil else {
+            return
+        }
+        dotCount = 0
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            self.dotCount = (self.dotCount + 1) % 6
+            for (id, state) in self.states where state == "running" {
+                self.renderStatus(id)
+            }
+        }
     }
 
     private func update(_ event: SetupEvent) {
@@ -208,13 +297,20 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
             field = NSTextField(wrappingLabelWithString: "")
             field.font = event.id == root ? .boldSystemFont(ofSize: 13) : .systemFont(ofSize: 11)
             field.preferredMaxLayoutWidth = 140
+            field.maximumNumberOfLines = event.id == root ? 1 : 2
             let node = NSStackView()
             node.orientation = .vertical
             node.alignment = .leading
-            node.spacing = 2
+            node.spacing = 3
             node.distribution = .fill
             node.setHuggingPriority(.required, for: .vertical)
             node.addArrangedSubview(field)
+            let status = NSTextField(labelWithString: "")
+            status.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            // 始终预留五个点的位置，动画不会挤动标题或相邻节点。
+            status.widthAnchor.constraint(equalToConstant: 140).isActive = true
+            node.addArrangedSubview(status)
+            statusLabels[event.id] = status
             let version = NSTextField(wrappingLabelWithString: "")
             version.font = .systemFont(ofSize: 10)
             version.textColor = .secondaryLabelColor
@@ -231,23 +327,39 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         let names = ["pending": "等待", "running": "进行中", "succeeded": "成功", "failed": "失败", "attention": "需用户处理"]
         let indent = String(repeating: "  ", count: min(3, event.id.filter { $0 == "." }.count))
         let name = event.id == root ? (phases.first(where: { $0.0 == root })?.1 ?? event.title) : event.title
-        field.stringValue = "\(indent)\(symbols[event.state]!) \(name) · \(names[event.state]!)"
+        field.stringValue = "\(indent)\(name)"
+        statusText[event.id] = "\(indent)\(symbols[event.state]!) \(names[event.state]!)"
+        refreshRunningAnimation()
+        renderStatus(event.id)
         field.toolTip = event.message
+        statusLabels[event.id]?.toolTip = event.message
         if let version = event.version?.trimmingCharacters(in: .whitespacesAndNewlines), !version.isEmpty, let label = versionLabels[event.id] {
             label.stringValue = "\(indent)版本 \(version)"
             label.toolTip = [version, event.message].compactMap { $0 }.joined(separator: "\n")
             label.isHidden = false
         }
         switch event.state {
-        case "running": field.textColor = .systemBlue
-        case "succeeded": field.textColor = .systemGreen
-        case "failed": field.textColor = .systemRed
-        case "attention": field.textColor = .systemOrange
-        default: field.textColor = .secondaryLabelColor
+        /// 当前阶段保持蓝色提示。
+        case "running":
+            field.textColor = .systemBlue
+        /// 已完成阶段保持绿色反馈。
+        case "succeeded":
+            field.textColor = .systemGreen
+        /// 失败节点保留明确错误色。
+        case "failed":
+            field.textColor = .systemRed
+        /// 需用户处理的节点使用提醒色。
+        case "attention":
+            field.textColor = .systemOrange
+        /// 尚未执行的节点降低视觉权重。
+        default:
+            field.textColor = .secondaryLabelColor
         }
+        statusLabels[event.id]?.textColor = field.textColor
         if event.state == "running" || event.state == "attention" {
             summary?.stringValue = event.message?.isEmpty == false ? event.message! : "\(event.title)：\(names[event.state]!)；在下方终端继续操作。"
         }
+        fitMilestonesToContent()
     }
 
     private func readEvents() {
@@ -355,13 +467,16 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         drainRemainingOutput()
         readEvents()
         eventsTimer?.invalidate()
+        refreshRunningAnimation()
         cancel.isEnabled = false
         summary.stringValue = error ?? (code == 0 ? "流程已完成；具体构建、安装和启动结果请核对对应子节点。" : "流程结束（退出码\(code)）；已完成阶段保留，请查看需处理节点与下方日志。")
         for (id, state) in states where state == "running" {
             if let label = labels[id] {
-                label.stringValue = label.stringValue.replacingOccurrences(of: "◉", with: "!").replacingOccurrences(of: "进行中", with: code == 0 ? "需确认状态" : "流程中断")
                 label.textColor = .systemOrange
                 states[id] = "attention"
+                statusText[id] = "! \(code == 0 ? "需确认状态" : "流程中断")"
+                statusLabels[id]?.textColor = .systemOrange
+                renderStatus(id)
             }
         }
         try? rawLog.synchronize()
@@ -410,6 +525,8 @@ final class SetupProjectWindow: NSObject, NSApplicationDelegate, NSWindowDelegat
         finish(code: 1, error: "本地终端资源无法加载：\(error.localizedDescription)")
     }
     func applicationWillTerminate(_ notification: Notification) {
+        animationTimer?.invalidate()
+        eventsTimer?.invalidate()
         reader?.cancel()
         if master >= 0 { Darwin.close(master) }
         try? rawLog.close()

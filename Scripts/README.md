@@ -30,6 +30,22 @@
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
+
+**主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。 偏好保存在当前用户的 `com.jobs.finderextensions.managementpanel.preferences` 域：`theme` 为 `system` / `dark` / `light`，`language` 为 `system` / `zh-Hans` / `zh-Hant` / `en`；不会写入工程或修改系统主题与语言。
+
+**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，默认 `build`。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
+
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。默认不清理；UI 仅在应用程序安装模式显示清理选项，退出该组合就清空。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+
+安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
+
 ## 一、<span id="directory-and-caller">目录与调用关系</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```text
@@ -208,6 +224,8 @@ ruby ../Tests/FileCreatorInstallerIntegrationTests.rb
 ruby ../Tests/FinderManagerPreflightTests.rb
 ```
 
+[主题与语言隔离验证](../Tests/PanelPreferencesTests.rb/README.md) 使用原生控件和临时偏好域核对选项、保存与恢复、系统语言识别及切换后的状态保留，不修改系统主题或语言。
+
 `FinderManagerPreflightTests.rb` 只使用临时工程存在性夹具和假业务，覆盖未选工程缺失、所选共享工程多叶失败、全选时单工程缺失后继续、全局必要环境失败及无源码卸载；不会调用真实构建、登记、卸载或重启 Finder。
 
 ## 四、<span id="return-contract">返回结果与调用流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
@@ -234,7 +252,7 @@ install|xcode_opener,terminal_open
 uninstall|git-pull
 ```
 
-面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。
+面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）、`--install-location build|applications`（默认构建目录）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。
 
 调用关系可用 [**Mermaid**](https://mermaid.js.org) 表示：
 

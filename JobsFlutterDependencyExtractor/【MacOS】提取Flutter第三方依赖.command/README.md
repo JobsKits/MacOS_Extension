@@ -24,10 +24,12 @@
 | 输入或情况 | 实际结果 |
 | --- | --- |
 | 自述处直接回车 | 继续；任意非空输入或 EOF 取消。 |
+| 范围处直接回车 | 仅私库候选（Git、path、自建 hosted）；任意非空输入（含空格）才提取全部 Pub 包。 |
 | 输入或拖入项目目录 | 只处理该目录自身，不递归查找工程。 |
 | 目标处直接回车 | 使用系统解析的桌面，兼容桌面重定向。 |
 | 输入或拖入目标目录 | 新建独立输出目录；支持中文、空格、Terminal 拖入转义。 |
 | 重复提取同一项目 | 每次产生不同名称，不覆盖旧结果。 |
+| 完成后是否 ZIP | 回车默认压缩，非空不压缩；ZIP 校验成功后回车保留目录，非空才删除本次原目录。 |
 | 缓存缺失、版本不匹配、解析过期 | 停止并提示先执行 `flutter pub get`；不会自动下载或更新依赖。 |
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、目录与运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -67,6 +69,8 @@ FlutterDependencies-项目名-UTC时间-随机标识/
 ├── pubspec.lock              # 实际使用的原始锁文件
 └── README.md
 ```
+
+上述目录名对应全量 Pub 模式；默认私库模式使用 `FlutterPrivateDependencies-项目名-UTC时间-随机标识/`，带私库标识和文件校验。Git / path / 自建源按私库候选处理，可能包含公开仓库，不代表权限鉴定。整个目录或生成的 ZIP 与工程一同携带；ZIP 先解压，再使用统一工具的导入入口。
 
 - 基于 `pubspec.lock` 和 `.dart_tool/package_config.json` 交叉核对本地真实路径，覆盖 hosted、Git、path，包含直接、间接和开发依赖。Workspace 使用共享解析文件，必须由祖先或嵌套 workspace 声明成员关系，只导出选中项目依赖闭包；内部成员以 `workspace` 标记。成员列表支持标准块列表、单行 flow 列表和相对路径模式 `*`、`**`、`?`。
 - Flutter / Dart SDK 包排除。包内 iOS / Android / macOS / Windows 原生源码会保留；CocoaPods、Gradle、Maven 另外下载的库、框架和二进制缓存不属于 Pub 源码提取范围。

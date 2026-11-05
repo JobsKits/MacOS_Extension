@@ -7,6 +7,7 @@ require 'open3'
 require 'pty'
 require 'timeout'
 require 'tmpdir'
+require 'json'
 
 class PubGetSdkPreparationTests < Minitest::Test
   TOOLS = File.expand_path(ENV.fetch('JOBS_TEST_TOOLS_DIR', '../Scripts/Tools'), __dir__)
@@ -64,6 +65,47 @@ class PubGetSdkPreparationTests < Minitest::Test
     assert_equal ['flutter|--version --machine', 'dart|--version', 'flutter|pub get'], trace
   end
 
+  def test_explicit_system_sdk_record_wins_over_old_fvm_and_global_flutter
+    bind_sdk
+    File.delete(File.join(@project, '.fvm/flutter_sdk'))
+    write_environment
+    output, result = dispatch
+    assert result.success?, output
+    assert_equal ['flutter|--version --machine', 'dart|--version', 'flutter|pub get'], trace
+    refute File.exist?(File.join(@root, 'manager-arguments'))
+  end
+
+  def test_system_sdk_record_check_is_read_only_and_needs_no_jdk
+    write_environment
+    output, result = inspect_check
+    assert result.success?, output
+    assert_includes output, '计划：flutter pub get'
+    assert_empty trace
+    assert_empty Dir.children(File.join(@root, 'tmp'))
+  end
+
+  def test_broken_explicit_sdk_does_not_switch_to_fvm
+    write_environment
+    output, result = dispatch(env: { 'JOBS_TEST_INITIAL_FLUTTER_CODE' => '41' })
+    assert_equal 41, result.exitstatus, output
+    assert_equal ['flutter|--version --machine'], trace
+    assert_includes output, '未拉取依赖或切换到 FVM'
+  end
+
+  def test_foreign_or_malformed_or_linked_environment_stops_before_sdk
+    write_environment(platform: 'Windows')
+    output, result = inspect_check
+    refute result.success?, output
+    File.write(File.join(@project, '.jobs/flutter-environment.json'), '{bad json')
+    output, result = inspect_check
+    refute result.success?, output
+    File.delete(File.join(@project, '.jobs/flutter-environment.json'))
+    File.symlink(File.join(@root, 'missing'), File.join(@project, '.jobs/flutter-environment.json'))
+    output, result = inspect_check
+    refute result.success?, output
+    assert_empty trace
+  end
+
   def test_declaration_with_broken_link_enters_sdk_preparation
     FileUtils.mkdir_p(File.join(@project, '.fvm'))
     File.write(File.join(@project, '.fvmrc'), '{"flutter":"3.29.3"}')
@@ -93,7 +135,7 @@ class PubGetSdkPreparationTests < Minitest::Test
     write_executable(File.join(@sdk, 'bin/dart'), 'print unexpected-dart-shim >> "$JOBS_TEST_TRACE"')
     output, result = dispatch(env: { 'JOBS_TEST_MANAGER_MODE' => 'noop' })
     refute result.success?, output
-    assert_equal ['manager'], trace
+    assert_equal ['flutter|--version --machine', 'manager', 'flutter|--version --machine'], trace
     assert_includes output, '复检失败'
   end
 
@@ -238,7 +280,7 @@ class PubGetSdkPreparationTests < Minitest::Test
         else
           result="${JOBS_TEST_INITIAL_FLUTTER_CODE:-0}"
         fi
-        (( result == 0 )) || exit "$result"
+        (( result == 0 )) || { print -u2 "Bad CPU type in executable"; exit "$result"; }
         print -r -- '{"frameworkVersion":"3.29.3","dartSdkVersion":"3.7.2"}'
       elif [[ "$1" == pub && "$2" == get ]]; then
         exit "${JOBS_TEST_PUB_GET_CODE:-0}"
@@ -283,6 +325,13 @@ class PubGetSdkPreparationTests < Minitest::Test
       File.write(File.join(@project, '.fvmrc'), '{"flutter":"3.29.3"}')
     end
     File.symlink(@sdk, File.join(@project, '.fvm/flutter_sdk'))
+  end
+
+  def write_environment(platform: 'MacOS')
+    FileUtils.mkdir_p(File.join(@project, '.jobs'))
+    File.write(File.join(@project, '.jobs/flutter-environment.json'), JSON.generate(
+      Platform: platform, FlutterMode: 'system', FlutterPath: File.join(@sdk, 'bin/flutter'), JavaMode: 'none', JavaHome: ''
+    ))
   end
 
   def trace

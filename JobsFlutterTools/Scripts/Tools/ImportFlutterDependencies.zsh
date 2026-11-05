@@ -157,6 +157,11 @@ check_environment() {
 # 完整验证失败时保持原失败码，阻止确认和写入。
 validate_import() {
   local validation_result=0
+  if (( ! PRIVATE_ONLY )) && /usr/bin/grep -Eq '"snapshotKind"[[:space:]]*:[[:space:]]*"flutter-private-dependencies"' "$SOURCE_PATH/manifest.json"; then
+    PRIVATE_ONLY=1
+    SCOPE_ARGS=(--private-only)
+    log '🔐 已按清单识别为私库快照，自动使用私库导入模式。'
+  fi
   log "来源快照：$SOURCE_PATH"
   log "目标项目：$PROJECT_PATH"
   "$DART_EXECUTABLE" "$SCRIPT_DIR/ImportFlutterDependencies.dart" \

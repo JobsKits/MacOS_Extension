@@ -215,6 +215,10 @@ final class FinderSync: FIFinderSync {
             selector = selected ? #selector(flutterPrecacheSelected(_:)) : #selector(flutterPrecacheContainer(_:))
         case .webDependencies:
             selector = selected ? #selector(webDependenciesSelected(_:)) : #selector(webDependenciesContainer(_:))
+        case .exportAllDependencies:
+            selector = selected ? #selector(exportAllDependenciesSelected(_:)) : #selector(exportAllDependenciesContainer(_:))
+        case .importAllDependencies:
+            selector = selected ? #selector(importAllDependenciesSelected(_:)) : #selector(importAllDependenciesContainer(_:))
         case .exportPrivateDependencies:
             selector = selected ? #selector(exportPrivateDependenciesSelected(_:)) : #selector(exportPrivateDependenciesContainer(_:))
         case .importPrivateDependencies:
@@ -410,6 +414,22 @@ final class FinderSync: FIFinderSync {
 
     @objc private func webDependenciesContainer(_ sender: NSMenuItem) {
         perform(.webDependencies, for: .contextualMenuForContainer)
+    }
+
+    @objc private func exportAllDependenciesSelected(_ sender: NSMenuItem) {
+        perform(.exportAllDependencies, for: .contextualMenuForItems)
+    }
+
+    @objc private func exportAllDependenciesContainer(_ sender: NSMenuItem) {
+        perform(.exportAllDependencies, for: .contextualMenuForContainer)
+    }
+
+    @objc private func importAllDependenciesSelected(_ sender: NSMenuItem) {
+        perform(.importAllDependencies, for: .contextualMenuForItems)
+    }
+
+    @objc private func importAllDependenciesContainer(_ sender: NSMenuItem) {
+        perform(.importAllDependencies, for: .contextualMenuForContainer)
     }
 
     @objc private func exportPrivateDependenciesSelected(_ sender: NSMenuItem) {

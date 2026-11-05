@@ -45,7 +45,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
     flutter = selector[/static let flutter:.*?\n    \]/m].scan(/FeatureOption\(identifier: "([^"]+)"/).flatten
     assert_match(/static let all: \[FeatureOption\] = independent \+ terminal \+ ios \+ flutter/, selector)
     assert_equal identifiers.uniq, identifiers
-    assert_equal 45, flutter.count
+    assert_equal 47, flutter.count
     refute_includes identifiers, 'flutter-tools'
     assert_includes independent, 'run-authorize'
     assert_includes independent, 'ios-simulator-create'
@@ -116,7 +116,7 @@ class FlutterInstallerIntegrationTests < Minitest::Test
         parse_feature_selection 'flutter-package,flutter-doctor,flutter_pub_get,flutter_version_manager,flutter_sdk_version,flutter-dependency-extract' || exit 1
         print -r -- "$FLUTTER_TOOLS_ENABLED_FEATURES"
       ZSH
-      assert_equal ['flutter-tools', 'package-android,repair-package-imports', 'package-android,repair-package-imports', '45',
+      assert_equal ['flutter-tools', 'package-android,repair-package-imports', 'package-android,repair-package-imports', '47',
                     'package-ios,package-android,package-ohos,native-doctor,harmony-doctor,pub-get,sdk-manage,sdk-version,extract'], output.lines.map(&:strip)
     end
   end

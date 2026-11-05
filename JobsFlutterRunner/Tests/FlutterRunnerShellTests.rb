@@ -4,9 +4,12 @@ require 'tmpdir'
 require 'fileutils'
 require 'open3'
 require 'shellwords'
+require 'timeout'
+require 'pty'
+require 'io/console'
 
 class FlutterRunnerShellTests < Minitest::Test
-  SCRIPT = File.expand_path('../Scripts/RunFlutterProject.zsh', __dir__)
+  SCRIPT = ENV.fetch('JOBS_TEST_RUNNER_SCRIPT') { File.expand_path('../Scripts/RunFlutterProject.zsh', __dir__) }
 
   def setup
     @tmp = Dir.mktmpdir('jobs-flutter-runner-shell-')
@@ -131,6 +134,97 @@ class FlutterRunnerShellTests < Minitest::Test
     refute_includes out, '编号无效'
   end
 
+  # 真实 fzf 的备用屏幕与清理协议不能由假 fzf 的参数断言代替。
+  def real_fzf_terminal
+    fzf = ['/opt/homebrew/bin/fzf', '/usr/local/bin/fzf'].find { |path| File.executable?(path) }
+    skip '需要已安装的 fzf 执行真实 PTY 回归' unless fzf
+    carrier = File.join(@tmp, 'menu-tty.zsh')
+    File.write(carrier, <<~ZSH)
+      source #{@library.shellescape}
+      LOG_FILE=#{File.join(@tmp, 'tty.log').shellescape}
+      FZF_BIN=#{fzf.shellescape}
+      ROWS=($'alpha\\tAlpha device' $'beta\\tBeta device')
+      if select_row 'Choose device: '; then
+        print -r -- "PICK=$REPLY"
+      else
+        print 'CANCELLED'
+      fi
+    ZSH
+    transcript = ''.b
+    PTY.spawn({ 'TERM' => 'xterm-256color', 'NO_COLOR' => '1' }, '/bin/zsh', '-f', carrier) do |reader, writer, pid|
+      writer.winsize = [68, 234]
+      read_until = lambda do |&condition|
+        until condition.call(transcript)
+          chunk = reader.readpartial(65_536)
+          transcript << chunk
+          # PTY 没有终端模拟器，按 fzf 请求回复光标位置。
+          queries = chunk.scan("\e[6n").length
+          writer.write("\e[1;1R" * queries) if queries.positive?
+        end
+      end
+      begin
+        Timeout.timeout(8) do
+          read_until.call { |text| text.include?('Alpha device') && text.include?('Beta device') }
+          yield writer, read_until, transcript
+          loop { transcript << reader.readpartial(65_536) }
+        end
+      rescue EOFError, Errno::EIO
+        # macOS PTY 在子进程关闭后返回 EIO。
+      ensure
+        begin
+          # PTY 子进程是独立进程组长，只清理本次 Shell 和同组 fzf。
+          if Process.getpgid(pid) == pid
+            Process.kill('TERM', -pid)
+            begin
+              Timeout.timeout(1) do
+                loop do
+                  begin
+                    Process.waitpid(pid, Process::WNOHANG)
+                  rescue Errno::ECHILD
+                    nil
+                  end
+                  Process.kill(0, -pid)
+                  sleep 0.02
+                end
+              end
+            rescue Timeout::Error
+              Process.kill('KILL', -pid)
+            end
+          end
+        rescue Errno::ESRCH
+          nil
+        end
+        begin
+          Timeout.timeout(1) { Process.waitpid(pid) }
+        rescue Errno::ECHILD
+          nil
+        end
+      end
+    end
+    transcript
+  end
+
+  def test_real_fzf_resize_and_filter_restores_original_terminal_screen
+    transcript = real_fzf_terminal do |writer, read_until, _text|
+      writer.winsize = [24, 80]
+      writer.write('Beta')
+      read_until.call { |text| text.include?('1/2') }
+      writer.write("\r")
+    end
+    assert_includes transcript, "\e[?1049h", '菜单必须在备用屏幕绘制，避免原日志屏留下旧菜单'
+    assert_includes transcript, "\e[?1049l", '选择后必须恢复原日志屏幕'
+    assert_includes transcript, 'PICK=beta'
+    refute_includes transcript, 'PICK=alpha'
+  end
+
+  def test_real_fzf_cancel_restores_original_terminal_screen
+    transcript = real_fzf_terminal { |writer, _read_until, _text| writer.write("\e") }
+    assert_includes transcript, "\e[?1049h"
+    assert_includes transcript, "\e[?1049l"
+    assert_includes transcript, 'CANCELLED'
+    refute_includes transcript, 'PICK='
+  end
+
   def test_fvm_project_never_falls_back_to_global_flutter
     File.write(File.join(@tmp, '.fvmrc'), '{"flutter":"3.24.0"}')
     out, _err, result = shell("PROJECT_PATH=#{@tmp.shellescape}\nfind_flutter")
@@ -208,7 +302,115 @@ class FlutterRunnerShellTests < Minitest::Test
     ZSH
     assert result.success?, err
     assert_includes out, 'RESULT=9'
+    refute_includes out, 'diagnostic'
     assert_equal "diagnostic\n", File.read(File.join(@tmp, 'bounded.log'))
+  end
+
+  def test_bounded_stream_preserves_progress_bytes_and_command_failure
+    output = File.join(@tmp, 'download 中文.log')
+    out, err, result = shell(<<~ZSH)
+      RUN_BOUNDED_STREAM=1 run_bounded 5 #{output.shellescape} /bin/zsh -c 'printf "10%%\\r20%%\\r"; printf "下载失败" >&2; exit 9'
+      print -r -- "RESULT=$? FD=$QUERY_PROGRESS_FD"
+    ZSH
+    assert result.success?, err
+    expected = "10%\r20%\r下载失败"
+    assert_includes out, expected
+    assert_includes out, "RESULT=9 FD=\n"
+    assert_equal expected.b, File.binread(output)
+  end
+
+  def test_bounded_stream_is_visible_before_command_finishes
+    output = File.join(@tmp, 'live.log')
+    release = File.join(@tmp, 'release')
+    command = <<~ZSH
+      source #{@library.shellescape}
+      LOG_FILE=#{File.join(@tmp, 'test.log').shellescape}
+      RUN_BOUNDED_STREAM=1 run_bounded 8 #{output.shellescape} /bin/zsh -c 'printf "15%%\\r"; while [[ ! -f "$1" ]]; do /bin/sleep 0.1; done; printf "100%%\\n"' fixture #{release.shellescape}
+    ZSH
+    Open3.popen3({ 'HOME' => @tmp, 'NO_COLOR' => '1' }, '/bin/zsh', '-f', '-c', command) do |input, stdout, stderr, process|
+      input.close
+      progress = Timeout.timeout(5) { stdout.readpartial(1024) }
+      assert_includes progress, "15%\r"
+      assert process.alive?, '下载结束前必须已显示首批进度'
+      File.write(release, '')
+      remaining = stdout.read
+      assert_includes remaining, "100%\n"
+      assert process.value.success?, stderr.read
+    end
+    assert_equal "15%\r100%\n", File.read(output)
+  end
+
+  def test_bounded_stream_timeout_keeps_progress_and_closes_reader
+    output = File.join(@tmp, 'timeout.log')
+    out, err, result = shell(<<~ZSH)
+      RUN_BOUNDED_STREAM=1 run_bounded 1 #{output.shellescape} /bin/zsh -c 'printf "30%%\\r"; exec /bin/sleep 10'
+      print -r -- "RESULT=$? FD=$QUERY_PROGRESS_FD PID=$QUERY_PID"
+    ZSH
+    assert result.success?, err
+    assert_includes out, "30%\r"
+    assert_includes out, "RESULT=124 FD= PID=\n"
+    assert_includes out, "详情：#{output}"
+    assert_equal "30%\r", File.read(output)
+  end
+
+  def test_prepare_project_fvm_sdk_streams_install_and_use_output
+    version = '3.99.0'
+    project = File.join(@tmp, 'project 中文')
+    fake = File.join(@tmp, 'fake fvm')
+    FileUtils.mkdir_p(File.join(project, '.fvm'))
+    File.write(File.join(project, '.fvmrc'), %({"flutter":"#{version}"}))
+    File.write(fake, <<~'ZSH')
+      #!/bin/zsh
+      case "$1" in
+        install)
+          printf 'DOWNLOAD 25%%\rDOWNLOAD 100%%\n'
+          mkdir -p "$HOME/fvm/versions/$2/bin"
+          print '#!/bin/zsh' > "$HOME/fvm/versions/$2/bin/flutter"
+          chmod +x "$HOME/fvm/versions/$2/bin/flutter"
+          ;;
+        use)
+          printf 'LINK READY\n' >&2
+          ln -s "$HOME/fvm/versions/$2" .fvm/flutter_sdk
+          ;;
+        *) exit 71 ;;
+      esac
+    ZSH
+    File.chmod(0o700, fake)
+    out, err, result = shell(<<~ZSH, input: "\n")
+      PROJECT_PATH=#{project.shellescape}
+      cd "$PROJECT_PATH"
+      JOBS_FVM_BIN=#{fake.shellescape}
+      json_helper() { [[ "$1" != fvm-version ]] || print -r -- '#{version}'; }
+      prepare_project_fvm_sdk || exit 1
+      print -r -- "READY=$REPLY"
+    ZSH
+    assert result.success?, err
+    assert_includes out, "DOWNLOAD 25%\rDOWNLOAD 100%\n"
+    assert_includes out, "LINK READY\n"
+    assert_includes out, '✔ FVM SDK 已就绪'
+    assert_equal "DOWNLOAD 25%\rDOWNLOAD 100%\n", File.read(File.join(@tmp, 'test.log.fvminstall'))
+    assert_equal "LINK READY\n", File.read(File.join(@tmp, 'test.log.fvmuse'))
+  end
+
+  def test_find_flutter_streams_bootstrap_download_from_existing_sdk
+    sdk = File.join(@tmp, 'sdk')
+    FileUtils.mkdir_p([File.join(sdk, 'bin'), File.join(@tmp, '.fvm')])
+    File.write(File.join(@tmp, '.fvmrc'), '{"flutter":"fixture"}')
+    FileUtils.ln_s(sdk, File.join(@tmp, '.fvm/flutter_sdk'))
+    flutter = File.join(sdk, 'bin/flutter')
+    File.write(flutter, <<~'ZSH')
+      #!/bin/zsh
+      [[ "$*" == --version ]] || exit 71
+      printf 'Downloading Dart SDK 20%%\rDownloading Dart SDK 100%%\n' >&2
+      print 'Flutter fixture'
+    ZSH
+    File.chmod(0o700, flutter)
+    out, err, result = shell('find_flutter')
+    assert result.success?, err
+    assert_includes out, "Downloading Dart SDK 20%\rDownloading Dart SDK 100%\n"
+    assert_includes out, 'Flutter fixture'
+    assert_includes out, '首次执行可能下载组件'
+    assert_equal "Downloading Dart SDK 20%\rDownloading Dart SDK 100%\nFlutter fixture\n", File.read(File.join(@tmp, 'test.log.version'))
   end
 
   def test_missing_ios_simulator_creates_selected_type_and_runtime
@@ -486,7 +688,7 @@ class FlutterRunnerShellTests < Minitest::Test
     assert_includes out, "REPLY=#{File.realpath(File.join(@tmp, 'fvm/versions', version))}/bin/flutter"
   end
 
-  def test_prepare_project_fvm_sdk_respects_cancellation
+  def test_prepare_project_fvm_sdk_respects_tool_cancellation_without_download_confirmation
     project = File.join(@tmp, 'project')
     FileUtils.mkdir_p(File.join(project, '.fvm'))
     File.write(File.join(project, '.fvmrc'), '{ "flutter": "3.47.7" }' + "\n")
@@ -494,14 +696,16 @@ class FlutterRunnerShellTests < Minitest::Test
       PROJECT_PATH=#{project.shellescape}
       JOBS_FVM_BIN=/usr/bin/true
       json_helper() { [[ "$1" != fvm-version ]] || print -r -- '3.47.7'; }
-      run_bounded() { print 'UNEXPECTED_FVM'; return 1; }
+      run_bounded() { return 130; }
       prepare_project_fvm_sdk
       print -r -- "RESULT=$?"
+      IFS= read -r untouched
+      print -r -- "INPUT=$untouched"
     ZSH
     assert result.success?, err
-    assert_includes out, 'RESULT=1'
+    assert_includes out, 'RESULT=130'
+    assert_includes out, 'INPUT=n'
     assert_includes out, '已取消'
-    refute_includes out, 'UNEXPECTED_FVM'
   end
 
   def test_prepare_project_fvm_sdk_rejects_unreadable_version

@@ -11,7 +11,7 @@
 - [一、入口与执行顺序](#jobs-toc-heading-2)
 - [二、SDK、配置与交互](#jobs-toc-heading-3)
 - [三、Gradle 下载与分层依赖边界](#jobs-toc-heading-4)
-  - [3.1、平台快照提取与导入](#jobs-toc-heading-5)
+  - [3.1、平台快照提取与导入](#platform-archives)
   - [3.2、Flutter 平台资源具体包含什么](#precache-faq)
   - [3.3、原生库组合操作的实际调用链与重叠](#native-combination-faq)
 - [四、平台准备、设备与实际运行](#jobs-toc-heading-8)
@@ -25,11 +25,31 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+**下载版本与组件：** 运行器在 SDK 安装 / 首次补齐及选定平台预缓存之前，先展示项目声明 Flutter、实际解析的 SDK 根路径、本地 Git 精确 tag / 提交或本地版本记录、下载宿主架构、目标平台和 Engine 提交；不靠执行 Flutter / Dart 探测版本。Git 查询只读、禁止隐式联网且单次最多 5 秒，无法确认就明确未解析。Darwin 下载架构按物理 ARM 能力识别，兼容 Rosetta。Dart 目标版本只采信 SDK 明确声明，或与目标 Engine 一致的版本 JSON / 当前缓存 stamp；`.old` 和不匹配的缓存不当作本次目标。尚无可信记录时显示“版本尚未解析，待目标 SDK 下载完成后确认”，目标版本展示不代表已经安装验收。
+
+已打开的终端使用启动时的脚本快照，源码改动不替换当前下载进程；安装 / 更新菜单后重新发起才加载新的上下文展示。版本上下文与重试提示进入本次操作日志，原生机器输出文件及退出码保持原路径。
+
+**SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
+
+运行和打包在实际 `run` / `build` 前，先为已选设备 / 打包平台执行对应 `flutter precache --ios|--android|--web|--macos|--ohos`，平台资源获取失败持续重试；不会因此反复构建 App。鸿蒙先检查适配 SDK 是否支持 `--ohos`，不支持时在构建前明确说明。
+
 > 本目录承接Flutter右键菜单的实际环境准备、依赖解析和运行验收；平台、许可与设备状态均以真实工具结果为准。
+
+运行器的设备、型号和系统选择使用 fzf 全屏临时界面，退出后恢复原日志，避免 Terminal 内嵌高度模式重绘时留下重复菜单。iOS 列表来自当前 Xcode 的 CoreSimulator，包含已关闭的模拟器；Device Hub 看不到时，检查过滤器是否为 `All Devices` / `Simulators`，并展开 `Available` 分组。历史测试设备需要按 UUID 注销，不能直接删除设备目录或共享 Runtime。
+
+“从终端运行 Flutter 项目”由 [RunFlutterProject.zsh](./RunFlutterProject.zsh) 承接。项目 FVM SDK 缺失或断链时，自动用本机 [**fvm**](https://fvm.app) 下载 / 初始化并绑定声明版本；安装与绑定前显示版本、FVM 路径和完整日志路径。工具原始输出约每秒显示到终端，保留工具提供的下载百分比、速度、剩余时间及回车刷新，同时分别落盘到 `<操作日志>.fvminstall` / `<操作日志>.fvmuse`。已有 SDK 的首次版本检查可能补下载 Dart / SDK 组件，同样显示并保存到 `<操作日志>.version`；后台日志按回车 / 换行分帧，下载进度不必等任务结束。工具没有输出时不伪造进度。安装 / 初始化、绑定与版本首启的单次窗口均为 1800 秒；超时结束当次后自动继续重试，设备 JSON 查询不输出进度。已打开终端不会更新脚本副本；菜单安装 / 更新后重新发起才加载修改，已有下载可在另一终端执行 `tail -f '<本次操作日志>.fvminstall'` 查看，`Ctrl+C` 仅退出该查看窗口。
+
+SDK 安装 / 切换的最终版本核验和 SDK 查看器的候选探针同样显示首次缓存下载输出，并单独保留供解析的版本 JSON；不会把终端展示文案塞入机器结果。鸿蒙 Flutter 的 Git 克隆显式启用原生进度，在日志管道中也显示接收对象、百分比等信息。项目体检、Pub 拉取和代码生成按字节流过滤颜色，工具仅用回车刷新时不必等待换行。
+
+一键配置、目标平台预缓存和实际构建沿用既有实时输出通道；直接 SDK 归档下载、FVM 安装、鸿蒙克隆及首次调用补齐组件的详情均在终端或配置面板中可见，同时保留原始日志。百分比、速度及剩余时间仅展示工具实际提供的值；工具没有输出时不估造。未重新安装菜单的旧 App 资源、已打开的旧终端和既有后台会话保持其启动时的实现。
+
+一键迁移由 [【MacOS】一键迁移Flutter依赖.zsh](./【MacOS】一键迁移Flutter依赖.zsh/README.md) 和同目录 [FlutterDependencyMigration.dart](./FlutterDependencyMigration.dart) 承接，保留同目录 Pub 提取 / 导入引擎。`export-all-dependencies` / `import-all-dependencies` 在分发器的 SDK 绑定门禁前进入文件迁移；可复用项目 Dart 或本机已有原生 Dart，不下载 SDK、不改变工程绑定。按内容识别迁移目录或原始 Pub / Gradle 缓存，支持目录改名与父目录组合；导入先预检，精确 `YES` 后才写入，冲突停止。提取默认私库，非空才全提取，ZIP 和删除默认值见入口自述；完整材料范围见[一键迁移与底稿](../../README.md#one-click-migration)。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、入口与执行顺序 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./SetupFlutterProject.zsh) 承接。默认依次选择项目已有目标平台、Flutter 来源、Java 来源和下载线路，准备 SDK、平台工具链及同套 Flutter 平台资源，下载目标所需 Gradle，解析 Pub 和所选平台依赖，再按启动配置实际构建以准备原生库和延迟依赖，最后检查环境、选择设备并实际运行验证。macOS 处理当前工程已有的 Android、iOS、macOS、Web、OpenHarmony 目标，不自动生成平台源码；OpenHarmony 必须使用适配 SDK 与已配置的 DevEco 工具。
+Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./SetupFlutterProject.zsh) 承接。先选择工程已有目标及 Flutter 来源；Android / OpenHarmony 再选择 Java，其它目标跳过 JDK。准备 SDK、平台工具链及平台资源，下载所需 Gradle，解析 Pub，再选择启动配置、准备目标依赖并实际构建，最后选择设备进行运行验证。Apple 配置生成也共用选定入口、flavor、模式和 defines。macOS 处理 Android、iOS、macOS、Web、OpenHarmony 已有目标，不自动生成平台源码；鸿蒙须使用适配 Flutter，DevEco / SDK 许可保留官方流程。
+
+Web / 鸿蒙工具准备由 [工程依赖工具链模块](./【MacOS】工程依赖工具链.zsh/README.md) 承接。额外 JS 工程检查 Node 版本文件、`engines.node` 与锁定包管理器，复用健康候选，缺失时提供安装 / 选择并复检；没有 `package.json` 时不要求 Node。鸿蒙发现 DevEco / CLT 并在本进程激活和核验 SDK、Node、OHPM、Hvigor、HDC、Java；缺少专有组件时打开官方安装 / SDK Manager，完成后可在本流程复检，不把目录存在或平台预缓存成功视为工具链完成。
 
 “📚 下载Gradled分发与构建插件”由 [DownloadProjectGradle.zsh](./DownloadProjectGradle.zsh) 承接，只准备 Android 项目固定 Wrapper 版本和配置阶段构建插件。它优先读取本机环境记录中的 Java，其次解析 `.java-version`，均未配置时才使用当前系统 JDK。
 
@@ -58,7 +78,7 @@ Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、SDK、配置与交互 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - Flutter 默认 FVM，可复用健康项目 SDK，或调用现有安装 / 切换工具；选择系统模式时可以复用 PATH、指定本机 SDK 或通过 Homebrew 安装 Flutter。Java 默认 jEnv，可选择健康本机 JDK 或安装指定主版本；系统模式保持原 `.java-version` 不变，不读取其损坏的 jEnv 声明。
-- 单选统一使用 fzf：Enter 选择，← 返回上一层，Esc 取消。来源选择阶段取消不修改项目；后续已完成的安装 / 绑定不会因返回或取消自动撤销。缺少 fzf 时可确认通过健康 Homebrew 安装；Homebrew 也缺失时由 [SetupHomebrew.zsh](./SetupHomebrew.zsh) 复用原安装内核，精确 `YES` 选择系统标准目录，其它输入选择用户目录，安装失败不改走其它位置。缺 CLT 时由本人完成系统安装，再重新运行；不写 Shell 启动文件。
+- 单选统一使用 fzf：Enter 选择，← 返回上一层，Esc 取消。来源选择阶段取消不修改项目；后续已完成的安装 / 绑定不会因返回或取消自动撤销。缺少 fzf 时可确认通过健康 Homebrew 安装；Homebrew 也缺失时由 [SetupHomebrew.zsh](./SetupHomebrew.zsh) 复用原安装内核，精确 `YES` 选择系统标准目录，其它输入选择用户目录，安装失败不改走其它位置。缺 CLT 时自动打开 Apple 官方界面并每 10 秒复检，安装和本人许可完成后自动继续；不写 Shell 启动文件。
 - 本机选择保存在工程 `.jobs/flutter-environment.json`，字段为 `Platform`、`FlutterMode`、`FlutterPath`、`JavaMode`、`JavaHome`。系统模式作用于本流程、后续 Gradle 下载和单类依赖入口；其它原有运行 / 打包菜单仍遵循各自 FVM / jEnv 规则，已有终端与 IDE 不会切换。
 - Android `local.properties` 只更新本机 `flutter.sdk`，平台模块再合并 `sdk.dir`；原有其它字段保留。环境记录与本机配置写前留快照并检查并发、链接、硬链接及异常文件；不改全局 Flutter、jEnv global、Shell 启动文件或系统代理。
 - 跨电脑或跨系统路径失效时停止使用旧环境；重跑配置可以重新选择本机 SDK，并先保存旧配置。取消、失败与后续诊断不回滚已完成的安装和依赖解析；恢复文件前请核对快照和当前内容，保留并发修改。
@@ -69,7 +89,7 @@ Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./
 
 采用 Wrapper 已固定的 SHA256；未配置摘要时只从 Gradle 官方端点取摘要，不能以镜像自身摘要替代信任根。分发包按来源分别保留断点片段，优先项目来源，再用 Gradle 官方备用源；选择备用线路时加入腾讯 Gradle 镜像，并为本次构建使用阿里云 Google / Gradle Plugin / Public Maven 镜像。镜像线路可用性取决于当前网络，脚本不修改用户仓库配置或系统代理。
 
-分发下载连接超时 10 秒、低速 30 秒停止，每个来源最多两次，单次默认 300 秒。插件 `Gradle help` 默认 900 秒；HTTP 连接 / 读取分别 15 / 30 秒，仅对明确网络异常重试一次；认证、权限、证书、配置或兼容错误不重试。Pub 同样默认 900 秒，仅明确网络异常重试一次，不执行 `pub upgrade`。
+分发下载连接超时 10 秒、低速 30 秒停止，每轮同源最多两次后自动继续下一轮，单次默认 300 秒，无总尝试上限。插件 `Gradle help` 默认 900 秒；HTTP 连接 / 读取分别 15 / 30 秒，仅对明确网络异常重试一次；认证、权限、证书、配置或兼容错误不重试。Pub 同样默认 900 秒，仅明确网络异常重试一次，不执行 `pub upgrade`。
 
 | 环境变量 | 默认 | 允许范围 |
 | --- | --- | --- |
@@ -96,7 +116,7 @@ Gradle `help` 会执行当前工程构建配置，下载 / 解析 AGP、Kotlin �
 
 原生依赖日志按阶段保存到本次 `JobsFlutterEnvironment.*`，`JOBS_NATIVE_DEPENDENCY_TIMEOUT` 可控制实际原生构建上限，默认 3600 秒。失败或取消停止下游流程，已经下载的正常缓存及已完成的工程改动保留。Pub 的原有快照格式仍只处理包源码、许可证与清单；平台缓存使用下面的独立配对快照，不与 Pub 格式混用。
 
-### <span id="jobs-toc-heading-5" data-jobs-toc="v2">3.1、平台快照提取与导入 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### 3.1、<span id="platform-archives">平台快照提取与导入</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 [ArchiveProjectDependencies.zsh](./ArchiveProjectDependencies.zsh) 接收 `--mode export|import`、`--kind gradle|pods|spm|ohos|native|precache|web`、`--project`，可用 `--platform` 指定当前工程适用目标，`--directory` 指定已存在的输出父目录或完整输入快照；缺少目录参数时在终端输入 / 拖入，空输入取消。`--check` 只展示静态计划，不调用 SDK、联网、写日志或复制文件。运行时复用本机环境记录或项目 FVM 的健康 Flutter / Dart，不在此入口安装另一套 SDK。
 
@@ -114,7 +134,7 @@ Gradle `help` 会执行当前工程构建配置，下载 / 解析 AGP、Kotlin �
   --directory /完整快照目录
 ```
 
-Gradle 在 Maven `modules-2` 与固定 Wrapper 分发间选择组件；OHOS 在 OHPM `oh_modules` 与 Hvigor 缓存间选择，分别建立兼容键和快照。共享 Maven / artifacts 缓存可能包含其它工程或平台的包，来源与目标在终端明确显示；不提取认证、全局配置、daemon、Flutter SDK 源码或 Dart runtime。SPM 新拉取使用项目 `.jobs/dependencies/spm`，旧 Xcode SourcePackages 可明确选择为提取源，导入固定恢复到该项目本地缓存。Web 为 `node_modules`，原生扩展要求同宿主 / Node 环境；native 为当前目标构建缓存，可能包含业务二进制，不是源码包。逐类范围见[快照矩阵](../../README.md#dependency-archives)。
+Gradle 在 Maven `modules-2` 与固定 Wrapper 分发间选择组件；OHOS 在 OHPM `oh_modules` 与 Hvigor 缓存间选择，分别建立兼容键和快照。共享缓存可能含其它工程或平台的包，终端明确显示来源与目标；不提取认证、全局配置、daemon、Flutter SDK 源码或 Dart runtime。SPM 快照仍使用项目 `.jobs/dependencies/spm`，拉取时定位当前 Flutter / Xcode 的实际 SourcePackages，并通过相对链接让配置生成和实际构建消费同一缓存；已有构建缓存先查冲突再融合，原目录留备份。平台资源 v2 只收 `bin/cache` 白名单中的 artifacts、Web SDK、缓存引擎包和配对 stamp，载荷完成后最后写标记；旧 v1 只还原 artifacts，不补造 Web SDK 或标记。Web 为 `node_modules`，原生扩展要求同宿主 / Node 环境；native 为当前目标构建缓存，可能包含业务二进制。逐类范围见[快照矩阵](../../README.md#dependency-archives)。
 
 内核保留 `Manifest.lock`、Cargo / Yarn 等功能锁，只排除明确的瞬时锁与日志。Pods 的插件头链接可物化到已核验的解析 Pub 包根：包配置、普通包清单名称、最终链接边界与导出前后状态均需一致；不会放开任意外部路径。其它层仍只物化来源根内的有效链接，清单不保留原机器绝对路径。
 
@@ -148,7 +168,7 @@ Web 目标先验证 Chrome / Edge 可执行性，缺少浏览器时可选择通�
 
 | 组合模块 | 复用来源与边界 |
 | --- | --- |
-| [SetupHomebrew.zsh](./SetupHomebrew.zsh) | 复用用户指定 [CocoaPods 安装脚本](../../../../../JobsCommand@iOS/Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command) 的健康检测、官方安装及复检核心；精确 `YES` 为系统目录，其它输入为用户目录；CLT 由本人完成，返回待处理状态；仅当前进程激活 PATH，不写 profile。fzf 已健康但后续 jEnv/JDK、系统 Flutter、CocoaPods 缺 Brew 时同样进入该引导。 |
+| [SetupHomebrew.zsh](./SetupHomebrew.zsh) | 复用用户指定 [CocoaPods 安装脚本](../../../../../JobsCommand@iOS/Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command) 的健康检测、官方安装及复检核心；精确 `YES` 为系统目录，其它输入为用户目录；CLT 由 Apple 官方界面处理，每 10 秒自动复检后继续；仅当前进程激活 PATH，不写 profile。fzf 已健康但后续 jEnv/JDK、系统 Flutter、CocoaPods 缺 Brew 时同样进入该引导。 |
 | Apple 平台 / CocoaPods | 同一原脚本的 Homebrew 优先、Homebrew Ruby / 用户级 Gem 兜底及安装后复检；按工程 Ruby 与锁定 Bundler 版本检查兼容，保留项目 Pod 锁定策略。 |
 | Android 工具链与 AVD | [AndroidSdkSupport.zsh](./AndroidSdkSupport.zsh) 的 SDK / Java / 命令行工具 / emulator 和完整设备、映像选择内核；平台组件由工程及同套 Flutter 配置确定。 |
 | iOS 模拟器 | [现用完整模拟器脚本](../../../JobsIOSSimulatorCreator/Scripts/CreateIOSSimulator.zsh) 的随包副本，保留型号 / Runtime / 创建 / 启动交互和取消边界。 |
@@ -163,7 +183,9 @@ Web 目标先验证 Chrome / Edge 可执行性，缺少浏览器时可选择通�
 
 GUI 通过 `JOBS_FLUTTER_SETUP_EVENTS` 指定私有 JSONL 文件；[ProjectEnvironment.zsh](./ProjectEnvironment.zsh) 写 `id/parent/title/state/message/version` 事件，Flutter、Java、Gradle、Pub、平台工具链、设备、启动配置及实际运行均有父子节点。成功节点的可见版本来自所选工具真实输出或已核对元数据，包括 Flutter / Dart、FVM、Java / jEnv、实际 Wrapper、静态 AGP、Xcode Build、实际执行的 CocoaPods / Bundler、浏览器及同套 Flutter 平台资源；未检测到的版本保持空值，不猜数字。后续父阶段完成事件保留已检测版本。没有该变量时仍可直接在终端运行。fzf、输入、许可证及原始日志由同一终端会话处理。
 
-日志与配置快照保存在系统临时目录 `JobsFlutterEnvironment.*`，路径会在确认后显示。外部工具输出按原样流式送到终端 / GUI；启动门禁从独立流式旁路保存的 `app.start/app.started` 最小状态读取，不因大型构建日志超过整文件读取上限而丢失启动结果，完整原流不截断。原始日志保存在私有运行目录，目录权限 700、文件按 600 创建。`environment.log` 是独立脱敏审计分支，过滤 ANSI、URL 凭据与查询参数，不回写或破坏原日志。分享原始日志前需本人检查凭据与业务信息。Flutter 版本检查和 Wrapper 版本检查各 60 秒，doctor / devices 各 120 秒；超时先终止本次子树，2 秒后强制结束仍未退出的本次子进程，不终止其它 Java / Gradle 会话。
+[SetupProjectWindow.swift](./SetupProjectWindow.swift) 将窗口标题、项目 / 工具版本与水平任务线分开展示，阶段名称和状态分行排布。任务线默认按内容取紧凑高度，随子节点适度增长，超出可用高度时滚动；保留真实分隔条，用户拖动后沿用手动高度并同步 PTY 行列数。仅进行中节点循环显示 0～5 个圆点，预留宽度保持布局稳定；节点转为其它状态或任务结束时清除圆点并停止动画。实际版本、分类子节点与等宽 ASCII `>>>>>` 连接符保留。
+
+日志与配置快照保存在系统临时目录 `JobsFlutterEnvironment.*`，路径会在确认后显示。外部工具输出按原样流式送到终端 / GUI；启动门禁从独立流式旁路保存的 `app.start/app.started` 最小状态读取，不因大型构建日志超过整文件读取上限而丢失启动结果，完整原流不截断。原始日志保存在私有运行目录，目录权限 700、文件按 600 创建。`environment.log` 是独立脱敏审计分支，过滤 ANSI、URL 凭据与查询参数，不回写或破坏原日志。分享原始日志前需本人检查凭据与业务信息。Flutter 版本首启单次 1800 秒且自动重试，Wrapper 版本检查 60 秒，doctor / devices 各 120 秒；超时先终止本次子树，2 秒后强制结束仍未退出的本次子进程，不终止其它 Java / Gradle 会话。
 
 `0` 表示所选流程已验证完成；`3` 表示保留环境准备但仍需本人处理或未做实际运行；`124` 为有界任务超时，`130` 为取消，其它失败尽量保留工具真实退出码。`--sdk-only` 的 `0` 只说明该子流程检查通过，不代表实际运行。
 
@@ -174,3 +196,9 @@ GUI 通过 `JOBS_FLUTTER_SETUP_EVENTS` 指定私有 JSONL 文件；[ProjectEnvir
 `ruby ../../Tests/ProjectDependencyTests.rb` 用假原生工具核对 Maven 解析任务、Pods install / Bundler、SPM 容器与锁文件、OHPM / Hvigor 顺序、npm / pnpm / Yarn 锁定安装、平台过滤与原生 build 参数；覆盖失败 / 取消停止和单项 Web 不准备无关 SDK。`--check` 只读与共用内核的执行顺序单独验证，不以假命令成功声称真实平台制品已经下载。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+
+SDK 获取公共逻辑位于[同名包装函数库](./【MacOS】SDK获取重试.zsh/README.md)，业务脚本内嵌同一实现以支持仅复制单脚本的终端启动器；[隔离回归](../../Tests/SdkAcquisitionRetryTests.rb/README.md)验证持续重试与强制取消。
+
+[工程依赖工具链](./【MacOS】工程依赖工具链.zsh/README.md)负责必需 Node SDK、锁定包管理器、鸿蒙已有工具定位与 Apple SPM 构建缓存桥接。SDK 分发摘要校验失败时保留本次私有坏片段并重取；安装器返回成功但缺少 Flutter 入口时继续获取。Apple 官方 CLT 下载由系统界面管理，脚本自动复检，不代签许可。
+
+SDK自举前若精确Dart归档已有写入者，会显示PID与缓存路径并等待其释放；只读句柄不阻塞。Ctrl+C结束当前等待，不杀其它会话、不清理续传缓存。

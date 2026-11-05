@@ -8,7 +8,7 @@ require 'open3'
 require 'timeout'
 
 class FlutterRunnerLogTests < Minitest::Test
-  HELPER = File.expand_path('../Scripts/FlutterRunner.jxa', __dir__)
+  HELPER = ENV.fetch('JOBS_TEST_RUNNER_HELPER') { File.expand_path('../Scripts/FlutterRunner.jxa', __dir__) }
 
   def setup
     @tmp = Dir.mktmpdir('jobs-flutter-log-')
@@ -181,5 +181,38 @@ class FlutterRunnerLogTests < Minitest::Test
         reader.join(2)
       end
     end
+  end
+
+  def test_sdk_download_carriage_returns_are_visible_before_worker_exit
+    File.write(@log, '')
+    Open3.popen3('/usr/bin/osascript', '-l', 'JavaScript', HELPER, 'watch-log', @log, @exit) do |input, output, errors, process|
+      input.close
+      begin
+        File.open(@log, 'ab') { |file| file.write("Downloading SDK 25%\r") }
+        progress = Timeout.timeout(10) { output.gets }
+        assert_includes progress, 'Downloading SDK 25%'
+        assert process.alive?, 'SDK下载进度不能等到worker退出才显示'
+        File.open(@log, 'ab') { |file| file.write("Downloading SDK 100%\r\n") }
+        File.write(@exit, '0')
+        remaining = Timeout.timeout(10) { output.read }
+        assert_includes remaining, 'Downloading SDK 100%'
+        assert_includes remaining, '[结束] Flutter 正常退出'
+        assert process.value.success?, errors.read
+        assert_equal "Downloading SDK 25%\rDownloading SDK 100%\r\n", File.read(@log)
+      ensure
+        Process.kill('TERM', process.pid) if process.alive?
+      end
+    end
+  end
+
+  def test_replay_and_machine_logs_keep_all_sdk_progress_frames
+    event = [{ event: 'app.log', params: { log: "engine 10%\rengine 100%" } }].to_json
+    out = format("Dart 10%\rDart 100%\r\n#{event}\n")
+    %w[Dart engine].each do |name|
+      assert_includes out, "#{name} 10%"
+      assert_includes out, "#{name} 100%"
+    end
+    assert_equal 1, out.scan('Dart 100%').length
+    assert_equal 1, out.scan('engine 100%').length
   end
 end

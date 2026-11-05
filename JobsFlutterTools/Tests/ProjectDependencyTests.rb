@@ -13,7 +13,8 @@ class ProjectDependencyTests < Minitest::Test
   TOOLS = File.expand_path(ENV.fetch('JOBS_TEST_TOOLS_DIR', '../Scripts/Tools'), __dir__)
   ENTRY = File.join(TOOLS, 'FetchProjectDependencies.zsh')
   SOURCES = %w[ProjectEnvironment.zsh ManageProjectJava.zsh DownloadProjectGradle.zsh
-               SetupFlutterProject.zsh SetupFlutterRun.zsh ProjectDependencies.zsh].freeze
+               SetupFlutterProject.zsh SetupFlutterRun.zsh ProjectDependencies.zsh
+               【MacOS】工程依赖工具链.zsh/【MacOS】工程依赖工具链.zsh].freeze
 
   def setup
     @root = File.realpath(Dir.mktmpdir('jobs-project-dependencies-'))
@@ -36,6 +37,7 @@ class ProjectDependencyTests < Minitest::Test
       'PD_TEST_TRACE' => @trace, 'PD_TEST_EVENTS' => @events
     }
     write_command(File.join(@sdk, 'bin/flutter'), 'flutter', <<~'ZSH')
+      [[ "$1" != config ]] || { print '{}'; exit 0; }
       if [[ "${PD_TEST_JAVA_BINDING:-0}" == 1 ]]; then
         /usr/bin/printf '%s\0' "$JAVA_HOME" "$GRADLE_OPTS" > "$PD_TEST_ROOT/native-java"
       fi
@@ -46,6 +48,9 @@ class ProjectDependencyTests < Minitest::Test
       [[ "${PD_TEST_FLUTTER_FAIL:-0}" == 0 ]] || exit "$PD_TEST_FLUTTER_FAIL"
       print 'Flutter fixture completed'
     ZSH
+    cache_source = File.join(@sdk, 'packages/flutter_tools/lib/src/ios/xcodeproj.dart')
+    FileUtils.mkdir_p(File.dirname(cache_source))
+    File.write(cache_source, 'clonedSourcePackagesDirPath kSwiftPackageCacheDirectoryName')
     write_command(File.join(@bin, 'gradle'), 'gradle', <<~'ZSH')
       init=""
       while (( $# )); do
@@ -74,6 +79,7 @@ class ProjectDependencyTests < Minitest::Test
     %w[brew gem curl flutter fvm java node].each do |name|
       write_command(File.join(@bin, name), "forbidden-#{name}", 'exit 99')
     end
+    write_command(File.join(@bin, 'node'), 'node', 'print v22.11.0')
   end
 
   def teardown
@@ -116,6 +122,11 @@ class ProjectDependencyTests < Minitest::Test
       DG_GRADLE="$PD_TEST_BIN/gradle" DG_JAVA_HOME="$PD_TEST_JDK"
       typeset -a SR_ARGS=(--debug) SR_POD_COMMAND=("$PD_TEST_BIN/pod")
       pe_event() { /usr/bin/printf '%s|%s\n' "$1" "$4" >> "$PD_TEST_EVENTS"; }
+      pd_load_toolchain_support() { return 0; }
+      pt_prepare_web_toolchain() {
+        case "$2" in package-lock.json|npm-shrinkwrap.json) PT_PACKAGE_MANAGER="$PD_TEST_BIN/npm" ;; pnpm-lock.yaml) PT_PACKAGE_MANAGER="$PD_TEST_BIN/pnpm" ;; yarn.lock) PT_PACKAGE_MANAGER="$PD_TEST_BIN/yarn" ;; esac
+      }
+      pt_prepare_ohos_toolchain() { PT_OHPM="$PD_TEST_BIN/ohpm"; PT_HVIGOR="$SF_PROJECT/ohos/hvigorw"; }
       cd -- "$SF_PROJECT" || exit 1
     ZSH
     # 只把系统固定的 Xcode 路径映射到假命令，其余步骤运行真实有界诊断与工作目录逻辑。
@@ -241,9 +252,11 @@ class ProjectDependencyTests < Minitest::Test
     FileUtils.mkdir_p(File.join(@project, 'ios/Pods/Pods.xcodeproj'))
     assert_success shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
     row = calls('xcodebuild').fetch(0)
-    assert_equal ['-resolvePackageDependencies', '-workspace', workspace, '-clonedSourcePackagesDirPath', File.join(@project, '.jobs/dependencies/spm'), '-onlyUsePackageVersionsFromResolvedFile'], row[:args]
+    actual_cache = File.join(@project, 'build/ios/SourcePackages')
+    assert_equal ['-resolvePackageDependencies', '-workspace', workspace, '-clonedSourcePackagesDirPath', actual_cache, '-onlyUsePackageVersionsFromResolvedFile'], row[:args]
+    assert_equal File.realpath(File.join(@project, '.jobs/dependencies/spm')), File.realpath(actual_cache)
     assert_equal '{"pins":[]}', File.read(lock)
-    configuration = calls('flutter').reject { |call| call[:args].include?('--help') }.fetch(0)
+    configuration = calls('flutter').find { |call| call[:args].include?('--config-only') }
     assert_includes configuration[:args], '--config-only'
     assert_includes configuration[:args], '--no-codesign'
   end
@@ -274,8 +287,89 @@ class ProjectDependencyTests < Minitest::Test
   def test_spm_older_flutter_uses_existing_project_without_config_only
     project = apple_project('macos')
     assert_success shell('SR_TARGET=macos; pd_spm_dependencies', env: { 'PD_TEST_CONFIG_ONLY' => '0' }, xcode: true)
-    assert_equal 1, calls('flutter').length
-    assert_equal ['-resolvePackageDependencies', '-project', project, '-clonedSourcePackagesDirPath', File.join(@project, '.jobs/dependencies/spm')], calls('xcodebuild').fetch(0)[:args]
+    assert_equal 2, calls('flutter').length
+    assert_equal ['-resolvePackageDependencies', '-project', project, '-clonedSourcePackagesDirPath', File.join(@project, 'build/macos/SourcePackages')], calls('xcodebuild').fetch(0)[:args]
+  end
+
+  def test_apple_configuration_selects_nondefault_entry_before_any_config_build
+    apple_project
+    File.delete(File.join(@project, 'lib/main.dart'))
+    File.write(File.join(@project, 'lib/main_dev.dart'), 'void main() {}')
+    assert_success shell(<<~'ZSH', xcode: true)
+      SR_TARGET=ios; SR_ARGS=()
+      sr_choose_configuration() { SR_ARGS=(--release --flavor dev --target lib/main_dev.dart --dart-define MODE=dev); }
+      pd_spm_dependencies
+    ZSH
+    configuration = calls('flutter').find { |call| call[:args].include?('--config-only') }
+    assert_equal %w[build ios --config-only --release --flavor dev --target lib/main_dev.dart --dart-define MODE=dev --no-codesign], configuration[:args]
+    refute_includes configuration[:args], '--debug'
+  end
+
+  def test_spm_imported_cache_is_available_at_the_actual_flutter_cache_path
+    apple_project
+    canonical = File.join(@project, '.jobs/dependencies/spm')
+    FileUtils.mkdir_p(File.join(canonical, 'checkouts/private'))
+    File.write(File.join(canonical, 'checkouts/private/Package.swift'), 'private source')
+    assert_success shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
+    actual = File.join(@project, 'build/ios/SourcePackages')
+    assert_equal 'private source', File.read(File.join(actual, 'checkouts/private/Package.swift'))
+    File.write(File.join(actual, 'workspace-state.json'), 'resolver updated')
+    assert_equal 'resolver updated', File.read(File.join(canonical, 'workspace-state.json'))
+  end
+
+  def test_spm_custom_build_directory_comes_from_selected_flutter_config
+    apple_project
+    write_command(File.join(@sdk, 'bin/flutter'), 'flutter', <<~'ZSH')
+      [[ "$1" != config ]] || { print '{"build-dir":"custom outputs"}'; exit 0; }
+      [[ "$*" != *--help* ]] || { print -- '--config-only'; exit 0; }
+    ZSH
+    assert_success shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
+    assert File.symlink?(File.join(@project, 'custom outputs/ios/SourcePackages'))
+    refute File.exist?(File.join(@project, 'build/ios/SourcePackages'))
+  end
+
+  def test_existing_spm_cache_is_merged_and_preserved_before_linking
+    apple_project
+    canonical = File.join(@project, '.jobs/dependencies/spm')
+    actual = File.join(@project, 'build/ios/SourcePackages')
+    FileUtils.mkdir_p([canonical, actual])
+    File.write(File.join(canonical, 'imported'), 'cache import')
+    File.write(File.join(actual, 'existing'), 'normal existing cache')
+    assert_success shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
+    assert File.symlink?(actual)
+    assert_equal 'normal existing cache', File.read(File.join(canonical, 'existing'))
+    assert_equal 1, Dir.glob("#{actual}.before-jobs-*").length
+  end
+
+  def test_existing_spm_cache_conflict_keeps_both_originals_and_never_builds
+    apple_project
+    canonical = File.join(@project, '.jobs/dependencies/spm')
+    actual = File.join(@project, 'build/ios/SourcePackages')
+    FileUtils.mkdir_p([canonical, actual])
+    File.write(File.join(canonical, 'workspace-state.json'), 'imported state')
+    File.write(File.join(actual, 'workspace-state.json'), 'existing state')
+    _, _, status = shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
+    assert_equal 3, status.exitstatus
+    assert_equal 'imported state', File.read(File.join(canonical, 'workspace-state.json'))
+    assert_equal 'existing state', File.read(File.join(actual, 'workspace-state.json'))
+    refute File.symlink?(actual)
+    assert_empty calls('xcodebuild')
+    refute calls('flutter').any? { |call| call[:args].include?('--config-only') }
+  end
+
+  def test_legacy_flutter_uses_xcode_reported_derived_data_cache
+    project = apple_project
+    File.write(File.join(@sdk, 'packages/flutter_tools/lib/src/ios/xcodeproj.dart'), '// older Flutter')
+    derived = File.join(@project, 'Legacy DerivedData')
+    write_command(File.join(@bin, 'xcodebuild'), 'xcodebuild', <<~ZSH)
+      if [[ "$1" == -showBuildSettings ]]; then
+        print -r -- #{"    OBJROOT = #{derived}/Build/Intermediates.noindex".shellescape}
+      fi
+    ZSH
+    assert_success shell('SR_TARGET=ios; pd_spm_dependencies', xcode: true)
+    assert File.symlink?(File.join(derived, 'SourcePackages'))
+    row = calls('xcodebuild').find { |call| call[:args].include?('-resolvePackageDependencies') }
+    assert_includes row[:args], File.join(derived, 'SourcePackages')
   end
 
   def test_ohpm_and_fixed_hvigor_run_in_ohos_root_with_lock_unchanged
@@ -448,7 +542,8 @@ class ProjectDependencyTests < Minitest::Test
     web_project
     output, status = terminal_entry('web', input: "\n", extra: ['--platform', 'web'])
     assert status.success?, output
-    assert_equal ['ci'], calls('npm').fetch(0)[:args]
+    assert calls('npm').any? { |call| call[:args] == ['--version'] }
+    assert calls('npm').any? { |call| call[:args] == ['ci'] }
     assert_empty records.select { |row| row[:tool].start_with?('forbidden-') }
     assert_empty calls('flutter')
     refute File.exist?(File.join(@project, '.jobs/flutter-environment.json'))

@@ -2,7 +2,7 @@
 # 脚本自述：配对导出 / 导入 Gradle、Pods、SPM、OHPM、原生构建、Flutter artifacts 与 Web 包快照。
 # 归档保留宿主、工具版本、工程锁指纹与文件校验；导入先预检再精确 YES，不覆盖冲突或执行归档脚本。
 
-typeset -g AR_PROJECT="" AR_KIND="" AR_MODE="" AR_PLATFORM="" AR_CHECK=0 AR_ROOT="" AR_DIRECTORY=""
+typeset -g AR_PROJECT="" AR_KIND="" AR_MODE="" AR_PLATFORM="" AR_CHECK=0 AR_PRIVATE=0 AR_ROOT="" AR_DIRECTORY=""
 typeset -g AR_DART="" AR_VERSION="" AR_COMPONENT="" AR_NODE_ROOT=""
 # 第一屏说明缓存边界；参数只作为数据解释，确认前不创建文件。
 ar_intro_and_wait() {
@@ -10,7 +10,7 @@ ar_intro_and_wait() {
     print -r -- '━━━━━━━━━━ Flutter 分层依赖快照提取 / 导入 ━━━━━━━━━━'
     print -r -- '1、每次只处理所选类别。Pub 源码继续使用原提取 / 导入入口；本入口处理平台包与工具缓存。'
     print -r -- '2、快照记录宿主系统、工具版本、工程配置 / 锁文件指纹和逐文件校验，导入不自动联网或运行归档中的脚本。'
-    print -r -- '3、Gradle modules-2、Flutter artifacts 是共享缓存，可能包含其它工程 / 平台的包；不提取全局配置、认证、daemon、SDK 源码或 Dart runtime。'
+    print -r -- '3、Gradle modules-2、Flutter 平台资源是共享缓存，可能包含其它工程 / 平台的包；后者仅提取 artifacts、Web SDK、缓存引擎包及与载荷配对的 stamp，不含 SDK 源码、Dart、tools 或认证。'
     print -r -- '4、native 是本机目标构建缓存，可能含业务产物；Web node_modules 可能含本机原生扩展。均不能当作任意系统可复用的源码包。'
     print -r -- '5、导入完整预检后输入精确 YES；同名不同内容拒绝覆盖。只恢复文件不保证完整离线构建，恢复后仍需对应拉取 / 构建入口验证。'
     print -r -- '6、日志在系统临时目录 JobsFlutterEnvironment.*；Ctrl+C / Esc 取消。--check 只显示静态计划，不调用 SDK 或写日志。'
@@ -32,6 +32,11 @@ ar_intro_and_wait() {
     [[ -t 0 && -t 1 ]] || return 2
     IFS= read -r 'answer?👉 已了解范围，回车继续；其它输入取消：' || return 130
     [[ -z "$answer" ]] || return 130
+    if [[ "$AR_MODE" == export ]]; then
+        print -r -- '🔐 私库优先：回车转统一私库识别提取；所选类别的完整缓存含公共包、可能含其它工程缓存。'
+        IFS= read -r 'answer?直接回车 = 只提取私库；输入任意字符再回车 = 全提取当前类别缓存：' || return 130
+        if [[ -z "$answer" ]]; then AR_PRIVATE=1; else print -r -- '➤ 已明确选择当前类别全提取。'; fi
+    fi
 }
 # 加载同包定义并验证项目；静态检查不读取或执行快照业务。
 ar_initialize() {
@@ -139,7 +144,7 @@ ar_resolve_root() {
             else AR_ROOT="$SF_PROJECT/build/$AR_PLATFORM"; fi
             ;;
         precache)
-            AR_VERSION="Flutter $SF_FLUTTER_VERSION artifacts arch $(/usr/bin/uname -m)" AR_ROOT="$SF_FLUTTER_ROOT/bin/cache/artifacts"
+            AR_VERSION="Flutter $SF_FLUTTER_VERSION artifacts arch $(/usr/bin/uname -m)" AR_ROOT="$SF_FLUTTER_ROOT/bin/cache"
             ;;
         web)
             AR_NODE_ROOT=""
@@ -173,6 +178,7 @@ ar_resolve_root() {
 ar_transfer() {
     local answer="" engine="$PE_TOOLS_DIR/NativeDependencyArchive.dart"
     local -a args=("$engine" "$AR_MODE" --project "$SF_PROJECT" --kind "$AR_KIND" --platform "$AR_PLATFORM" --tool-version "$AR_VERSION" --directory "$AR_DIRECTORY")
+    [[ "$AR_KIND" != precache ]] || args+=(--flutter-cache)
     [[ -f "$engine" ]] || { pe_log '✖ 缺少同包快照内核。'; return 1; }
     if [[ "$AR_MODE" == export ]]; then
         [[ -d "$AR_ROOT" && ! -L "$AR_ROOT" ]] || { pe_log "✖ 没有本地可提取内容：$AR_ROOT；先运行相应拉取/构建入口。"; return 3; }
@@ -188,12 +194,33 @@ ar_transfer() {
 }
 # 一项只处理一个类型和平台；完成后由原包管理器 / 构建步骤验证可使用性。
 ar_run() {
+    if (( AR_PRIVATE )); then
+        local tools="${${(%):-%x}:A:h}"
+        local -a args=(--project "$AR_PROJECT" --mode export --private-only --confirmed)
+        [[ -z "$AR_DIRECTORY" ]] || args+=(--directory "$AR_DIRECTORY")
+        /bin/zsh "$tools/【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh" "${args[@]}"
+        return $?
+    fi
     ar_initialize || return $?
     (( ! AR_CHECK )) || return 0
     ar_choose_platform && ar_resolve_dart && ar_resolve_root || return $?
     if [[ "$AR_MODE" == export ]]; then ar_read_directory '提取输出父目录（输入或拖入，空输入取消）' "$AR_DIRECTORY" || return $?;
     else ar_read_directory '完整快照目录（输入或拖入，空输入取消）' "$AR_DIRECTORY" || return $?; fi
-    ar_transfer
+    if [[ "$AR_MODE" == import ]]; then ar_transfer; return $?; fi
+    local receipt="" result=0 line="" output=""
+    receipt="$(/usr/bin/mktemp "${TMPDIR:-/tmp/}JobsNativeArchiveReceipt.XXXXXX")" || return 1
+    setopt LOCAL_OPTIONS PIPE_FAIL
+    ar_transfer | /usr/bin/tee "$receipt"
+    result=$?
+    if (( result != 0 )); then /bin/rm -f -- "$receipt"; return "$result"; fi
+    while IFS= read -r line; do
+        [[ "$line" != ARCHIVE_DIRECTORY=* ]] || output="${line#ARCHIVE_DIRECTORY=}"
+    done < "$receipt"
+    /bin/rm -f -- "$receipt"
+    [[ -n "$output" && -d "$output" && ! -L "$output" && "${output:A:h}" == "${AR_DIRECTORY:A}" ]] || { pe_log '✖ 没有取得本次完整快照目录，未压缩或删除。'; return 1; }
+    source "$PE_TOOLS_DIR/【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh" || return $?
+    FM_OUTPUT="$output" FM_DIRECTORY="$AR_DIRECTORY" FM_LOG="$PE_LOG_FILE" FM_METADATA="manifest.json"
+    fm_zip_offer
 }
 # 自述确认失败即退出，不能将取消误当成导入完成。
 ar_show_intro_and_confirm() {

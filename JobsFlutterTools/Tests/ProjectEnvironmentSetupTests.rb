@@ -36,7 +36,18 @@ class ProjectEnvironmentSetupTests < Minitest::Test
     write_script(File.join(@sdk, 'bin/flutter'), <<~'ZSH')
       print -r -- "flutter|$*|$JAVA_HOME" >> "$ET_TRACE"
       case "$1" in
-        --version) print '{"frameworkVersion":"3.47.8"}' ;;
+        --version)
+          if [[ "${ET_BOOTSTRAP_MESSAGES:-0}" == 1 ]]; then
+            if [[ ! -f "$ET_BOOTSTRAP_STATE" ]]; then
+              print -u2 'Downloading Dart SDK and Flutter tools...'
+              : > "$ET_BOOTSTRAP_STATE"
+            fi
+            if [[ "${2:-}" != --machine ]]; then
+              print 'Flutter 3.47.8 · Dart 3.13.7'
+              exit 0
+            fi
+          fi
+          print '{"frameworkVersion":"3.47.8"}' ;;
         pub) [[ "${ET_PUB_FAIL:-0}" == 0 ]] || exit 42; print '{}' > .flutter-plugins-dependencies ;;
         build) [[ "${ET_BUILD_FAIL:-0}" == 0 ]] || exit 46 ;;
         precache) exit 0 ;;
@@ -65,7 +76,7 @@ class ProjectEnvironmentSetupTests < Minitest::Test
         if [[ "$1" == --output ]]; then target="$2"; shift 2; else shift; fi
       done
       print -r -- "curl|$url" >> "$ET_TRACE"
-      if [[ "${ET_PRIMARY_FAIL:-0}" == 1 && "$url" == *services.gradle.org* ]]; then exit 28; fi
+      if [[ "${ET_PRIMARY_FAIL:-0}" == 1 && "$url" == *services.gradle.org* ]]; then print -u2 'curl: (22) The requested URL returned error: 404'; exit 22; fi
       if [[ "$url" == *.sha256 ]]; then print -rn -- "$ET_SHA" > "$target";
       elif [[ "${ET_BAD_ZIP:-0}" == 1 ]]; then print bad > "$target";
       else /bin/cp "$ET_ARCHIVE" "$target"; fi
@@ -184,9 +195,10 @@ class ProjectEnvironmentSetupTests < Minitest::Test
   end
 
   def test_bad_checksum_never_executes_archive
-    out, err, status = shell("DG_PROJECT=#{@project.shellescape}; dg_read_wrapper && pe_initialize_runtime && dg_download_distribution", env: { 'ET_BAD_ZIP' => '1' })
+    # 本例只验证摘要拒绝门禁；持续获取 / 中断由 SDK 重试专测覆盖。
+    out, err, status = shell("jobs_sdk_retry() { shift 2; \"$@\"; }; DG_PROJECT=#{@project.shellescape}; dg_read_wrapper && pe_initialize_runtime && dg_download_distribution", env: { 'ET_BAD_ZIP' => '1' })
     refute status.success?, "#{out}#{err}"
-    assert_includes out, 'SHA256不匹配'
+    assert_match(/SHA256不匹配|摘要不符/, out)
     refute_includes trace, 'gradle|'
   end
 
@@ -299,7 +311,7 @@ class ProjectEnvironmentSetupTests < Minitest::Test
     File.write(File.join(@project, 'lib/main.dart'), 'void main() {}')
     File.write(@wrapper, 'broken wrapper data')
     File.write(File.join(@project, 'android/gradle/gradle-daemon-jvm.properties'), 'toolchainVersion=21')
-    output, status = interactive(sdk_only: false, env: { 'ET_CHOICES' => 'web,system,system,official,path,current,0,prepare' })
+    output, status = interactive(sdk_only: false, env: { 'ET_CHOICES' => 'web,system,official,path,0,prepare' })
     assert_equal 3, status.exitstatus, "#{output}\n#{trace}"
     assert_includes trace, 'flutter|precache --web'
     assert_includes trace, 'flutter|pub get'
@@ -309,15 +321,30 @@ class ProjectEnvironmentSetupTests < Minitest::Test
     refute_includes trace, 'curl|'
     refute_includes trace, 'gradle|'
     refute_includes output, '实际启动验证通过'
+    config = JSON.parse(File.read(File.join(@project, '.jobs/flutter-environment.json')))
+    assert_equal 'none', config['JavaMode']
+    assert_equal '', config['JavaHome']
+    refute_includes trace, '|current|'
   end
 
   def test_missing_android_in_sdk_only_is_not_fatal
     FileUtils.remove_entry(File.join(@project, 'android'))
-    output, status = interactive
+    output, status = interactive(env: { 'ET_CHOICES' => 'system,official,path' })
     assert status.success?, output
     assert_includes trace, 'flutter|pub get'
     refute_includes trace, 'curl|'
     refute File.exist?(File.join(@project, 'android'))
+  end
+
+  def test_no_java_environment_record_can_be_reused_without_installing_java
+    FileUtils.mkdir_p(File.join(@project, '.jobs'))
+    File.write(File.join(@project, '.jobs/flutter-environment.json'), JSON.generate(
+      Platform: 'MacOS', FlutterPath: File.join(@sdk, 'bin/flutter'), JavaMode: 'none', JavaHome: ''
+    ))
+    out, err, status = shell("PE_PROJECT=#{@project.shellescape}; pe_read_environment && print -- \"$PE_CONFIG_FLUTTER|$PE_CONFIG_JAVA\"")
+    assert status.success?, out + err
+    assert_includes out, File.join(@sdk, 'bin/flutter')
+    assert_empty trace
   end
 
   def test_fvm_manager_cancel_stops_even_when_old_sdk_is_healthy
@@ -369,6 +396,28 @@ class ProjectEnvironmentSetupTests < Minitest::Test
     assert_equal 'Gradle 8.14', versions['gradle.wrapper']
     assert_equal 'Gradle 8.14 · AGP 8.7.3', versions['gradle.plugins']
     refute_includes versions['gradle.plugins'], '99.1.2'
+  end
+
+  def test_sdk_bootstrap_progress_stays_separate_from_machine_version_and_events
+    events = File.join(@run, 'bootstrap-events.jsonl')
+    output, err, status = shell(
+      "PE_RUN_DIR=#{@run.shellescape}; PE_LOG_FILE=#{File.join(@run, 'bootstrap-audit.log').shellescape}; SF_PROJECT=#{@project.shellescape}; sf_probe_flutter #{File.join(@sdk, 'bin/flutter').shellescape}",
+      env: { 'ET_BOOTSTRAP_MESSAGES' => '1', 'ET_BOOTSTRAP_STATE' => File.join(@run, 'bootstrap-completed'),
+             'JOBS_FLUTTER_SETUP_EVENTS' => events }
+    )
+    assert status.success?, output + err
+    assert_includes output, 'Downloading Dart SDK and Flutter tools...'
+    assert_includes File.read(File.join(@run, 'flutter-bootstrap.log')), 'Downloading Dart SDK and Flutter tools...'
+    machine = File.read(File.join(@run, 'flutter-version.log'))
+    assert_equal({ 'frameworkVersion' => '3.47.8' }, JSON.parse(machine))
+    refute_includes machine, 'Downloading'
+    version_calls = trace.lines.select { |line| line.start_with?('flutter|--version') }
+    assert_equal 2, version_calls.length
+    assert version_calls[0].start_with?('flutter|--version|'), '先用非机器调用完成首次组件下载'
+    assert version_calls[1].start_with?('flutter|--version --machine|'), '下载完成后单独读取净JSON'
+    sdk_event = File.readlines(events).map { |line| JSON.parse(line) }.find { |event| event['id'] == 'flutter.sdk' }
+    assert_equal 'succeeded', sdk_event.fetch('state')
+    assert_equal 'Flutter 3.47.8 · Dart 3.13.7', sdk_event.fetch('version')
   end
 
   def test_fvm_visible_version_comes_from_actual_manager_output

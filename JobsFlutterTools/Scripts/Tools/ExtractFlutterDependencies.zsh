@@ -18,6 +18,7 @@ LOG_FILE=""
 PROJECT_PATH=""
 DESTINATION_PATH=""
 DART_EXECUTABLE=""
+EXTRACTION_OUTPUT=""
 # 自述根据终端能力降级为纯文本，不给日志加入 ANSI。
 intro_line() {
   local role="$1" message="$2" code="0;34"
@@ -127,6 +128,23 @@ check_environment() {
   log "✔ 项目 FVM Dart：$DART_EXECUTABLE"
 }
 
+# 私库是默认范围，非空（含空格）才明确全提取；专用私库入口不重复选择。
+choose_extraction_scope() {
+  local answer=""
+  if (( PRIVATE_ONLY )); then
+    log '🔐 私库模式：仅提取 Git、path 和自建 Pub 源候选。'
+    return 0
+  fi
+  log '🔐 默认只提取私库候选：Git、path、自建 Pub 源；这不等于已验证仓库访问权限。'
+  IFS= read -r 'answer?直接回车 = 只提取私库；输入任意字符再回车 = 全提取：' || exit 0
+  if [[ -z "$answer" ]]; then
+    PRIVATE_ONLY=1
+    SCOPE_ARGS=(--private-only)
+  else
+    SCOPE_ARGS=()
+    log '➤ 已明确选择全提取：包含公共 Pub 包。'
+  fi
+}
 # 参数逐项传给 Dart；管道保留引擎失败码，不把部分复制误报为成功。
 run_extraction() {
   local extraction_result=0
@@ -140,13 +158,81 @@ run_extraction() {
     log "✖ 未完成，退出码 $extraction_result；日志：$LOG_FILE"
     exit "$extraction_result"
   fi
+  local line=""
+  while IFS= read -r line; do
+    [[ "$line" != '✔ 提取完成：'* ]] || EXTRACTION_OUTPUT="${line#✔ 提取完成：}"
+  done < "$LOG_FILE"
+  [[ -n "$EXTRACTION_OUTPUT" && -d "$EXTRACTION_OUTPUT" && ! -L "$EXTRACTION_OUTPUT" && "${EXTRACTION_OUTPUT:A:h}" == "${DESTINATION_PATH:A}" ]] || die '未取得本次完整导出目录，未压缩或删除任何目录。'
+  offer_extraction_zip || return $?
   log "✔ 完成。日志：$LOG_FILE"
+}
+# 对照已解压的 ZIP 核对整个目录；新增链接、隐藏文件或内容变化均阻止删除。
+extraction_zip_source_matches() {
+    local source="$1" verified="$2" unusual=""
+    [[ -d "$source" && ! -L "$source" && -d "$verified" && ! -L "$verified" ]] || return 1
+    unusual="$(/usr/bin/find "$source" ! -type f ! -type d -print -quit 2>> "$LOG_FILE")" || return 1
+    [[ -z "$unusual" ]] || return 1
+    /usr/bin/diff -qr "$source" "$verified" >> "$LOG_FILE" 2>&1
+}
+# ZIP 先写私有临时文件并解压核验完整目录；删除前再次比较，保留确认期间改动。
+offer_extraction_zip() {
+    local answer="" archive="$EXTRACTION_OUTPUT.zip" temporary="" verification="" verified="" fingerprint="" current=""
+    IFS= read -r 'answer?是否打包为 ZIP？直接回车 = 打包；任意字符再回车 = 不打包：' || return 130
+    if [[ -n "$answer" ]]; then log "✔ 保留提取目录：$EXTRACTION_OUTPUT"; return 0; fi
+    [[ ! -e "$archive" && ! -L "$archive" ]] || { log "✖ ZIP 已存在，未覆盖：$archive；提取目录保留。"; return 1; }
+    fingerprint="$(/usr/bin/shasum -a 256 "$EXTRACTION_OUTPUT/manifest.json")" || return 1
+    temporary="$(/usr/bin/mktemp "${archive}.partial.XXXXXX")" || return 1
+    verification="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp/}JobsFlutterZipVerify.XXXXXX")" || { /bin/rm -f -- "$temporary"; return 1; }
+    verified="$verification/${EXTRACTION_OUTPUT:t}"
+    if ! /usr/bin/ditto -c -k --keepParent "$EXTRACTION_OUTPUT" "$temporary" >> "$LOG_FILE" 2>&1 ||
+       ! /usr/bin/unzip -tq "$temporary" >> "$LOG_FILE" 2>&1 ||
+       ! /usr/bin/ditto -x -k "$temporary" "$verification" >> "$LOG_FILE" 2>&1 ||
+       ! extraction_zip_source_matches "$EXTRACTION_OUTPUT" "$verified"; then
+        /bin/rm -f -- "$temporary"
+        /bin/rm -r -- "$verification"
+        log '✖ ZIP 生成、解压或完整目录核对失败，提取目录完整保留；详情见日志。'
+        return 1
+    fi
+    current="$(/usr/bin/shasum -a 256 "$EXTRACTION_OUTPUT/manifest.json")" || current=""
+    if [[ "$current" != "$fingerprint" ]]; then
+        /bin/rm -f -- "$temporary"
+        /bin/rm -r -- "$verification"
+        log '✖ 打包期间清单发生变化，原目录保留。'
+        return 1
+    fi
+    if ! /bin/mv -n -- "$temporary" "$archive" || [[ -e "$temporary" ]]; then
+        /bin/rm -f -- "$temporary"
+        /bin/rm -r -- "$verification"
+        log '✖ ZIP 目标发生冲突，原目录保留。'
+        return 1
+    fi
+    log "✔ ZIP 已完成并校验：$archive"
+    if ! IFS= read -r 'answer?是否删除原始提取目录？直接回车 = 不删除；任意字符再回车 = 删除：'; then
+        /bin/rm -r -- "$verification"
+        return 130
+    fi
+    if [[ -z "$answer" ]]; then
+        /bin/rm -r -- "$verification"
+        log "✔ 保留提取目录：$EXTRACTION_OUTPUT"
+        return 0
+    fi
+    current="$(/usr/bin/shasum -a 256 "$EXTRACTION_OUTPUT/manifest.json")" || current=""
+    if [[ -L "$EXTRACTION_OUTPUT" || ! -d "$EXTRACTION_OUTPUT" || "${EXTRACTION_OUTPUT:A:h}" != "${DESTINATION_PATH:A}" || "$current" != "$fingerprint" ]] ||
+       ! extraction_zip_source_matches "$EXTRACTION_OUTPUT" "$verified"; then
+        /bin/rm -r -- "$verification"
+        log '✖ 提取目录或文件内容在打包后发生变化，未删除；原目录与已验证 ZIP 均保留。'
+        return 1
+    fi
+    /bin/rm -r -- "$verification"
+    /bin/rm -r -- "$EXTRACTION_OUTPUT" || return 1
+    log '✔ 已按选择删除本次提取目录，ZIP 保留。'
 }
 # 自述确认后才创建日志并访问业务路径。
 main() {
   show_script_intro_and_wait # 展示范围并等待回车，避免双击误触。
   initialize_runtime # 初始化私有日志与同目录引擎路径。
   read_project_and_destination "$@" # 读取项目和可拖入目标，空目标默认桌面。
+  choose_extraction_scope # 默认私库，只有非空输入才纳入公共依赖。
   check_environment # 体检已有原生 Dart，不隐式下载或修改配置。
   run_extraction # 执行本地快照并保留失败码。
 }

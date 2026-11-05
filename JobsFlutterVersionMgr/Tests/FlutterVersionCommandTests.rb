@@ -35,7 +35,7 @@ class FlutterVersionCommandTests < Minitest::Test
         config) exit 0 ;;
         list) [[ "$2" == --formula ]] && exit 0; exit 1 ;;
         install|reinstall)
-          [[ "${TEST_INSTALL_FAIL:-0}" == 0 ]] || exit 23
+          [[ "${TEST_INSTALL_FAIL:-0}" == 0 ]] || { print -u2 "No available formula: fixture"; exit 23; }
           [[ "${TEST_RECHECK_FAIL:-0}" == 0 ]] || exit 0
           /usr/bin/touch "$TEST_ROOT/$2-ready"
           ;;
@@ -56,9 +56,14 @@ class FlutterVersionCommandTests < Minitest::Test
       case "$1" in
         --version) [[ "$TEST_FVM_HEALTHY" == 1 || -f "$TEST_ROOT/fvm-ready" ]] ;;
         api) [[ "$*" == *--help* ]] && exit 0; exit 1 ;;
+        install)
+          /bin/mkdir -p "$TEST_CACHE/$2/bin"
+          print '#!/bin/zsh' > "$TEST_CACHE/$2/bin/flutter"
+          /bin/chmod +x "$TEST_CACHE/$2/bin/flutter"
+          exit 0 ;;
         use)
           if [[ "$2" == --help ]]; then print -r -- '--skip-pub-get'; exit 0; fi
-          [[ "${TEST_USE_FAIL:-0}" == 0 ]] || exit 31
+          [[ "${TEST_USE_FAIL:-0}" == 0 ]] || { print -u2 "Permission denied: fixture project configuration"; exit 31; }
           /bin/mkdir -p "$TEST_PROJECT/.fvm" "$TEST_CACHE/$2/bin/cache/dart-sdk/bin"
           /bin/ln -s "$TEST_CACHE/${TEST_LINK_VERSION:-$2}" "$TEST_PROJECT/.fvm/flutter_sdk"
           if [[ "${TEST_FVM_REWRITES_CONFIG:-0}" == 1 ]]; then
@@ -171,7 +176,7 @@ class FlutterVersionCommandTests < Minitest::Test
     assert_equal original, File.binread(file)
   end
 
-  def test_network_failure_offers_only_initialized_cache_and_stops_when_none_exists
+  def test_network_failure_offers_healthy_cache_or_keeps_querying_until_cancelled
     add_cached_sdk('3.29.3')
     file = write_json('cache.json', { 'versions' => [{ 'name' => '3.29.3', 'directory' => File.join(@cache, '3.29.3'), 'isSetup' => true }] })
     write_mock('curl', 'exit 22')
@@ -187,9 +192,20 @@ class FlutterVersionCommandTests < Minitest::Test
     assert_includes output, 'ONLINE=0'
     assert_includes File.read(File.join(@run, 'cached.tsv')), '3.29.3'
     File.write(file, '{"versions":[]}')
-    output, status = execute(commands)
-    refute status.success?, output
-    assert_includes output, '没有可供离线选择'
+    # 明确第三轮用户取消；前两轮仍走全部假来源，避免无限等待或真实网络。
+    cancellation = <<~'ZSH'
+      functions[fixture_fetch_versions_once]="$functions[fm_fetch_versions_once]"
+      fixture_round=0
+      fm_fetch_versions_once() {
+        (( fixture_round++ ))
+        (( fixture_round <= 2 )) || return 130
+        fixture_fetch_versions_once
+      }
+    ZSH
+    output, status = execute(cancellation + commands.sub("fm_fetch_versions\n", "fm_fetch_versions || exit $?\n"))
+    assert_equal 130, status.exitstatus, output
+    assert_includes output, '第2轮'
+    assert_includes output, '自动继续'
     refute File.exist?(File.join(@project, '.fvmrc'))
   end
 

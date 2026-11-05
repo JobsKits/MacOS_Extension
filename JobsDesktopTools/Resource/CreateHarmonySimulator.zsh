@@ -5,6 +5,82 @@
 # - 影响范围：写入 DevEco 默认模拟器实例目录；保留已有设备、镜像、代理和系统配置。
 # - 运行提示：回车授权缺工具时从 SDL 镜像安装 CLT；缺镜像走官方下载，--check 只读，许可展示后本人回车同意。
 
+# JOBS_SDK_RETRY_BEGIN
+# 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+jobs_sdk_stop_tree() {
+    local root="$1" child=""
+    for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
+        jobs_sdk_stop_tree "$child"
+    done
+    /bin/kill -TERM "$root" 2>/dev/null || true
+    /bin/kill -KILL "$root" 2>/dev/null || true
+}
+# 状态写标准错误，机器可读的标准输出不混入重试提示。
+jobs_sdk_retry_note() {
+    print -u2 -r -- "$2"
+    [[ -z "$1" ]] || print -r -- "$2" >> "$1"
+}
+# 本地确定错误应明确失败；下载超时、断流和未知获取失败则继续，无次数/总时长上限。
+jobs_sdk_retry() {
+    setopt LOCAL_OPTIONS LOCAL_TRAPS
+    local title="$1" acquisition_log="$2" attempt=1 result=0 delay="${JOBS_SDK_RETRY_DELAY:-2}" maximum="${JOBS_SDK_RETRY_MAX_DELAY:-30}"
+    local task_pid="" offset=0 failure="" interrupted=0 history="${2}.attempts.log"
+    shift 2
+    [[ "$delay" == <-> && "$maximum" == <-> && "$maximum" -gt 0 && "$delay" -le "$maximum" ]] || return 2
+    trap 'interrupted=130; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' INT
+    trap 'interrupted=143; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' TERM
+    trap 'interrupted=129; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' HUP
+    while true; do
+        jobs_sdk_retry_note "$acquisition_log" "▶ SDK 获取：$title；第 $attempt 次（失败自动重试，Ctrl+C 结束）"
+        offset=0
+        [[ ! -f "$acquisition_log" ]] || offset="$(/usr/bin/wc -c < "$acquisition_log")"
+        [[ "${JOBS_SDK_LOG_REPLACED:-0}" != 1 ]] || offset=0
+        # 显式继承 stdin；后台调用仍能进行工具自身的许可/认证交互。
+        "$@" <&0 &
+        task_pid=$!
+        result=0
+        wait "$task_pid" || result=$?
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        if [[ -f "$acquisition_log" ]]; then
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            print -r -- "━━ $title：第 $attempt 次，退出码 $result ━━" >> "$history"
+            /usr/bin/tail -c +$((offset + 1)) "$acquisition_log" >> "$history"
+        fi
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        # 部分获取器下载失败仍返回0，明确失败详情不能冒充SDK就绪。
+        if (( result == 0 )) && print -r -- "$failure" | /usr/bin/grep -Eqi 'Failed to download|Error downloading|Unable to download|Could not download|Download failed'; then
+            result=1
+        fi
+        (( result != 0 )) || return 0
+        # 超时的调用方应返回124；外部中断状态不能被重试循环吞掉。
+        case "$result" in 129|130|131|137|143) return "$result" ;; 126|127) return "$result" ;; esac
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            # 兼容调用方每次重建机器输出文件：缩短后从文件开头读取。
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        if print -r -- "$failure" | /usr/bin/grep -Eqi 'File exists|Permission denied|Operation not permitted|No space left on device|Read-only file system|Bad CPU type|Exec format error|unknown option|unrecognized option|invalid argument|version .* (does not exist|not found)|license[^[:cntrl:]]*(not accepted|rejected)|licenses?[^[:cntrl:]]*not accepted|HTTP[^[:cntrl:]]*(401|403|404)|returned error: (401|403|404)|Authentication failed|could not read Username'; then
+            jobs_sdk_retry_note "$acquisition_log" "✖ $title 遇到权限、许可、版本或本地环境错误（$result），已停止；请按原始日志处理。"
+            return "$result"
+        fi
+        jobs_sdk_retry_note "$acquisition_log" "⚠ $title 获取未完成（退出码 $result）；${delay} 秒后自动重试，保留已有缓存。"
+        /bin/sleep "$delay" &
+        task_pid=$!
+        wait "$task_pid" || { (( interrupted == 0 )) || return "$interrupted"; return 130; }
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        (( attempt++ ))
+        (( delay < maximum )) && delay=$(( delay * 2 ))
+        (( delay <= maximum )) || delay="$maximum"
+    done
+}
+# JOBS_SDK_RETRY_END
+
 HS_BIN=""
 HS_LOG=""
 HS_CHECK=0
@@ -51,6 +127,7 @@ hs_show_intro() {
   hs_intro_line body '3、下载或启动前展示工具随附的许可原文，回车表示本人同意；任意非空输入取消。不改代理或 Shell 配置。'
   hs_intro_line body '4、回车授权缺工具时从 SDL 第三方镜像免登录下载 Mac ARM64 CLT（约 2.03 GB），校验后新增独立目录；健康工具不升级。'
   hs_intro_line body '   华为官网下载工具需登录；SDL 替代工具包下载，系统镜像由官方 Emulator 下载（可能数 GB），保留已有设备与镜像。'
+  hs_intro_line body '➤ SDK 工具包、在线清单和系统镜像获取失败持续自动重试，无次数或总时长上限；Ctrl+C 结束。'
   hs_intro_line body '5、交互入口回车继续，q / Ctrl+C 取消；--prepare 仅准备，--check 只读查询，日志在系统临时目录 JobsHarmonySimulator.* 中。'
 }
 
@@ -198,14 +275,20 @@ hs_validate_clt_archive() {
   ' || { hs_error 'SDL 工具包包含不安全路径，未解压。'; return 1; }
 }
 
-hs_download_clt_archive() {
+hs_download_clt_archive_once() {
   local destination="$1"
   /usr/bin/curl -q --fail --show-error --location --progress-bar --retry 3 --connect-timeout 20 \
-    --max-time 3600 --speed-limit 1024 --speed-time 90 --max-filesize "$HS_CLT_SIZE" \
-    --proto '=https' --proto-redir '=https' --output "$destination" "$HS_CLT_URL" || {
+    --continue-at - --max-time 3600 --speed-limit 1024 --speed-time 90 --max-filesize "$HS_CLT_SIZE" \
+    --proto '=https' --proto-redir '=https' --output "$destination" "$HS_CLT_URL" 2>&1 | /usr/bin/tee -a "$HS_LOG"
+  local result=${pipestatus[1]}
+  (( result == 0 )) || {
       hs_error "SDL 下载失败；可手动下载同一 ZIP 并用 HARMONY_CLT_ARCHIVE 指定：$HS_CLT_URL"
-      return 1
+      return "$result"
     }
+}
+
+hs_download_clt_archive() {
+  jobs_sdk_retry 'Harmony CLT 工具包下载' "$HS_LOG" hs_download_clt_archive_once "$@"
 }
 
 hs_publish_clt() {
@@ -372,7 +455,7 @@ hs_install_image() {
   local catalog="" parsed="" selected="" type="" version="" answer="" row="" found=0 result=0
   local -a available=()
   hs_log 'ℹ 没有本地 Release 镜像，正在读取官方可下载清单（最长 60 秒）…'
-  catalog="$(hs_query_output -imageList -downloaded false)" || return $?
+  catalog="$(jobs_sdk_retry 'Harmony 官方系统镜像清单' "$HS_LOG" hs_remote_catalog_once)" || return $?
   parsed="$(hs_json available "$catalog")" || { hs_error '官方可下载镜像清单解析失败，未下载或创建。'; return 1; }
   [[ -n "$parsed" ]] || { hs_error '官方没有返回可下载的 Release 镜像，请在 DevEco Device Manager 核对网络或账号要求。'; return 1; }
   available=("${(@f)parsed}")
@@ -385,9 +468,9 @@ hs_install_image() {
   [[ -z "$answer" ]] || return 130
   hs_review_licenses || return $?
   # 只在用户确认的新镜像安装中跳过重复确认；创建、启动均不使用 -force。
-  hs_run_command -install -deviceType "$type" -osVersion "$version" -force || result=$?
+  jobs_sdk_retry "Harmony 系统镜像 ${type} / ${version}" "$HS_LOG" hs_install_image_once "$type" "$version" || result=$?
   if (( result != 0 )); then
-    hs_log '下载未完成。请查看上方官方网络、地区或账号错误；不会循环重试或修改地区配置。'
+    hs_log '下载已停止。请查看上方原始错误与日志；用户取消或明确环境错误不会继续下游。'
     return "$result"
   fi
   hs_query_state || return $?
@@ -400,6 +483,38 @@ hs_install_image() {
   done
   (( found )) || { hs_error '官方安装命令返回，但选中镜像仍未下载就绪；请查看上方许可、网络或账号提示。未创建，不循环复检。'; return 1; }
   hs_log "✔ 已验证下载镜像：$type / $version"
+}
+
+# 官方安装 exit 0 仍须看到精确镜像；缺失时继续获取，绝不创建未就绪设备。
+hs_install_image_once() {
+  local type="$1" version="$2" output="" parsed="" row=""
+  hs_run_command -install -deviceType "$type" -osVersion "$version" -force || return $?
+  output="$(hs_query_output -imageList -downloaded true)" || return $?
+  parsed="$(hs_json images "$output")" || { hs_error 'invalid argument：本地镜像清单 JSON 无效。'; return 2; }
+  for row in "${(@f)parsed}"; do
+    if [[ "${row%%$'\t'*}" == "$type" && "${${row#*$'\t'}%%$'\t'*}" == "$version" ]]; then
+      return 0
+    fi
+  done
+  hs_log '⚠ SDK 获取未就绪：官方安装返回成功，但选定镜像尚未出现在本地清单；将继续获取。'
+  return 1
+}
+
+# 远程清单输出供 JSON 解析；重试提示只走标准错误。
+hs_remote_catalog_once() {
+  local output="" result=0
+  output="$(hs_query_output -imageList -downloaded false 2>&1)" || result=$?
+  print -r -- "$output" >> "${HS_LOG:-/dev/null}"
+  if (( result != 0 )); then
+    print -u2 -r -- "$output"
+    return "$result"
+  fi
+  if ! hs_json available "$output" >/dev/null 2>> "${HS_LOG:-/dev/null}"; then
+    print -u2 -r -- "$output"
+    hs_log '⚠ 官方远程清单尚未返回有效镜像 JSON，将继续获取。' >&2
+    return 1
+  fi
+  print -r -- "$output"
 }
 
 # 只对 -help 只读探测设限；创建和启动保留官方交互，不施加该超时。
@@ -519,7 +634,7 @@ hs_query_output() {
 }
 
 hs_bounded_query() {
-  local child_pid watchdog_pid result=0
+  local child_pid watchdog_pid result=0 started=$SECONDS
   "$HS_BIN" "$@" &
   child_pid=$!
   ( /bin/sleep 60; kill -TERM "$child_pid" 2>/dev/null; /bin/sleep 1; kill -KILL "$child_pid" 2>/dev/null ) >/dev/null 2>&1 &
@@ -527,7 +642,10 @@ hs_bounded_query() {
   wait "$child_pid" 2>/dev/null || result=$?
   kill -TERM "$watchdog_pid" 2>/dev/null
   wait "$watchdog_pid" 2>/dev/null
-  (( result < 128 )) || print -u2 -r -- 'Emulator 查询超时或被终止（60 秒）。'
+  if (( result >= 128 && result != 130 && SECONDS - started >= 60 )); then
+    print -u2 -r -- 'Emulator 查询超时或被终止（60 秒）。'
+    result=124
+  fi
   return "$result"
 }
 

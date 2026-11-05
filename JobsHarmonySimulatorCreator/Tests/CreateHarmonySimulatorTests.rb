@@ -44,6 +44,13 @@ class CreateHarmonySimulatorTests < Minitest::Test
           warn 'No images matching the criteria were found.'
           exit ENV.fetch('HS_TEST_IMAGES_EXIT', '0').to_i
         end
+        if ARGV.last == 'false'
+          count = File.readlines(ENV.fetch('HS_TEST_CALLS')).count { |line| args = JSON.parse(line); args.first == '-imageList' && args.last == 'false' }
+          if count <= ENV.fetch('HS_TEST_CATALOG_RETRY', '0').to_i
+            warn 'Network error while downloading source lists'
+            exit 0
+          end
+        end
         puts File.read(ENV.fetch(ARGV.last == 'false' ? 'HS_TEST_AVAILABLE' : 'HS_TEST_IMAGES'))
         exit ENV.fetch('HS_TEST_IMAGES_EXIT', '0').to_i
       when '-list'
@@ -60,8 +67,16 @@ class CreateHarmonySimulatorTests < Minitest::Test
         abort 'Expected explicit acceptance' unless ARGV == ['-license', 'accept']
         exit ENV.fetch('HS_TEST_LICENSE_EXIT', '0').to_i
       when '-install'
-        exit ENV['HS_TEST_INSTALL_EXIT'].to_i if ENV['HS_TEST_INSTALL_EXIT']
-        unless ENV['HS_TEST_DONT_INSTALL'] == '1'
+        if ENV['HS_TEST_INSTALL_EXIT']
+          warn 'Permission denied: fixture SDK'
+          exit ENV['HS_TEST_INSTALL_EXIT'].to_i
+        end
+        count = File.readlines(ENV.fetch('HS_TEST_CALLS')).count { |line| JSON.parse(line).first == '-install' }
+        if count <= ENV.fetch('HS_TEST_INSTALL_RETRY', '0').to_i
+          warn 'Connection reset by peer: download fixture failed'
+          exit 42
+        end
+        unless count <= ENV.fetch('HS_TEST_ZERO_UNREADY_RETRY', '0').to_i
           type = ARGV[ARGV.index('-deviceType') + 1]
           version = ARGV[ARGV.index('-osVersion') + 1]
           record = JSON.parse(File.read(ENV.fetch('HS_TEST_AVAILABLE'))).find { |r| r['deviceType'] == type && r['osVersion'] == version }
@@ -131,7 +146,14 @@ class CreateHarmonySimulatorTests < Minitest::Test
       require 'json'
       require 'fileutils'
       File.open(ENV.fetch('HS_TEST_CURL_CALLS'), 'a') { |file| file.puts(JSON.generate(ARGV)) }
-      exit ENV['HS_TEST_CURL_EXIT'].to_i if ENV['HS_TEST_CURL_EXIT']
+      if ENV['HS_TEST_CURL_EXIT']
+        warn 'Permission denied: fixture SDK archive'
+        exit ENV['HS_TEST_CURL_EXIT'].to_i
+      end
+      if File.readlines(ENV.fetch('HS_TEST_CURL_CALLS')).length <= ENV.fetch('HS_TEST_CURL_RETRY', '0').to_i
+        warn 'Connection reset by peer: archive fixture failed'
+        exit 28
+      end
       FileUtils.cp(ENV.fetch('HS_TEST_ARCHIVE'), ARGV.fetch(ARGV.index('--output') + 1))
     RUBY
     File.chmod(0o700, downloader)
@@ -143,6 +165,7 @@ class CreateHarmonySimulatorTests < Minitest::Test
     @library = File.join(@root, 'Library.zsh')
     File.write(@library, source.sub(/^main "\$@"\s*\z/, ''))
     @env = {
+      'JOBS_SDK_RETRY_DELAY' => '0', 'JOBS_SDK_RETRY_MAX_DELAY' => '1',
       'HOME' => @root, 'TMPDIR' => @run, 'PATH' => '/usr/bin:/bin', 'NO_COLOR' => '1', 'TERM' => 'dumb',
       'HARMONY_EMULATOR_BIN' => @bin, 'DEVECO_STUDIO_HOME' => nil, 'TOOL_HOME' => nil,
       'HARMONY_CLT_ARCHIVE' => nil, 'HS_TEST_ARCHIVE' => @archive, 'HS_TEST_CURL_CALLS' => @curl_calls,
@@ -399,11 +422,11 @@ class CreateHarmonySimulatorTests < Minitest::Test
     assert_includes calls, ['-install', '-deviceType', 'phone', '-osVersion', 'HarmonyOS 6.0.1(21)', '-force']
     assert_operator calls.index(['-license', 'accept']), :<, calls.index(calls.find { |call| call.first == '-install' })
     refute File.exist?(@open_calls)
-    assert_equal 3, calls.count { |call| call.first == '-imageList' }
+    assert_equal 4, calls.count { |call| call.first == '-imageList' }
   end
 
   def test_image_install_failure_or_zero_exit_without_image_never_creates_or_loops
-    [{ 'HS_TEST_INSTALL_EXIT' => '42' }, { 'HS_TEST_DONT_INSTALL' => '1' }, { 'HS_TEST_LICENSE_EXIT' => '43' }].each do |env|
+    [{ 'HS_TEST_INSTALL_EXIT' => '42' }, { 'HS_TEST_LICENSE_EXIT' => '43' }].each do |env|
       File.write(@images, '[]')
       FileUtils.rm_f(@calls)
       out, result = interactive('--no-start', env: env, input: "\n" * 4)
@@ -411,6 +434,43 @@ class CreateHarmonySimulatorTests < Minitest::Test
       assert_operator calls.count { |call| call.first == '-install' }, :<=, 1
       assert_empty calls.select { |call| %w[-create -start].include?(call.first) }
     end
+  end
+
+  def test_image_download_retries_then_continues_without_reasking_license
+    File.write(@images, '[]')
+    out, result = interactive('--prepare', env: { 'HS_TEST_INSTALL_RETRY' => '2' }, input: "\n" * 4)
+    assert result.success?, out
+    assert_equal 3, calls.count { |call| call.first == '-install' }
+    assert_equal 1, calls.count { |call| call.first == '-license' }
+    assert_includes out, '自动重试'
+    assert_empty calls.select { |call| %w[-create -start].include?(call.first) }
+  end
+
+  def test_sdl_download_retries_then_installs_without_reasking
+    out, result = interactive('--prepare', env: { 'HARMONY_EMULATOR_BIN' => nil, 'HS_TEST_CURL_RETRY' => '2' }, input: "\n")
+    assert result.success?, out
+    assert_equal 3, File.readlines(@curl_calls).length
+    assert_equal 1, installed_tools.length
+    refute File.exist?(@open_calls)
+  end
+
+  def test_catalog_zero_exit_with_network_text_retries_without_polluting_json
+    File.write(@images, '[]')
+    out, result = interactive('--prepare', env: { 'HS_TEST_CATALOG_RETRY' => '2' }, input: "\n" * 4)
+    assert result.success?, out
+    assert_equal 3, calls.count { |call| call.first == '-imageList' && call.last == 'false' }
+    assert_equal 1, calls.count { |call| call.first == '-install' }
+    assert_includes out, '自动重试'
+  end
+
+  def test_image_zero_exit_without_ready_image_retries_until_locally_verified
+    File.write(@images, '[]')
+    out, result = interactive('--prepare', env: { 'HS_TEST_ZERO_UNREADY_RETRY' => '2' }, input: "\n" * 4)
+    assert result.success?, out
+    assert_equal 3, calls.count { |call| call.first == '-install' }
+    assert_equal 1, calls.count { |call| call.first == '-license' }
+    assert_includes out, 'SDK 获取未就绪'
+    assert_empty calls.select { |call| %w[-create -start].include?(call.first) }
   end
 
   def test_download_and_license_cancellation_never_installs

@@ -22,6 +22,8 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
+**SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
+
 [ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 `ManageFlutterVersion.zsh` 是 Finder“安装 / 切换 Flutter SDK（FVM）”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再检查工具链，通过 [**fzf**](https://formulae.brew.sh/formula/fzf) 选择历史或最新 SDK，最后使用 [**FVM**](https://fvm.app) 安装 / 切换精确版本。FVM 是电脑上的工具，每个项目通过自己的 `.fvmrc` 固定 SDK。
@@ -40,6 +42,20 @@
 | 安装 / 切换 | 展示“当前 → 目标”和文件影响；直接回车执行，任意非空输入取消。 |
 | 依赖解析 | 传入 `--skip-pub-get`；SDK 就绪后可另行运行 `fvm flutter pub get`。 |
 | 离线回退 | 三个清单来源都失败时，只列 API 标记已初始化且 Flutter / 内置 Dart 文件可执行的精确版本缓存；最新版本明确未知。 |
+
+
+**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，默认 `build`。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
+
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。默认不清理；UI 仅在应用程序安装模式显示清理选项，退出该组合就清空。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+
+安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、目录与调用 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -88,7 +104,7 @@ SDK 获取     → Git / curl / bash / Apple Command Line Tools
 
 体检执行真实版本 / 只读接口检查，命令路径存在不等于健康。健康组件复用；损坏层只沿实际依赖修复一次，立即刷新当前进程 PATH 并复检；复检失败停止下游操作。
 
-- [**Git**](https://git-scm.com)、curl、bash 和 Apple Command Line Tools 先检查实际可执行性。CLT 缺失时，经终端确认请求 Apple 系统安装，然后停止；安装完成后重新点击入口。系统引导工具无法运行时给出阻塞原因，不继续叠装下游工具。
+- [**Git**](https://git-scm.com)、curl、bash 和 Apple Command Line Tools 先检查实际可执行性。CLT 缺失时自动打开 Apple 官方安装界面，每 10 秒复检，安装与本人许可完成后自动继续；Ctrl+C 结束等待。系统引导工具无法运行时给出阻塞原因，不继续叠装下游工具。
 - [**Homebrew**](https://brew.sh/) 依次发现当前 PATH、Apple Silicon / Intel 标准位置及既有用户前缀，用 `--version`、`--prefix`、`config` 核验。不自动执行 `update`、`upgrade`、`cleanup`。
 - fzf 使用 Homebrew core 公式。FVM 新安装同样使用 [Homebrew core 的 fvm 公式](https://formulae.brew.sh/formula/fvm)，其运行依赖由公式管理；已有健康的 Dart Pub、独立发行包或旧 tap FVM 继续复用。
 - 既有 FVM 损坏时，先确认它属于哪个已安装 formula；保留该归属执行 `reinstall`。多个归属时停止，不猜测卸载或迁移。实际已安装公式声明依赖 `dartaotruntime` 时，先验证 / 修复该运行时，再判断是否仍需重装 FVM。不能恢复的旧 tap 请依据日志人工处理。
@@ -168,13 +184,15 @@ fvm flutter run
 
 每次运行在系统临时目录建立权限收紧的 `JobsFlutterVersionMgr.XXXXXX` 文件夹，内含 `ManageFlutterVersion.log`、本次版本 / 缓存 JSON、机器可读校验输出，以及写入前的 `before/` 配置快照。终端显示具体路径；临时目录可能被系统清理，需要长期保留时请主动复制日志和快照。日志不转储整个环境，来源 URL 的凭据与查询参数脱敏。
 
+FVM 安装 / 切换过程和切换后的 `flutter --version --machine` 核验均实时展示下载与初始化进度；机器输出另存 `flutter-machine.json`，不会把终端命令标题混入 JSON。已有 SDK 缓存不完整时，首次补齐也可直接观察。
+
 业务临时目录和 `ManageFlutterVersion.log` 在首屏确认后才创建。点击菜单后尚未出现终端、或仍停在首个确认时没有业务日志，不能据此判定脚本失败；先核对宿主固定日志与终端首屏。
 
 | 现象 | 排查方向 |
 | --- | --- |
 | 菜单不显示 / 脚本拒绝目录 | 检查目标同层 pubspec 和真实 `dependencies.flutter.sdk`，避开 package / Alias / 符号链接。 |
 | 点击后没有终端 | 查看后台宿主固定日志，区分宿主未启动、未收到请求、项目复检失败及 Terminal 自动化失败；无管理窗口或 Dock 图标属正常行为。 |
-| CLT 安装请求后停止 | 先完成 Apple 系统安装，核对 `xcode-select` 选择目录，再重新运行。 |
+| CLT 等待就绪 | 在 Apple 官方界面完成安装与许可；网络失败在该界面重试，脚本每 10 秒自动复检并继续，Ctrl+C 可结束等待。 |
 | 旧 tap / FVM runtime 损坏 | 查看日志中的 formula 归属、失败命令与退出码；修复一次仍失败则人工排查原安装来源。 |
 | 官方清单获取失败 | 脚本会自动改用国内镜像和 FVM 内置接口，日志会写明实际来源；三层都失败时才会只列本机缓存。核对 `storage.googleapis.com` 是否被 DNS 解析到 `127.0.0.1`，以及终端 `HTTP(S)_PROXY` 是否可用。 |
 | SDK 下载失败 | 看 `fvm` 输出里的实际下载地址与退出码；镜像来源下脚本只在本次进程注入 `FLUTTER_STORAGE_BASE_URL`，请在同一终端重试，不要把该变量写进 Shell 配置。 |

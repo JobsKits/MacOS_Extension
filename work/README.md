@@ -22,15 +22,15 @@
 
 `work/` 是本仓统一安装脚本的本机构建输出目录，用于集中保存各个 [**Xcode**](https://developer.apple.com/xcode) 工程的 DerivedData：宿主 App、Finder 扩展、编译缓存、索引和构建日志。源码保存在旁边各工程目录中。
 
-**统一安装脚本直接注册这里的 App 和内嵌扩展。正在使用这些扩展时，删除、移动或改名对应构建目录，可能导致右键菜单或宿主调用失效。** 如需清理，先阅读[清理与恢复](#cleanup)。
+**未勾选“使用「应用程序」文件夹安装 / 卸载”时，统一管理器直接注册这里的 App 和内嵌扩展，删除、移动或改名可能使右键功能失效。勾选后，完整功能模块收进 `/Applications/Jobs自定义右键菜单.app`，登记和运行使用联合 App 内的副本；此时可选择安装成功后自动清理本轮构建输出。** 如需清理，先阅读[清理与恢复](#cleanup)。
 
 ## 一、<span id="sources">由谁生成、由谁使用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 入口 | 与当前目录的关系 |
 | --- | --- |
-| [统一安装脚本](../【MacOS】🧩安装Finder扩展.command) | 按选中的功能创建 `./<项目名>DerivedData/`，将其传给 `xcodebuild -derivedDataPath`；默认构建 `Debug` 配置，再注册其中的 App 和内嵌扩展。 |
-| [统一卸载脚本](../【MacOS】🧩卸载Finder扩展.command) | 20 个工程中覆盖除复制远程地址外的 19 个宿主（按 2026-10-23 当前卸载映射），包含 Flutter 版本管理、依赖提取、Git 拉取、Flutter 运行与 iOS / Android / 鸿蒙模拟器创建，按选中的功能停用扩展、停止进程、注销注册记录，并删除对应的 `./<项目名>DerivedData/`；不包含 `JobsGitRemoteCopier`。 |
-| [复制远程地址专用卸载脚本](../JobsGitRemoteCopier/【MacOS】卸载复制Git远程地址Finder扩展.command) | 用于停用、注销 `JobsGitRemoteCopier`；其本地清理路径位于工程内部，不会自动删除当前目录中的 `./JobsGitRemoteCopierDerivedData/`。 |
+| [统一管理入口](../【MacOS】🧩管理Finder扩展.command)的安装 / 更新 | 按选中功能去重构建 `Debug` App；默认登记构建输出，勾选应用程序路线后复制完整 App 到 `/Applications` 再登记。 |
+| [统一管理入口](../【MacOS】🧩管理Finder扩展.command)的卸载 | 只处理选中的安装位置和叶功能；保留共享宿主的其它功能，最后一项关闭后注销并删除对应 App。源码、业务数据和其它位置的 App 保留。 |
+| [复制远程地址管理入口](../JobsGitRemoteCopier/README.md) | 使用项目 / Git 聚合宿主，只启停复制地址这一叶；安装和卸载位置同样由复选框决定。 |
 | [源码与使用说明](../README.md) | 本仓说明安装、卸载和各工程的用途；工程中的源码与工程文件可重新生成构建产物。 |
 
 安装脚本当前使用的路径规则为：
@@ -42,7 +42,7 @@
 
 鸿蒙扩展对应 `./JobsHarmonySimulatorCreatorDerivedData/`；该目录仅保存本功能的 App / appex 与构建缓存，卸载不处理 DevEco 镜像或模拟器实例。
 
-安装过程直接通过这些路径注册，没有将 App 另行复制到系统应用程序目录。直接从 Xcode 构建时，产物也可能位于 Xcode 自身配置的 DerivedData 位置。
+以上是构建目录模式的登记路径；应用程序模式仍先构建到这里，再把完整功能模块装入 `/Applications/Jobs自定义右键菜单.app` 并登记安装位置。直接从 Xcode 构建时，产物也可能位于 Xcode 自身配置的 DerivedData 位置。
 
 ## 二、<span id="layout">目录内容</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

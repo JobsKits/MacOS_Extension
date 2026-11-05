@@ -165,6 +165,33 @@ class NativeDependencyArchiveShellTests < Minitest::Test
     assert_no_execution
   end
 
+  def test_precache_wrapper_round_trip_restores_web_sdk_and_only_paired_stamps
+    cache = File.join(@source, 'bin/cache')
+    @destination = File.join(@destination, 'bin/cache')
+    @env.merge!('TEST_ARCHIVE_KIND' => 'precache', 'TEST_ARCHIVE_PLATFORM' => 'web',
+                'TEST_ARCHIVE_VERSION' => 'Flutter 3.47.9 artifacts arch fixture',
+                'TEST_ARCHIVE_ROOT' => cache)
+    write(File.join(cache, 'flutter_web_sdk/kernel/dart_sdk.js'), 'web sdk payload')
+    write(File.join(cache, 'flutter_web_sdk.stamp'), 'engine revision')
+    write(File.join(cache, 'macos-sdk.stamp'), 'unpaired platform revision')
+    write(File.join(cache, 'dart-sdk/bin/dart'), 'excluded runtime')
+    write(File.join(cache, 'engine-dart-sdk.stamp'), 'excluded runtime stamp')
+    snapshot = export_snapshot
+    assert_includes calls.fetch(0), '--flutter-cache'
+    manifest = JSON.parse(File.read(File.join(snapshot, 'manifest.json')))
+    assert_equal 2, manifest.fetch('formatVersion')
+    assert_equal %w[flutter_web_sdk.stamp flutter_web_sdk/kernel/dart_sdk.js],
+                 manifest.fetch('files').map { |record| record.fetch('path') }
+    output, status = transfer(env: import_environment(snapshot), input: "YES\n")
+    assert status.success?, output
+    assert_equal 'web sdk payload', File.read(File.join(@destination, 'flutter_web_sdk/kernel/dart_sdk.js'))
+    assert_equal 'engine revision', File.read(File.join(@destination, 'flutter_web_sdk.stamp'))
+    refute File.exist?(File.join(@destination, 'macos-sdk.stamp'))
+    refute File.exist?(File.join(@destination, 'dart-sdk'))
+    refute File.exist?(File.join(@destination, 'engine-dart-sdk.stamp'))
+    assert_no_execution
+  end
+
   def test_import_in_real_terminal_checks_then_requires_exact_yes_and_applies
     snapshot = export_snapshot
     clear_trace

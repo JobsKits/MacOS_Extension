@@ -160,6 +160,8 @@ class DesktopInstallerTests < Minitest::Test
   def run_checks(checks, configuration: nil, source: MANAGER)
     Dir.mktmpdir('jobs-desktop-installer-') do |directory|
       source_text = File.read(source).sub(/^main "\$@"\s*\z/, '')
+      # 新模块通过动态 source 加载，旧配置层夹具必须封住该边界。
+      source_text = source_text.gsub('source "$PROJECT_ROOT/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh"', ':')
       fixture = File.join(directory, 'fixture.zsh')
       setup = <<~'ZSH'
         setopt NO_NOMATCH PIPE_FAIL
@@ -170,6 +172,10 @@ class DesktopInstallerTests < Minitest::Test
         LOG_FILE="$1/fixture.log"
         /bin/mkdir -p "$CONFIG_DIR" "$TRANSACTION_DIR"
         extension_is_enabled() { return 1; }
+        jobs_deployment_app_path() { print -r -- "$1"; }
+        jobs_deployment_enabled_extension_paths() { return 0; }
+        jobs_deployment_commit() { return 0; }
+        jobs_deployment_rollback() { return 0; }
       ZSH
       FileUtils.mkdir_p(File.join(directory, 'config'))
       File.write(File.join(directory, 'config/EnabledFeatures.txt'), configuration) unless configuration.nil?

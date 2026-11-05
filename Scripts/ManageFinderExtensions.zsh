@@ -99,6 +99,12 @@ CLI_FEATURES=""
 MANAGER_NON_INTERACTIVE=0
 MANAGER_GUI_SESSION=0
 REMAINING_CONFIG_FEATURES=""
+JOBS_FINDER_INSTALL_LOCATION="build"
+JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=0
+ROOT_DEPLOYMENT_ACTIVE=0
+JOBS_FINDER_STOP_REQUEST_FILE=""
+JOBS_FINDER_BLOCKED_FILE=""
+MANAGER_CONTROL_DIRECTORY=""
 
 FEATURE_KEYS=(project-tools path_copier file-create run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
@@ -341,7 +347,7 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-extract flutter-export-private-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -444,7 +450,7 @@ SELECTABLE_FUNCTION_PROJECT_KEY[ios-code-snippets]="ios-tools"
 SELECTABLE_FUNCTION_TITLE[ios-clean-build-artifacts]="清理 iOS/Xcode 构建产物"
 SELECTABLE_FUNCTION_PROJECT_KEY[ios-clean-build-artifacts]="ios-tools"
 
-FLUTTER_ACTION_IDS=(project-setup run pub-get android-dependencies pods-dependencies spm-dependencies ohos-dependencies native-dependencies flutter-precache web-dependencies extract export-private-dependencies import-dependencies import-private-dependencies export-gradle-dependencies import-gradle-dependencies export-pods-dependencies import-pods-dependencies export-spm-dependencies import-spm-dependencies export-ohos-dependencies import-ohos-dependencies export-native-dependencies import-native-dependencies export-precache-dependencies import-precache-dependencies export-web-dependencies import-web-dependencies sdk-version sdk-manage ohos-sdk-manage java-manage gradle-download codegen package-ios package-android package-ohos native-doctor harmony-doctor repair-android repair-imports repair-namespace repair-package-imports clean-build-artifacts maintenance)
+FLUTTER_ACTION_IDS=(project-setup run pub-get android-dependencies pods-dependencies spm-dependencies ohos-dependencies native-dependencies flutter-precache web-dependencies export-all-dependencies extract export-private-dependencies import-all-dependencies import-dependencies import-private-dependencies export-gradle-dependencies import-gradle-dependencies export-pods-dependencies import-pods-dependencies export-spm-dependencies import-spm-dependencies export-ohos-dependencies import-ohos-dependencies export-native-dependencies import-native-dependencies export-precache-dependencies import-precache-dependencies export-web-dependencies import-web-dependencies sdk-version sdk-manage ohos-sdk-manage java-manage gradle-download codegen package-ios package-android package-ohos native-doctor harmony-doctor repair-android repair-imports repair-namespace repair-package-imports clean-build-artifacts maintenance)
 SELECTABLE_FUNCTION_TITLE[flutter-project-setup]="一键配置 Flutter 项目"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-project-setup]="flutter-tools"
 SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-project-setup]="project-setup"
@@ -478,6 +484,12 @@ SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-flutter-precache]="flutter-precache"
 SELECTABLE_FUNCTION_TITLE[flutter-web-dependencies]="拉取 Web 工程依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-web-dependencies]="flutter-tools"
 SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-web-dependencies]="web-dependencies"
+SELECTABLE_FUNCTION_TITLE[flutter-export-all-dependencies]="🧳 一键提取 Flutter 依赖"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-export-all-dependencies]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-export-all-dependencies]="export-all-dependencies"
+SELECTABLE_FUNCTION_TITLE[flutter-import-all-dependencies]="📥 一键导入 Flutter 依赖"
+SELECTABLE_FUNCTION_PROJECT_KEY[flutter-import-all-dependencies]="flutter-tools"
+SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-import-all-dependencies]="import-all-dependencies"
 SELECTABLE_FUNCTION_TITLE[flutter-export-private-dependencies]="🔐 提取Flutter项目工程私库依赖"
 SELECTABLE_FUNCTION_PROJECT_KEY[flutter-export-private-dependencies]="flutter-tools"
 SELECTABLE_FUNCTION_FLUTTER_ACTION[flutter-export-private-dependencies]="export-private-dependencies"
@@ -668,6 +680,8 @@ show_script_intro_and_wait() {
   note_echo "当前脚本：${SCRIPT_PATH}" | jobs_intro_style body
   note_echo '核心用途：安装、更新或按叶卸载 Finder 右键功能，保留未选中的菜单。' | jobs_intro_style body
   warn_echo '影响范围：构建并登记所选扩展；卸载仅移除所选功能，最后一项才移除共享 App。' | jobs_intro_style body
+  note_echo "安装 / 卸载位置：${JOBS_FINDER_INSTALL_LOCATION}；applications 使用应用程序文件夹，build 使用本地构建目录。" | jobs_intro_style body
+  note_echo "联合 App：Jobs自定义右键菜单.app；安装成功后清理本轮产物：${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS}。" | jobs_intro_style body
   warn_echo '完成后刷新 Finder；源码、SDK 和业务文件保留。' | jobs_intro_style body
   gray_echo '执行方式：面板操作按钮即最终确认；日志与各项状态实时回传面板。' | jobs_intro_style body
   return 0
@@ -686,6 +700,13 @@ init_runtime() {
   IOS_FEATURE_CONFIG_PATH="${IOS_FEATURE_CONFIG_DIR}/EnabledFeatures.txt"
   FLUTTER_FEATURE_CONFIG_DIR="${HOME}/Library/Application Support/JobsFinderExtensions"
   FLUTTER_FEATURE_CONFIG_PATH="${FLUTTER_FEATURE_CONFIG_DIR}/flutter-tools-features.conf"
+  MANAGER_CONTROL_DIRECTORY="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp/}JobsFinderControl.XXXXXXXX")" || exit 1
+  MANAGER_CONTROL_DIRECTORY="${MANAGER_CONTROL_DIRECTORY:A}"
+  /bin/chmod 700 "$MANAGER_CONTROL_DIRECTORY" || exit 1
+  JOBS_FINDER_BLOCKED_FILE="$MANAGER_CONTROL_DIRECTORY/app-management.blocked"
+  : > "$JOBS_FINDER_BLOCKED_FILE"
+  /bin/chmod 600 "$JOBS_FINDER_BLOCKED_FILE" || exit 1
+  export JOBS_FINDER_BLOCKED_FILE
 }
 # 获取当前 Mac CPU 架构，用于收敛 xcodebuild 目标。
 get_cpu_arch() {
@@ -764,7 +785,7 @@ check_environment() {
     exit 1
   fi
 
-  if [[ "$MANAGEMENT_ACTION" == uninstall ]]; then
+  if [[ "$MANAGEMENT_ACTION" != install ]]; then
     return 0
   fi
 
@@ -928,13 +949,68 @@ derived_data_dir_for_key() {
 
   print -r -- "${WORKSPACE_DIR}/work/${FEATURE_PROJECT_DIR[$key]}DerivedData"
 }
-# 返回指定功能构建后的宿主 App 路径。
-app_path_for_key() {
+# 返回构建器的原始产物；安装到应用程序时也不能把构建输出改到系统目录。
+built_app_path_for_key() {
   local key="$1"
   local derived_data_dir=""
 
   derived_data_dir="$(derived_data_dir_for_key "$key")"
   print -r -- "${derived_data_dir}/Build/Products/${BUILD_CONFIGURATION}/${FEATURE_APP_NAME[$key]}.app"
+}
+# 按本次面板选择确定登记与卸载位置，默认保持现有构建目录。
+app_path_for_key() {
+  local key="$1" applications_dir="${JOBS_FINDER_APPLICATIONS_DIR:-/Applications}"
+  if [[ "${JOBS_FINDER_INSTALL_LOCATION:-build}" == applications ]]; then
+    print -r -- "${applications_dir%/}/Jobs自定义右键菜单.app/Contents/Applications/${FEATURE_APP_NAME[$key]}.app"
+  else
+    built_app_path_for_key "$key"
+  fi
+}
+# 仅安装到应用程序时载入随包部署库，不让普通构建模式依赖额外工具。
+load_deployment_support() {
+  (( $+functions[jobs_deployment_install] )) && return 0
+  local library="$WORKSPACE_DIR/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh"
+  [[ -f "$library" && -r "$library" ]] || { error_echo "缺少 App 部署支持库：$library"; return 1; }
+  source "$library"
+}
+# 应用程序路线复制完整 App，切回构建目录时也保留恢复旧登记的事务。
+deploy_feature_to_applications() {
+  local key="$1"
+  ROOT_DEPLOYMENT_ACTIVE=0
+  if [[ "$JOBS_FINDER_INSTALL_LOCATION" == build && ! -e "${JOBS_FINDER_APPLICATIONS_DIR:-/Applications}/Jobs自定义右键菜单.app/Contents/Applications/${FEATURE_APP_NAME[$key]}.app" && ! -e "${JOBS_FINDER_APPLICATIONS_DIR:-/Applications}/${FEATURE_APP_NAME[$key]}.app" ]]; then
+    return 0
+  fi
+  load_deployment_support || return 1
+  jobs_deployment_install "$(built_app_path_for_key "$key")" "$(app_bundle_id_for_key "$key")" "${FEATURE_EXTENSION_NAME[$key]}" "${FEATURE_EXTENSION_ID[$key]}" || return $?
+  ROOT_DEPLOYMENT_ACTIVE=1
+}
+# 检查本次卸载所选位置，避免不存在的副本改动另一位置正在使用的共享配置。
+selected_location_has_app() {
+  local key="$1" app_path="$(app_path_for_key "$1")"
+  if [[ -L "$app_path" ]]; then
+    error_echo "拒绝操作链接形式的 App：$app_path"
+    return 2
+  fi
+  if [[ -d "$app_path" ]]; then
+    load_deployment_support || return 2
+    app_path="$(jobs_deployment_app_path "$(built_app_path_for_key "$key")")" || return 2
+    jobs_deployment_validate_app "$app_path" "$(app_bundle_id_for_key "$key")" "${FEATURE_EXTENSION_NAME[$key]}" "${FEATURE_EXTENSION_ID[$key]}" || {
+      error_echo "所选 App 身份不匹配，未修改配置或其它位置：$app_path"
+      return 2
+    }
+    return 0
+  fi
+  note_echo "所选位置没有安装 ${FEATURE_TITLE[$key]}，保留其它位置和功能配置：$app_path"
+  return 1
+}
+# 另一路线仍启用时，只移除当前不活跃的副本，公共菜单配置留给正在运行的版本。
+another_location_is_active() {
+  local key="$1" metadata="" registered="" selected="$(extension_path_for_key "$1")"
+  metadata="$(/usr/bin/pluginkit -m -i "${FEATURE_EXTENSION_ID[$key]}" -A -D -vv 2>/dev/null)" || return 2
+  while IFS= read -r registered; do
+    [[ -z "$registered" || "$registered" == "$selected" ]] || return 0
+  done < <(print -r -- "$metadata" | /usr/bin/awk '/^[+!-]/ {enabled=($1=="+")} /Path = / && enabled {sub(/^.*Path = /, ""); print}')
+  return 1
 }
 # 返回指定功能构建后的 Finder Sync appex 路径。
 extension_path_for_key() {
@@ -1253,21 +1329,34 @@ parse_management_options() {
   local explicit_action=0
   while (( $# > 0 )); do
     case "$1" in
-      --action|--scope|--features)
+      --action|--scope|--features|--install-location|--stop-request-file)
         (( $# >= 2 )) && [[ -n "$2" ]] || { print -u2 -- "参数缺少非空值：$1"; return 2; }
         case "$1" in
           --action) MANAGEMENT_ACTION="$2"; explicit_action=1 ;;
           --scope) FEATURE_SCOPE="$2" ;;
           --features) CLI_FEATURES="$2" ;;
+          --install-location) JOBS_FINDER_INSTALL_LOCATION="$2" ;;
+          --stop-request-file) JOBS_FINDER_STOP_REQUEST_FILE="$2" ;;
         esac
         shift 2
         ;;
       --non-interactive) MANAGER_NON_INTERACTIVE=1; shift ;;
+      --cleanup-build-products) JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=1; shift ;;
       --gui-session) MANAGER_GUI_SESSION=1; shift ;;
       *) print -u2 -- "未知参数：$1"; return 2 ;;
     esac
   done
-  [[ "$MANAGEMENT_ACTION" == install || "$MANAGEMENT_ACTION" == uninstall ]] || return 2
+  [[ "$MANAGEMENT_ACTION" == install || "$MANAGEMENT_ACTION" == uninstall || "$MANAGEMENT_ACTION" == cleanup ]] || return 2
+  [[ "$JOBS_FINDER_INSTALL_LOCATION" == build || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '安装位置只能是 build 或 applications。'; return 2; }
+  [[ "$MANAGEMENT_ACTION" != cleanup || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '构建目录模式不能独立清理正在使用的产物。'; return 2; }
+  if [[ -n "$JOBS_FINDER_STOP_REQUEST_FILE" ]]; then
+    [[ "$MANAGEMENT_ACTION" == install && "$JOBS_FINDER_STOP_REQUEST_FILE" == /* && ! -L "$JOBS_FINDER_STOP_REQUEST_FILE" ]] || return 2
+  fi
+  if (( JOBS_FINDER_CLEANUP_BUILD_PRODUCTS )) && [[ "$MANAGEMENT_ACTION" != install || "$JOBS_FINDER_INSTALL_LOCATION" != applications ]]; then
+    print -u2 '仅安装到应用程序时，才可选择安装成功后清理构建产物。'
+    return 2
+  fi
+  export JOBS_FINDER_INSTALL_LOCATION JOBS_FINDER_CLEANUP_BUILD_PRODUCTS JOBS_FINDER_STOP_REQUEST_FILE
   if (( MANAGER_NON_INTERACTIVE )); then
     (( explicit_action )) && [[ -n "$CLI_FEATURES" ]] || { print -u2 '非交互管理必须指定 --action 和 --features。'; return 2; }
   elif [[ -n "$CLI_FEATURES" ]]; then
@@ -1381,22 +1470,36 @@ plan_group_feature_removal() {
 run_independent_uninstall() {
   local key="$1" entries=("${WORKSPACE_DIR}/${FEATURE_PROJECT_DIR[$1]}/Scripts/ManageExtension.zsh"(N))
   (( ${#entries} == 1 )) || { error_echo "无法确定唯一的功能管理入口：$key"; return 1; }
-  local arguments=(--action uninstall --non-interactive --skip-finder-restart)
+  local arguments=(--action uninstall --non-interactive --skip-finder-restart --install-location "$JOBS_FINDER_INSTALL_LOCATION")
   [[ "$key" != ios-tools ]] || arguments+=(--features "$IOS_TOOLS_ENABLED_FEATURES")
-  JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "${entries[1]}" "${arguments[@]}" 2>&1 | tee -a "$LOG_FILE"
+  JOBS_FINDER_BUILT_APP_PATH="$(built_app_path_for_key "$key")" JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "${entries[1]}" "${arguments[@]}" 2>&1 | tee -a "$LOG_FILE"
   return ${pipestatus[1]}
 }
 # 与安装共用叶 ID 和安装单元映射；共享扩展只关闭勾选动作。
 uninstall_feature() {
   local key="$1" identifier="" features=()
+  # 两个聚合安装器使用自身构建目录，其路径核验由独立事务处理。
+  if [[ "$key" != project-tools && "$key" != desktop-tools ]]; then
+    local location_result=0
+    selected_location_has_app "$key" || location_result=$?
+    (( location_result != 1 )) || return 0
+    (( location_result == 0 )) || return "$location_result"
+    local active_result=0
+    another_location_is_active "$key" || active_result=$?
+    if (( active_result == 0 )); then
+      run_independent_uninstall "$key"
+      return $?
+    fi
+    (( active_result == 1 )) || return "$active_result"
+  fi
   if [[ "$key" == project-tools || "$key" == desktop-tools ]]; then
     for identifier in "${SELECTED_FUNCTION_IDS[@]}"; do
       [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$identifier]}" != "$key" ]] || features+=("$identifier")
     done
     if [[ "$key" == project-tools ]]; then
-      JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "${features[@]}" 2>&1 | tee -a "$LOG_FILE"
+      JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "${features[@]}" --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
     else
-      JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" uninstall "${features[@]}" --non-interactive --skip-finder-restart 2>&1 | tee -a "$LOG_FILE"
+      JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" uninstall "${features[@]}" --non-interactive --skip-finder-restart --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
     fi
     return ${pipestatus[1]}
   fi
@@ -1512,6 +1615,46 @@ persist_flutter_feature_selection() {
   fi
   success_echo "Flutter 子菜单选择已保存：${FLUTTER_TOOLS_ENABLED_FEATURES}"
 }
+# 记录共享配置的原始字节；登记失败时不能把新功能选择留给旧版本。
+begin_feature_configuration_transaction() {
+  local key="$1"
+  FEATURE_CONFIGURATION_PATH=""
+  FEATURE_CONFIGURATION_TRANSACTION=""
+  case "$key" in
+    ios-tools) FEATURE_CONFIGURATION_PATH="$IOS_FEATURE_CONFIG_PATH" ;;
+    flutter-tools) FEATURE_CONFIGURATION_PATH="$FLUTTER_FEATURE_CONFIG_PATH" ;;
+    terminal_opener) FEATURE_CONFIGURATION_PATH="$TERMINAL_FEATURE_CONFIG_PATH" ;;
+  esac
+  [[ -n "$FEATURE_CONFIGURATION_PATH" ]] || return 0
+  [[ ! -L "$FEATURE_CONFIGURATION_PATH" && ! -L "${FEATURE_CONFIGURATION_PATH:h}" ]] || return 1
+  FEATURE_CONFIGURATION_TRANSACTION="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp/}JobsFinderConfiguration.XXXXXXXX")" || return 1
+  if [[ -e "$FEATURE_CONFIGURATION_PATH" ]]; then
+    [[ -f "$FEATURE_CONFIGURATION_PATH" && -r "$FEATURE_CONFIGURATION_PATH" ]] || return 1
+    /bin/cp -p "$FEATURE_CONFIGURATION_PATH" "$FEATURE_CONFIGURATION_TRANSACTION/original" || return 1
+  fi
+}
+# 保存本次写入的版本，回滚前比对它以保留其它进程后续产生的配置。
+record_feature_configuration_publication() {
+  [[ -n "$FEATURE_CONFIGURATION_TRANSACTION" ]] || return 0
+  [[ ! -L "$FEATURE_CONFIGURATION_PATH" ]] || return 1
+  if [[ -f "$FEATURE_CONFIGURATION_PATH" ]]; then
+    /bin/cp -p "$FEATURE_CONFIGURATION_PATH" "$FEATURE_CONFIGURATION_TRANSACTION/published"
+  fi
+}
+# 只恢复仍属于本次安装的配置，快照留在临时目录以便失败诊断。
+rollback_feature_configuration() {
+  [[ -n "$FEATURE_CONFIGURATION_TRANSACTION" && -f "$FEATURE_CONFIGURATION_TRANSACTION/published" ]] || return 0
+  if [[ -L "$FEATURE_CONFIGURATION_PATH" ]] || ! /usr/bin/cmp -s "$FEATURE_CONFIGURATION_PATH" "$FEATURE_CONFIGURATION_TRANSACTION/published"; then
+    warn_echo "配置已由其它操作更新，保留当前内容与事务快照：$FEATURE_CONFIGURATION_TRANSACTION"
+    return 1
+  fi
+  if [[ -f "$FEATURE_CONFIGURATION_TRANSACTION/original" ]]; then
+    local restored="$(/usr/bin/mktemp "${FEATURE_CONFIGURATION_PATH:h}/.restore-features.XXXXXXXX")" || return 1
+    /bin/cp -p "$FEATURE_CONFIGURATION_TRANSACTION/original" "$restored" && /bin/mv -f "$restored" "$FEATURE_CONFIGURATION_PATH"
+  else
+    /bin/rm -f "$FEATURE_CONFIGURATION_PATH"
+  fi
+}
 # 安装单个 Finder 扩展功能。
 install_feature() {
   local key="$1"
@@ -1521,7 +1664,7 @@ install_feature() {
     for selected_id in "${SELECTED_FUNCTION_IDS[@]}"; do
       [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_id]}" == desktop-tools ]] && desktop_features+=("$selected_id")
     done
-    JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" install "${desktop_features[@]}" --non-interactive --skip-finder-restart 2>&1 | tee -a "$LOG_FILE"
+    JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" install "${desktop_features[@]}" --non-interactive --skip-finder-restart --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
     return ${pipestatus[1]}
   fi
 
@@ -1530,7 +1673,7 @@ install_feature() {
     for selected_id in "${SELECTED_FUNCTION_IDS[@]}"; do
       [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$selected_id]}" == project-tools ]] && project_features+=("$selected_id")
     done
-    JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" install "${project_features[@]}" 2>&1 | tee -a "$LOG_FILE"
+    JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" install "${project_features[@]}" --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
     return ${pipestatus[1]}
   fi
 
@@ -1559,19 +1702,63 @@ install_feature() {
     fi
   fi
   build_feature "$key" || return 1
-  persist_ios_feature_selection "$key" || return 1
-  register_and_enable_feature "$key" || return 1
-  persist_flutter_feature_selection "$key" || return 1
-  persist_terminal_feature_selection "$key" || return 1
+  local FEATURE_CONFIGURATION_PATH="" FEATURE_CONFIGURATION_TRANSACTION=""
+  begin_feature_configuration_transaction "$key" || return 1
+  deploy_feature_to_applications "$key" || return $?
+  local install_result=0
+  persist_ios_feature_selection "$key" || install_result=$?
+  if [[ "$key" == ios-tools ]]; then
+    record_feature_configuration_publication || install_result=1
+  fi
+  if (( install_result == 0 )); then
+    register_and_enable_feature "$key" || install_result=$?
+  fi
+  if (( install_result == 0 )); then
+    persist_flutter_feature_selection "$key" || install_result=$?
+    if [[ "$key" == flutter-tools ]]; then
+      record_feature_configuration_publication || install_result=1
+    fi
+  fi
+  if (( install_result == 0 )); then
+    persist_terminal_feature_selection "$key" || install_result=$?
+    if [[ "$key" == terminal_opener ]]; then
+      record_feature_configuration_publication || install_result=1
+    fi
+  fi
+  if (( install_result != 0 )); then
+    rollback_feature_configuration || warn_echo "功能配置恢复未完成：$FEATURE_CONFIGURATION_TRANSACTION"
+    (( ! ROOT_DEPLOYMENT_ACTIVE )) || jobs_deployment_rollback
+    ROOT_DEPLOYMENT_ACTIVE=0
+    return 1
+  fi
+  if (( ROOT_DEPLOYMENT_ACTIVE )) && ! jobs_deployment_commit; then
+    rollback_feature_configuration || warn_echo "功能配置恢复未完成：$FEATURE_CONFIGURATION_TRANSACTION"
+    jobs_deployment_rollback
+    ROOT_DEPLOYMENT_ACTIVE=0
+    return 1
+  fi
+  ROOT_DEPLOYMENT_ACTIVE=0
+  if (( JOBS_FINDER_CLEANUP_BUILD_PRODUCTS )); then
+    if ! jobs_deployment_cleanup_build_products "$(built_app_path_for_key "$key")" "$(derived_data_dir_for_key "$key")" "$(app_bundle_id_for_key "$key")" "${FEATURE_EXTENSION_NAME[$key]}" "${FEATURE_EXTENSION_ID[$key]}"; then
+      warn_echo "${FEATURE_TITLE[$key]} 已安装，但本轮构建产物清理失败；保留已安装 App，请查看清理日志。"
+    fi
+  fi
   return 0
 }
 # 用机器可读行同步状态，不把估算时间当成真实百分比。
 emit_feature_progress() {
   local identifier="$1" state="$2" message=""
   case "$state" in
-    running) [[ "$MANAGEMENT_ACTION" == uninstall ]] && message='正在卸载' || message='正在安装 / 更新' ;;
+    running)
+      case "$MANAGEMENT_ACTION" in
+        cleanup) message='正在清理构建产物' ;;
+        uninstall) message='正在卸载' ;;
+        *) message='正在安装 / 更新' ;;
+      esac
+      ;;
     succeeded) message='成功' ;;
     failed) message='失败，请查看下方日志' ;;
+    skipped) message='未执行，已停止后续任务' ;;
   esac
   /usr/bin/printf '\nJOBS_MANAGER_EVENT\t%s\t%s\t%s\n' "$identifier" "$state" "$message"
 }
@@ -1602,21 +1789,69 @@ record_project_install_result() {
 }
 # 逐个安装用户选择的 Finder 扩展功能。
 install_selected_features() {
-  local key=""
+  local key="" operation_result=0 stopped=0 blocked=0
 
   FINAL_EXIT_STATUS=0
   for key in "${SELECTED_KEYS[@]}"; do
+    if (( blocked || stopped )) || manager_stop_requested; then
+      if (( ! blocked && ! stopped )); then
+        print -r -- $'JOBS_MANAGER_STOPPED\t当前安装单元已完成，停止后续安装。'
+        stopped=1
+      fi
+      emit_project_progress "$key" skipped
+      continue
+    fi
     emit_project_progress "$key" running
-    if ensure_feature_projects_exist "$key" && install_feature "$key"; then
+    operation_result=0
+    ensure_feature_projects_exist "$key" && install_feature "$key" || operation_result=$?
+    if (( operation_result == 0 )); then
       record_project_install_result "$key" "1"
     else
       record_project_install_result "$key" "0"
+      FINAL_EXIT_STATUS=1
+    fi
+    if (( operation_result == 77 )) || [[ -n "$JOBS_FINDER_BLOCKED_FILE" && -s "$JOBS_FINDER_BLOCKED_FILE" ]]; then
+      blocked=1
+      FINAL_EXIT_STATUS=77
+      print -r -- $'JOBS_MANAGER_BLOCKED\tapp-management\t77'
+      warn_echo '需要 App 管理授权；保留当前结果，不再构建后续安装单元。'
+    fi
+  done
+}
+# 停止请求只在安装单元之间读取，不向正在构建或登记的进程发送信号。
+manager_stop_requested() {
+  [[ -n "$JOBS_FINDER_STOP_REQUEST_FILE" && -f "$JOBS_FINDER_STOP_REQUEST_FILE" && ! -L "$JOBS_FINDER_STOP_REQUEST_FILE" ]]
+}
+# 独立清理采用原安装单元的准确来源路径，不重新构建或更改功能配置。
+cleanup_feature_build_products() {
+  local key="$1" built_app="" derived_root=""
+  load_deployment_support || return 1
+  if [[ "$key" == project-tools || "$key" == desktop-tools ]]; then
+    derived_root="$WORKSPACE_DIR/${FEATURE_PROJECT_DIR[$key]}/work/DerivedData"
+    built_app="$derived_root/Build/Products/$BUILD_CONFIGURATION/${FEATURE_APP_NAME[$key]}.app"
+  else
+    derived_root="$(derived_data_dir_for_key "$key")"
+    built_app="$(built_app_path_for_key "$key")"
+  fi
+  jobs_deployment_cleanup_existing_build_products "$built_app" "$derived_root" "$(app_bundle_id_for_key "$key")" "${FEATURE_EXTENSION_NAME[$key]}" "${FEATURE_EXTENSION_ID[$key]}"
+}
+# 按勾选项去重清理，每个结果仍回传叶子状态，失败不更改已安装 App。
+cleanup_selected_features() {
+  local key=""
+  FINAL_EXIT_STATUS=0
+  for key in "${SELECTED_KEYS[@]}"; do
+    emit_project_progress "$key" running
+    if cleanup_feature_build_products "$key"; then
+      record_project_install_result "$key" 1
+    else
+      record_project_install_result "$key" 0
       FINAL_EXIT_STATUS=1
     fi
   done
 }
 # 安装成功后统一重启 Finder，刷新右键菜单缓存。
 restart_finder_after_install() {
+  [[ "$MANAGEMENT_ACTION" != cleanup ]] || return 0
   if (( ${#SUCCEEDED_FEATURES[@]} == 0 )); then
     warn_echo "没有成功处理的功能，跳过 Finder 重启。"
     return 0
@@ -1659,19 +1894,31 @@ select_management_features() {
     select_features_with_ui
   fi
 }
+# 清理本次私有控制文件，不碰用户提交的停止请求或其它会话。
+cleanup_manager_control_directory() {
+  [[ -n "$MANAGER_CONTROL_DIRECTORY" && -d "$MANAGER_CONTROL_DIRECTORY" && ! -L "$MANAGER_CONTROL_DIRECTORY" ]] || return 0
+  [[ "${MANAGER_CONTROL_DIRECTORY:t}" == JobsFinderControl.* && "$JOBS_FINDER_BLOCKED_FILE" == "$MANAGER_CONTROL_DIRECTORY/app-management.blocked" && ! -L "$JOBS_FINDER_BLOCKED_FILE" ]] || return 1
+  /bin/rm -f "$JOBS_FINDER_BLOCKED_FILE" || return 1
+  /bin/rmdir "$MANAGER_CONTROL_DIRECTORY" 2>/dev/null || true
+}
 # 仅 worker 执行真实操作，界面进程不再等待选择器返回计划。
 run_management_worker() {
   init_runtime
   parse_feature_selection "$CLI_FEATURES" || return $?
   print_selected_features
   check_environment
-  if [[ "$MANAGEMENT_ACTION" == uninstall ]]; then
+  if [[ "$MANAGEMENT_ACTION" == cleanup ]]; then
+    cleanup_selected_features
+  elif [[ "$MANAGEMENT_ACTION" == uninstall ]]; then
     uninstall_selected_features
   else
     install_selected_features
   fi
   restart_finder_after_install
-  print_done_tips
+  local management_result=0
+  print_done_tips || management_result=$?
+  cleanup_manager_control_directory || true
+  return "$management_result"
 }
 # 公开脚本只启动 App；App 会话持续显示 GUI，后台 worker 才接触扩展。
 dispatch_management_mode() {

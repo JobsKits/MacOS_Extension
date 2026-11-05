@@ -62,13 +62,13 @@ func leafItems(_ menu: NSMenu) -> [NSMenuItem] {
  menu.items.flatMap { item in item.submenu.map(leafItems) ?? [item] }
 }
 expect(FlutterToolsAction.dependencyFetch.map(\.rawValue) == ["pub-get", "android-dependencies", "pods-dependencies", "spm-dependencies", "ohos-dependencies", "web-dependencies"], "network fetch excludes native combo and platform resources")
-expect(FlutterToolsAction.dependencyExports.map(\.rawValue) == ["extract", "export-private-dependencies", "export-gradle-dependencies", "export-pods-dependencies", "export-spm-dependencies", "export-ohos-dependencies", "export-native-dependencies", "export-precache-dependencies", "export-web-dependencies"], "export group preserves every raw action")
-expect(FlutterToolsAction.dependencyImports.map(\.rawValue) == ["import-dependencies", "import-private-dependencies", "import-gradle-dependencies", "import-pods-dependencies", "import-spm-dependencies", "import-ohos-dependencies", "import-native-dependencies", "import-precache-dependencies", "import-web-dependencies"], "import group preserves every raw action")
+expect(FlutterToolsAction.dependencyExports.map(\.rawValue) == ["export-all-dependencies", "extract", "export-private-dependencies", "export-gradle-dependencies", "export-pods-dependencies", "export-spm-dependencies", "export-ohos-dependencies", "export-native-dependencies", "export-precache-dependencies", "export-web-dependencies"], "export group preserves every raw action")
+expect(FlutterToolsAction.dependencyImports.map(\.rawValue) == ["import-all-dependencies", "import-dependencies", "import-private-dependencies", "import-gradle-dependencies", "import-pods-dependencies", "import-spm-dependencies", "import-ohos-dependencies", "import-native-dependencies", "import-precache-dependencies", "import-web-dependencies"], "import group preserves every raw action")
 expect(FlutterToolsAction.environments.map(\.rawValue) == ["sdk-manage", "ohos-sdk-manage", "java-manage"], "runtime environment children")
 expect(FlutterToolsAction.resources.map(\.rawValue) == ["gradle-download", "flutter-precache", "native-dependencies"], "resource and build dependency children")
 expect(FlutterToolsAction.doctors.map(\.rawValue) == ["sdk-version", "native-doctor", "harmony-doctor"], "SDK inspection belongs to project inspection")
 let actions: [FlutterToolsAction] = [.projectSetup,.run] + FlutterToolsAction.dependencyFetch + FlutterToolsAction.dependencyExports + FlutterToolsAction.dependencyImports + FlutterToolsAction.environments + FlutterToolsAction.resources + FlutterToolsAction.packaging + [.codegen] + FlutterToolsAction.doctors + FlutterToolsAction.repairs + FlutterToolsAction.cleaning
-expect(actions.count == 45 && Set(actions) == FlutterFeatureConfiguration.leafActions, "regrouping covers the same 45 unique leaves")
+expect(actions.count == 47 && Set(actions) == FlutterFeatureConfiguration.leafActions, "regrouping covers the same 47 unique leaves")
 for kind in [FIMenuKind.contextualMenuForItems, .contextualMenuForContainer] {
  controller.selected = kind == .contextualMenuForItems ? [project] : nil
  controller.targeted = kind == .contextualMenuForContainer ? project : nil
@@ -200,7 +200,7 @@ expect(!harmonyValidator.isHarmonyFlutterProject(at: project), "linked ohos dire
 try FileManager.default.removeItem(at: ohosDirectory)
 try FileManager.default.moveItem(at: savedOhos, to: ohosDirectory)
 let config = base.appendingPathComponent("features.conf")
-expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).count == 45, "missing config keeps legacy actions")
+expect(FlutterFeatureConfiguration.enabledFeatures(configurationURL: config).count == 47, "missing config keeps legacy actions")
 setContext(project, for: .contextualMenuForItems)
 let staleMenu = provider.menu(for: .contextualMenuForItems)!
 let staleRun = leafItems(staleMenu).first!
@@ -268,7 +268,7 @@ let records = try String(decoding: diagnosticData, as: UTF8.self).split(separato
  try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String: Any]
 }
 expect(records.first?["event"] as? String == "initialized", "diagnostic records extension initialization")
-expect(records.contains { $0["reason"] as? String == "returned" && $0["returnedLeafCount"] as? Int == 45 && $0["validator"] as? Bool == true }, "diagnostic confirms valid project and returned leaves")
+expect(records.contains { $0["reason"] as? String == "returned" && $0["returnedLeafCount"] as? Int == 47 && $0["validator"] as? Bool == true }, "diagnostic confirms valid project and returned leaves")
 expect(records.contains { $0["reason"] as? String == "non-flutter" && $0["validator"] as? Bool == false }, "diagnostic identifies validator refusal")
 expect(records.contains { $0["reason"] as? String == "no-candidate" }, "diagnostic identifies missing selection")
 expect(records.contains { $0["reason"] as? String == "no-enabled-actions" && $0["enabledCount"] as? Int == 0 }, "diagnostic identifies disabled features")
@@ -303,7 +303,7 @@ with tempfile.TemporaryDirectory(prefix='jobs-flutter-feature-install-') as temp
  result=subprocess.run(['/bin/zsh','-f','-c','source "$1"; LOG_FILE="$2"; manager_persist_flutter_selection','fixture',str(p/'library.zsh'),str(p/'install.log')],env={'HOME':temp,'PATH':'/usr/bin:/bin'},capture_output=True,text=True)
  assert result.returncode == 0,result.stdout+result.stderr
  selected=config.read_text().split(',')
- assert len(selected) == len(set(selected)) == 45,selected
+ assert len(selected) == len(set(selected)) == 47,selected
  assert config.stat().st_mode & 0o777 == 0o600
  assert len(list(config.parent.iterdir())) == 1
- print('PASS: isolated independent installer enables all 45 actions atomically')
+ print('PASS: isolated independent installer enables all 47 actions atomically')

@@ -22,6 +22,22 @@
 
 一个 [**Finder Sync**](https://developer.apple.com/documentation/findersync) 扩展统一生成六项菜单，确保三个“新建模拟器”连续排列。功能仍可在上级安装面板逐叶选择；只选一项也能运行，不依赖其它旧宿主 App。已安装 App 内含五份完整业务脚本和隐藏文件偏好服务，运行时不读取源码仓库。
 
+
+**主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
+
+**安装 / 卸载位置：** 面板提供“使用「应用程序」文件夹安装 / 卸载”复选框，默认不勾选。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
+
+**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示默认不勾选的“安装成功后清除此轮构建产物”。明确勾选后，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；构建目录路线及卸载模式隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
+
+卸载按同一复选框选定的位置执行，所选位置没有 App 时保留另一位置及其功能配置；共享宿主仍有未卸载菜单时保留 App，最后一项移除后注销并删除该功能模块；联合 App 的最后一个模块移除后才删除外层 `Jobs自定义右键菜单.app`。切换位置安装会把登记切到新位置，构建目录中的另一份产物保留；所选功能的旧版顶层自有 App 在成功提交后收拢至联合 App，未知 App 不覆盖或删除。完整说明见[App 部署支持库](./Scripts/【MacOS】AppDeployment.zsh/README.md)。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
+
 ## 一、<span id="menus">顺序与范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 顺序 | 菜单 | 保留的功能 ID | 业务入口 |
@@ -37,7 +53,7 @@
 
 隐藏文件菜单显示下一步动作：当前隐藏时显示“👁️ 显示文件”，当前显示时显示“🙈 隐藏文件”。每次打开重新读取 `com.apple.finder/AppleShowAllFiles`；异常类型或同步失败保留“⚠️ 隐藏文件状态不可用”并置灰。扩展只申请该偏好域的只读权限，实际写入和刷新由非沙盒宿主处理。请求明确传递显示或隐藏目标，外部状态变化后不会把同一菜单动作反向切换。
 
-创建、修复的工具链、许可证、备份和危险确认均沿用原核心；具体能力见 [iOS 新建](../JobsIOSSimulatorCreator/README.md)、[Android 新建](../JobsAndroidSimulatorCreator/README.md)、[Harmony 新建](../JobsHarmonySimulatorCreator/README.md)、[Android 修复](../JobsAndroidSimulatorRepairer/README.md)、[Harmony 修复](../JobsHarmonySimulatorRepairer/README.md)及[文件显示](../JobsHiddenFilesToggler/README.md)。安装、卸载和扩展登记不会执行这些业务。
+创建、修复的工具链、许可证、备份和危险确认均沿用原核心；具体能力见 [iOS 新建](../JobsIOSSimulatorCreator/README.md)、[Android 新建](../JobsAndroidSimulatorCreator/README.md)、[Harmony 新建](../JobsHarmonySimulatorCreator/README.md)、[Android 修复](../JobsAndroidSimulatorRepairer/README.md)、[Harmony 修复](../JobsHarmonySimulatorRepairer/README.md)及[文件显示](../JobsHiddenFilesToggler/README.md)。Android / Harmony 的 SDK 工具、在线清单和镜像下载遇到网络失败或单次超时会自动持续重试，2～30 秒退避，直到成功或 Ctrl+C 主动结束；真实进度和逐次日志保留，明确权限、磁盘、版本及许可错误报告并停止下游。iOS 新建仅使用已经安装的 Runtime，两个修复入口不下载工具。安装、卸载和扩展登记不会执行这些业务。
 
 ## 二、<span id="install">安装、卸载与兼容入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

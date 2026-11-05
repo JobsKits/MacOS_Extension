@@ -37,6 +37,7 @@ class Fixture {
   String kind = 'gradle';
   String platform = 'android';
   String version = 'Gradle 8.14 modules';
+  bool flutterCache = false;
   List<String> arguments(
     String operation, {
     String? directory,
@@ -56,7 +57,13 @@ class Fixture {
     '--directory',
     directory ?? output,
     operation == 'export' ? '--source-root' : '--target-root',
-    destination ?? (operation == 'export' ? source : target),
+    destination ??
+        (flutterCache
+            ? '${operation == 'export' ? source : target}/bin/cache'
+            : operation == 'export'
+            ? source
+            : target),
+    if (flutterCache) '--flutter-cache',
     if (checkOnly) '--check',
     if (operation == 'import' && confirm && !checkOnly) ...['--confirm', 'YES'],
   ];
@@ -98,6 +105,156 @@ Future<void> test(String name, Future<void> Function(Fixture) body) async {
 }
 
 Future<void> main() async {
+  await test(
+    'precache v2 restores Web SDK with paired stamps and excludes runtime state',
+    (f) async {
+      f.kind = 'precache';
+      f.platform = 'web';
+      f.version = 'Flutter 3.47.9 artifacts arch fixture';
+      f.flutterCache = true;
+      final cache = '${f.source}/bin/cache';
+      final payload = {
+        'artifacts/material_fonts/Roboto.ttf': 'font bytes',
+        'material_fonts.stamp': 'material-font-revision',
+        'flutter_web_sdk/kernel/amd/dart_sdk.js': 'web compiler bytes',
+        'flutter_web_sdk/lib/ui.dart': 'web ui bytes',
+        'flutter_web_sdk.stamp': 'engine-revision',
+        'engine_stamp.json': '{"git_revision":"engine-revision"}',
+        'engine_stamp.stamp': 'engine-revision',
+        'macos-sdk.stamp': 'not downloaded',
+        'flutter_sdk.stamp': 'no paired engine packages',
+        'dart-sdk/bin/dart': 'never copy runtime',
+        'engine-dart-sdk.stamp': 'never mark Dart ready',
+        'flutter_tools.stamp': 'never mark tools ready',
+        'flutter_tools.snapshot': 'never copy tools',
+        '.dartignore': 'never copy unrelated cache files',
+        'credentials': 'never copy credentials',
+        'downloads/partial.zip': 'never copy downloads',
+      };
+      for (final entry in payload.entries) {
+        final file = File('$cache/${entry.key}')..createSync(recursive: true);
+        file.writeAsStringSync(entry.value);
+      }
+      final snapshot = f.export();
+      final manifest = f.manifest(snapshot);
+      check(manifest['formatVersion'] == 2, '新快照有明确布局版本');
+      final names = (manifest['files'] as List)
+          .map((item) => item['path'])
+          .toSet();
+      for (final path in payload.keys.take(7))
+        check(names.contains(path), '平台资源与配对stamp：$path');
+      for (final path in payload.keys.skip(7))
+        check(!names.contains(path), '不复制非配对stamp或运行态：$path');
+      final plan = f.execute(
+        f.arguments('import', directory: snapshot, checkOnly: true),
+      );
+      check(plan.exitCode == 0, 'v2预检通过：${plan.stderr}');
+      check(!Directory(f.target).existsSync(), '预检不创建目标');
+      final imported = f.execute(f.arguments('import', directory: snapshot));
+      check(imported.exitCode == 0, 'v2恢复成功：${imported.stderr}');
+      for (final path in payload.keys.take(7)) {
+        check(
+          File('${f.target}/bin/cache/$path').readAsStringSync() ==
+              payload[path],
+          '实际恢复字节：$path',
+        );
+      }
+      for (final path in payload.keys.skip(7)) {
+        check(
+          !File('${f.target}/bin/cache/$path').existsSync(),
+          '未伪造其它缓存就绪：$path',
+        );
+      }
+    },
+  );
+  await test('precache legacy artifacts import maps only into artifacts', (
+    f,
+  ) async {
+    f.kind = 'precache';
+    f.platform = 'web';
+    f.version = 'Flutter 3.47.9 artifacts arch fixture';
+    final snapshot = f.export();
+    check(f.manifest(snapshot)['formatVersion'] == 1, '旧布局保持v1');
+    f.flutterCache = true;
+    final result = f.execute(f.arguments('import', directory: snapshot));
+    check(result.exitCode == 0, '旧快照可导入新入口：${result.stderr}');
+    check(
+      File('${f.target}/bin/cache/artifacts/a.bin').readAsStringSync() == 'abc',
+      '旧载荷映射到artifacts',
+    );
+    check(
+      !File('${f.target}/bin/cache/flutter_web_sdk.stamp').existsSync(),
+      '旧快照不补造Web就绪stamp',
+    );
+    check(
+      !Directory('${f.target}/bin/cache/flutter_web_sdk').existsSync(),
+      '旧快照不冒充含Web SDK',
+    );
+  });
+  await test(
+    'precache v2 rejects orphan stamps and nonallowlisted files before any write',
+    (f) async {
+      f.kind = 'precache';
+      f.platform = 'web';
+      f.version = 'Flutter 3.47.9 artifacts arch fixture';
+      f.flutterCache = true;
+      final cache = '${f.source}/bin/cache';
+      File('$cache/flutter_web_sdk/lib/ui.dart').createSync(recursive: true);
+      File('$cache/flutter_web_sdk/lib/ui.dart').writeAsStringSync('web bytes');
+      File('$cache/flutter_web_sdk.stamp').writeAsStringSync('engine revision');
+      final snapshot = f.export();
+      final original = File('$snapshot/manifest.json').readAsStringSync();
+      final data = f.manifest(snapshot);
+      final records = data['files'] as List;
+      records.removeWhere(
+        (item) => item['path'] == 'flutter_web_sdk/lib/ui.dart',
+      );
+      File('$snapshot/payload/flutter_web_sdk/lib/ui.dart').deleteSync();
+      f.writeManifest(snapshot, data);
+      f.reject(f.arguments('import', directory: snapshot), '孤立stamp');
+      check(!Directory(f.target).existsSync(), '缺载荷拒绝全部写入');
+      File('$snapshot/payload/flutter_web_sdk/lib/ui.dart')
+          .writeAsStringSync('web bytes');
+      File('$snapshot/manifest.json').writeAsStringSync(original);
+      final injected = f.manifest(snapshot);
+      final webRecord = Map<String, dynamic>.from(
+        (injected['files'] as List).firstWhere(
+          (item) => item['path'] == 'flutter_web_sdk/lib/ui.dart',
+        ),
+      );
+      webRecord['path'] = 'dart-sdk/bin/dart';
+      (injected['files'] as List).add(webRecord);
+      File('$snapshot/payload/dart-sdk/bin/dart').createSync(recursive: true);
+      File('$snapshot/payload/dart-sdk/bin/dart')
+          .writeAsStringSync('web bytes');
+      f.writeManifest(snapshot, injected);
+      f.reject(f.arguments('import', directory: snapshot), '运行态越出白名单');
+      check(!Directory(f.target).existsSync(), '越界拒绝全部写入');
+    },
+  );
+  await test(
+    'precache v2 content conflicts stop before resources or stamps are written',
+    (f) async {
+      f.kind = 'precache';
+      f.platform = 'web';
+      f.version = 'Flutter 3.47.9 artifacts arch fixture';
+      f.flutterCache = true;
+      final cache = '${f.source}/bin/cache';
+      File('$cache/flutter_web_sdk/lib/ui.dart').createSync(recursive: true);
+      File('$cache/flutter_web_sdk/lib/ui.dart').writeAsStringSync('source');
+      File('$cache/flutter_web_sdk.stamp').writeAsStringSync('revision');
+      final snapshot = f.export();
+      final conflict = File('${f.target}/bin/cache/flutter_web_sdk/lib/ui.dart')
+        ..createSync(recursive: true);
+      conflict.writeAsStringSync('existing user content');
+      f.reject(f.arguments('import', directory: snapshot), 'Web SDK冲突');
+      check(conflict.readAsStringSync() == 'existing user content', '保留目标原文件');
+      check(
+        !File('${f.target}/bin/cache/flutter_web_sdk.stamp').existsSync(),
+        '冲突未发布就绪stamp',
+      );
+    },
+  );
   await test('SHA256 known vectors and large streaming input', (f) async {
     File('${f.source}/empty').writeAsBytesSync([]);
     File('${f.source}/padding').writeAsStringSync(

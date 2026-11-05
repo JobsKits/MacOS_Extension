@@ -97,7 +97,7 @@ ap_prepare_tools() {
 ap_resolve_packages() {
     local catalog="" rows="" result=0
     ap_event platforms 'platform / build-tools' running '读取官方稳定组件清单和工程要求'
-    catalog="$(android_timed 120 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2> >(pe_filter_log >&2))" || return $?
+    catalog="$(jobs_sdk_retry 'Android远程SDK组件清单' "$LOG_FILE" android_remote_images_once 2> >(pe_filter_log >&2))" || return $?
     if [[ -z "$AP_API" ]]; then
         rows="$(print -r -- "$catalog" | /usr/bin/sed -nE 's/^[[:space:]]*platforms;android-([0-9]+)[[:space:]]*\|.*/\1/p' | /usr/bin/sort -nu | /usr/bin/awk '{ print $0 "\tAndroid API " $0 }')"
         [[ -n "$rows" ]] || { pe_log '✖ 没有可选稳定Android平台；请检查SDK官方清单。'; return 1; }

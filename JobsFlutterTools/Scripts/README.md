@@ -1,5 +1,7 @@
 # Flutter 菜单实现
 
+**SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
+
 Finder 直属分组为“拉取Flutter项目工程相关依赖”“提取Flutter项目工程依赖”“导入Flutter项目工程依赖”“安装/切换Flutter运行环境”“Flutter 资源与构建依赖”；只改变显示层级，45 个可执行动作和逐项开关保持各自职责。`native-dependencies` 显示为资源与构建依赖组内的“准备原生库与构建依赖（组合操作）”；`sdk-version` 位于“Flutter项目体检”首项。环境组含 Flutter SDK、Flutter@OpenHarmony SDK、Java SDK；资源与构建依赖组按“下载Gradled分发与构建插件”“下载Flutter平台资源”“准备原生库与构建依赖（组合操作）”顺序显示。菜单树及 FAQ 见[功能说明](../README.md#dependency-faq)。
 
 `import-dependencies` 调用 `Tools/ImportFlutterDependencies.zsh`：终端输入或拖入完整导出目录，先由 `ImportFlutterDependencies.dart --validate-only` 只读验证并显示计划，通过后精确输入 `YES` 才写入项目本地依赖与 `pubspec_overrides.yaml`。原覆盖文件备份后保留；目标 pubspec 原始覆盖区与快照完整原文一致时可恢复为本地依赖，其它同名覆盖冲突停止；不自动 `pub get`。引擎复用同目录 `ExtractFlutterDependencies.dart` 的解析器，两个 Dart 文件必须一并打包。使用边界与恢复方法见[导入说明](../README.md#dependency-import)。
@@ -14,13 +16,15 @@ Finder 直属分组为“拉取Flutter项目工程相关依赖”“提取Flutte
 
 菜单、FVM 要求、修复范围与安装流程见 [功能说明](../README.md)。已启用的鸿蒙打包入口对所有合法 Flutter 根目录可见；点击后检查 `ohos/` 及两份清单，未适配时明确提示并停止。`Tools/DispatchFlutterTools.zsh` 是唯一分发入口；`Tools/FlutterProjectTools.dart` 处理双层体检、两类代码修复与维护；`RepairAndroidSdk.zsh` 复用 `AndroidSdkSupport.zsh` 的组件引导。`RetireLegacyFlutterMenus.zsh` 只在统一扩展已启用后停用旧 Flutter 入口。
 
-`pub-get` 在通用 FVM 门禁前交给 `Tools/InspectFlutterProject.zsh <项目> pub-get`，由业务入口先显示自述并等待终端回车，再检查项目自身 FVM 声明、SDK 文件及实际 Flutter / Dart 运行情况。未就绪时在同一终端调用包内 `Tools/ManageFlutterVersion.zsh --project <项目>`，沿用原安装 / 切换交互；明确完成并复检通过后才继续 `flutter pub get`。取消、准备失败或复检失败不执行依赖拉取，不调用全局 SDK，也不改变其它动作的 FVM 门禁。依赖拉取日志为系统临时目录的 `InspectFlutterProject.log`，SDK 管理日志与快照另存终端提示的 `JobsFlutterVersionMgr.*` 目录。`--check` 仅核对文件和计划，SDK 缺失时说明按需准备路径并返回失败，不启动管理器或调用 SDK。
+`pub-get` 在通用 FVM 门禁前交给 `Tools/InspectFlutterProject.zsh <项目> pub-get`。自述与确认后优先读取项目 `.jobs/flutter-environment.json` 中明确选择的本机 SDK，检查同套 Flutter / Dart；记录失效、损坏、跨系统或路径异常时停止，不切换到另一套 SDK。无记录时保留原 FVM 声明检查与包内 `Tools/ManageFlutterVersion.zsh --project <项目>` 的安装 / 切换、复检流程。取消或失败不拉取，不任取全局 SDK，其它动作的 FVM 门禁保留。日志为系统临时目录 `InspectFlutterProject.log`，SDK 管理日志与快照另存 `JobsFlutterVersionMgr.*`。`--check` 只核对文件和计划，不启动管理器、调用 SDK 或写日志。
 
 `android-dependencies`、`pods-dependencies`、`spm-dependencies`、`ohos-dependencies`、`native-dependencies`、`flutter-precache`、`web-dependencies` 同样在通用门禁前交给 [FetchProjectDependencies.zsh](./Tools/FetchProjectDependencies.zsh)，固定映射到 `--kind android|pods|spm|ohos|native|precache|web`，复用 [ProjectDependencies.zsh](./Tools/ProjectDependencies.zsh) 的目标依赖内核。确认后可按需准备本项目 SDK / Pub / 平台工具；本机环境记录失效时停止并提示重新配置。单项入口支持 `--project`、`--kind`、可选 `--platform` 与 `--check`；只读检查不启动 SDK、下载、工程构建或创建日志。独立安装 / 卸载按动作过滤菜单，不新增顶层 Flutter 组或额外 App。
 
 独立 `flutter-precache` / `native-dependencies` 首屏在回车确认前逐行说明命令、制品示例、平台包与实际构建边界，子项缩进；自述不启动下载。资源与组合步骤见 [FAQ](../README.md#dependency-faq)。
 
 一键配置在 Pub 之后调用同一内核：Android 解析可解析的 Maven 配置，Apple 处理 Pods / SPM，OpenHarmony 同步 OHPM / Hvigor，Web 处理存在的锁定 JS 工程，再以当前启动配置实际 `flutter build` 触发原生库与延迟下载。该构建不安装或启动 App，后续运行验收单独执行。`flutter-precache` 只缓存同套 Flutter 的平台资源，不等于 Android SDK / NDK / CMake 等系统工具，也不代替原生依赖；完整能力矩阵和编译、宿主、离线边界见[分层依赖说明](../README.md#dependency-layers)。
+
+依赖阶段先选择真实启动配置，Apple 配置生成与构建共用入口 / flavor。新增[工程依赖工具链模块](./Tools/【MacOS】工程依赖工具链.zsh/README.md)随 `Tools` 文件夹完整打包，处理 Node / 固定包管理器准备、鸿蒙环境激活复检与 SPM 实际缓存桥接；Web / Apple 不强制 JDK。平台快照 v2 补齐 Web SDK、缓存引擎包和配对 stamp，兼容旧 artifacts 快照，详见[平台快照](./Tools/README.md#platform-archives)。隔离回归为 `ProjectDependencyTests.rb`、`ProjectToolchainTests.rb`、`ProjectEnvironmentSetupTests.rb`、`PubGetSdkPreparationTests.rb` 和 `NativeDependencyArchive*Tests`，覆盖配置参数、实际缓存消费、工具版本、缺失修复、取消和导入冲突。
 
 `extract` 使用包内 `Tools/ExtractFlutterDependencies.zsh` 与同目录 Dart 引擎，只读提取已解析的 Pub 源码。排除 `.plugin_symlinks` 和包内、嵌套示例中的 `linux/flutter/ephemeral`、`windows/flutter/ephemeral`、`macos/Flutter/ephemeral` 生成目录，其余平台源码保留；失效、包外或循环链接跳过，终端及 `manifest.json` 的 `warnings` 记录包名、相对路径和原因，真实包根或普通源码缺失仍报错。详细范围见 [依赖提取说明](../../JobsFlutterDependencyExtractor/README.md)。在目标 Mac 取得当前源码后，通过管理入口重新“安装 / 更新”以载入 App 资源，再从 Finder 发起新请求；旧临时目录的 `launch.zsh` 不会刷新资源。
 
@@ -49,3 +53,21 @@ Pub 的 `extract` / `import-dependencies` 仍只处理原格式的包源码、�
 `ruby ../Tests/SetupWindowLauncherTests.rb` 验证随包binary在无编译器夹具中直接启动、构建阶段顺序与登记跳过变量不变，以及真实双架构编译/合并/签名仅写临时Xcode产物。
 
 私库配对动作 `export-private-dependencies` / `import-private-dependencies` 复用现有 zsh 包装器的 `--private-only` 模式与 Dart 引擎。范围及迁移步骤见[私库迁移](../README.md#private-dependency-migration)。
+
+组合动作 `export-all-dependencies` / `import-all-dependencies` 在分发器的 FVM 门禁前转交 [一键迁移入口](./Tools/【MacOS】一键迁移Flutter依赖.zsh/README.md)；`FlutterDependencyMigration.dart` 与两个 Pub 引擎、包装器均由构建阶段和终端请求副本完整携带。提取默认私库、默认 ZIP、默认保留原目录；导入按结构识别原始缓存和改名目录，预检并精确 `YES` 后合并。普通 Pub 提取遵循相同范围与 ZIP 交互，专用平台提取回车转统一私库识别，非空才全取所选层。
+
+
+**主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。 偏好保存在当前用户的 `com.jobs.finderextensions.managementpanel.preferences` 域：`theme` 为 `system` / `dark` / `light`，`language` 为 `system` / `zh-Hans` / `zh-Hant` / `en`；不会写入工程或修改系统主题与语言。
+
+**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，默认 `build`。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
+
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。默认不清理；UI 仅在应用程序安装模式显示清理选项，退出该组合就清空。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+
+安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。

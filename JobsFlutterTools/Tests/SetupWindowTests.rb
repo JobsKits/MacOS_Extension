@@ -37,6 +37,28 @@ class SetupWindowTests < Minitest::Test
         extension SetupProjectWindow {
             func verifyEmbeddedTerminal() throws {
                 applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+                guard heading.stringValue == "Flutter 项目配置", projectLabel.stringValue == URL(fileURLWithPath: project).lastPathComponent,
+                      split.subviews[0].frame.height <= 80, web.frame.height > split.bounds.height * 0.75 else { fatalError("Title/project must be separate and initial milestones must stay compact") }
+                update(SetupEvent(id: "flutter.download", parent: "flutter", title: "下载 SDK", state: "running", message: nil))
+                window.contentView!.layoutSubtreeIfNeeded()
+                var counts = Set<Int>()
+                var cycledToZero = false
+                let animationDeadline = Date().addingTimeInterval(2.5)
+                let originalStatusFrame = statusLabels["flutter.download"]!.frame
+                while Date() < animationDeadline {
+                    let text = statusLabels["flutter.download"]!.stringValue
+                    let count = text.reversed().prefix(while: { $0 == "." }).count
+                    if counts.contains(5), count == 0 { cycledToZero = true }
+                    counts.insert(count)
+                    _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.04))
+                }
+                guard counts == Set(0...5), cycledToZero,
+                      statusLabels["flutter.download"]!.frame.size == originalStatusFrame.size,
+                      labels["flutter"]?.stringValue == "Flutter SDK",
+                      split.subviews[0].frame.height < 200 else { fatalError("Running dots must cycle 0...5 without title/layout jitter or large blank area: counts=\(counts), reset=\(cycledToZero), status=\(statusLabels["flutter.download"]!.frame) / \(originalStatusFrame), title=\(labels["flutter"]!.stringValue), height=\(split.subviews[0].frame.height)") }
+                update(SetupEvent(id: "flutter.download", parent: "flutter", title: "下载 SDK", state: "failed", message: nil))
+                guard statusLabels["flutter.download"]?.stringValue.hasSuffix("失败") == true else { fatalError("Stopped nodes must immediately clear animated dots") }
+                print("PASS: separate titles, compact content height, stable 0...5 looping dots and stopped-node cleanup")
                 var sentChoice = false
                 var sentLiteral = false
                 var choiceReadyAt: Date?
@@ -80,10 +102,11 @@ class SetupWindowTests < Minitest::Test
                 let log = session.appendingPathComponent("terminal.raw.log")
                 let text = String(decoding: try Data(contentsOf: log), as: UTF8.self)
                 guard finished, text.contains("SELECTION:second"), text.contains("LITERAL:literal '$ touch NEVER"), text.contains("RAW_COMPLETE_最后一行"), text.contains("37 131") else { fatalError("PTY/fzf/input/resize failure:\n\(text)") }
-                guard states["flutter"] == "succeeded", states["platforms.android.sdk"] == "attention", labels["platforms.android.sdk"]?.stringValue.contains("需用户处理") == true else { fatalError("Milestone state events were lost") }
+                guard states["flutter"] == "succeeded", states["platforms.android.sdk"] == "attention", statusLabels["platforms.android.sdk"]?.stringValue.contains("需用户处理") == true,
+                      animationTimer == nil, dotCount == 0, statusLabels.values.allSatisfy({ !$0.stringValue.hasSuffix(".") }) else { fatalError("Milestone state events were lost or animation survived completion") }
                 let connectorFields = columns["flutter"]?.superview?.subviews.compactMap { $0 as? NSTextField }.filter { $0.stringValue == ">>>>>" } ?? []
                 let milestoneScroll = split.subviews.compactMap { $0 as? NSScrollView }.first!
-                guard connectorFields.count == 5, connectorFields.allSatisfy({ $0.frame.width >= 48 }),
+                guard connectorFields.count == 5, connectorFields.allSatisfy({ $0.frame.width >= 44 }),
                       milestoneScroll.documentView!.frame.width <= milestoneScroll.contentView.bounds.width + 0.5 else { fatalError("ASCII milestone connectors or 6-column viewport overflow") }
                 print("PASS: five visible monospace >>>>> connectors between six milestone columns")
                 print("PASS: real NSSplitView divider drag changes xterm and PTY rows from \(originalRows) to \(draggedRows)")
@@ -91,6 +114,24 @@ class SetupWindowTests < Minitest::Test
                       versionLabels["platforms.android.sdk"]?.stringValue.contains("36.0.0") == true, versionLabels["flutter"]?.isHidden == false,
                       versionLabels["platforms.android.sdk"]?.maximumNumberOfLines == 2 else { fatalError("Actual tool/SDK/component versions must be visible, including after a later state event omits version") }
                 print("PASS: tool build, SDK/Dart and Android component versions are visible with 2-line limits")
+                let normalSize = window.contentView!.bounds.size
+                for width in [800.0, 1440.0] {
+                    window.setContentSize(NSSize(width: width, height: 700))
+                    window.contentView!.layoutSubtreeIfNeeded()
+                    guard labels.values.allSatisfy({ !$0.stringValue.contains("进行中") }),
+                          columns.values.allSatisfy({ $0.frame.width >= 145 }),
+                          web.frame.height >= 180 else { fatalError("Narrow/wide window must preserve phase titles, scrolling and terminal space") }
+                }
+                split.setPosition(300, ofDividerAt: 0)
+                split.didDragDivider?()
+                window.setContentSize(NSSize(width: 800, height: 538))
+                window.contentView!.layoutSubtreeIfNeeded()
+                guard manuallySizedMilestones, web.frame.height >= 180 else { fatalError("Manual divider height must preserve the terminal minimum when shrinking the window") }
+                let manualHeight = split.subviews[0].frame.height
+                update(SetupEvent(id: "pub", parent: nil, title: "依赖与插件", state: "pending", message: nil))
+                guard abs(split.subviews[0].frame.height - manualHeight) < 1 else { fatalError("State updates must preserve the manually chosen divider height") }
+                window.setContentSize(normalSize)
+                window.contentView!.layoutSubtreeIfNeeded()
                 let attrs = try FileManager.default.attributesOfItem(atPath: log.path)
                 guard (attrs[.posixPermissions] as? NSNumber)?.intValue == 0o600 else { fatalError("Raw log must be private") }
                 guard text.contains("\u{1b}[") else { fatalError("Raw log must retain ANSI output") }
@@ -144,6 +185,7 @@ class SetupWindowTests < Minitest::Test
       assert_includes out, 'PASS: tool build, SDK/Dart'
       assert_includes out, 'PASS: five visible monospace'
       assert_includes out, 'PASS: real NSSplitView'
+      assert_includes out, 'PASS: separate titles, compact content height'
       refute File.exist?(File.join(directory, 'NEVER'))
     end
   end

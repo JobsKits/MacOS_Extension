@@ -121,7 +121,7 @@ class ManagementGUIBackendTests < Minitest::Test
         jobs_launch_finder_manager_gui "$1" 'git-pull,run-authorize' uninstall 1
       ZSH
       assert result.success?, errors
-      assert_equal ['--manager', worker, '--action', 'uninstall', '--scope', 'git-pull,run-authorize'], output.lines.map(&:chomp)
+      assert_equal ['--manager', worker, '--action', 'uninstall', '--install-location', 'build', '--scope', 'git-pull,run-authorize'], output.lines.map(&:chomp)
     end
   end
   def test_actual_launchers_resolve_script_paths_inside_zsh_functions
@@ -177,7 +177,7 @@ class ManagementGUIBackendTests < Minitest::Test
         FileUtils.cp(File.join(app, 'Contents/MacOS/LaunchManager'), launcher)
         output, result = Open3.capture2e('/bin/zsh', launcher, *arguments)
         assert result.success?, output
-        assert_equal ['--scope', expected_scope, '--action', 'install', '--gui-session'], output.lines.map(&:chomp), name
+        assert_equal ['--scope', expected_scope, '--action', 'install', '--install-location', 'build', '--gui-session'], output.lines.map(&:chomp), name
         source = definitions(launcher) + <<~'ZSH'
           launch_management_error() { print -u2 blocked; return 2; }
           ZSH_ARGZERO="$1"
@@ -234,7 +234,7 @@ class ManagementGUIBackendTests < Minitest::Test
         jobs_launch_finder_manager_gui "$1" 'git-pull' install 1
       ZSH
       assert result.success?, errors
-      assert_equal ['REFRESHED-PANEL', '--manager', File.join(scripts, 'ManageFinderExtensions.zsh'), '--action', 'install', '--scope', 'git-pull'], output.lines.map(&:chomp)
+      assert_equal ['REFRESHED-PANEL', '--manager', File.join(scripts, 'ManageFinderExtensions.zsh'), '--action', 'install', '--install-location', 'build', '--scope', 'git-pull'], output.lines.map(&:chomp)
       refute_includes File.read(binary), 'STALE-PANEL'
     end
   end

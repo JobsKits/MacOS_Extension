@@ -18,6 +18,8 @@ enum FlutterToolsAction: String, CaseIterable {
     case nativeDependencies = "native-dependencies"
     case flutterPrecache = "flutter-precache"
     case webDependencies = "web-dependencies"
+    case exportAllDependencies = "export-all-dependencies"
+    case importAllDependencies = "import-all-dependencies"
     case extract
     case exportPrivateDependencies = "export-private-dependencies"
     case importPrivateDependencies = "import-private-dependencies"
@@ -77,6 +79,10 @@ enum FlutterToolsAction: String, CaseIterable {
             return "🗃️ 下载Flutter平台资源"
         case .webDependencies:
             return "🌐 拉取 Web 工程依赖"
+        case .exportAllDependencies:
+            return "🧳 一键提取 Flutter 依赖"
+        case .importAllDependencies:
+            return "📥 一键导入 Flutter 依赖"
         case .exportPrivateDependencies:
             return "🔐 提取Flutter项目工程私库依赖"
         case .importPrivateDependencies:
@@ -157,12 +163,12 @@ enum FlutterToolsAction: String, CaseIterable {
         .spmDependencies, .ohosDependencies, .webDependencies
     ]
     static let dependencyExports: [Self] = [
-        .extract, .exportPrivateDependencies, .exportGradleDependencies, .exportPodsDependencies,
+        .exportAllDependencies, .extract, .exportPrivateDependencies, .exportGradleDependencies, .exportPodsDependencies,
         .exportSpmDependencies, .exportOhosDependencies, .exportNativeDependencies,
         .exportPrecacheDependencies, .exportWebDependencies
     ]
     static let dependencyImports: [Self] = [
-        .importDependencies, .importPrivateDependencies, .importGradleDependencies, .importPodsDependencies,
+        .importAllDependencies, .importDependencies, .importPrivateDependencies, .importGradleDependencies, .importPodsDependencies,
         .importSpmDependencies, .importOhosDependencies, .importNativeDependencies,
         .importPrecacheDependencies, .importWebDependencies
     ]

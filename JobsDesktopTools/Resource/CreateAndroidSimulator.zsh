@@ -7,6 +7,82 @@
 # shell: zsh
 
 # >>> Jobs Android simulator core >>>
+# JOBS_SDK_RETRY_BEGIN
+# 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+jobs_sdk_stop_tree() {
+    local root="$1" child=""
+    for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
+        jobs_sdk_stop_tree "$child"
+    done
+    /bin/kill -TERM "$root" 2>/dev/null || true
+    /bin/kill -KILL "$root" 2>/dev/null || true
+}
+# 状态写标准错误，机器可读的标准输出不混入重试提示。
+jobs_sdk_retry_note() {
+    print -u2 -r -- "$2"
+    [[ -z "$1" ]] || print -r -- "$2" >> "$1"
+}
+# 本地确定错误应明确失败；下载超时、断流和未知获取失败则继续，无次数/总时长上限。
+jobs_sdk_retry() {
+    setopt LOCAL_OPTIONS LOCAL_TRAPS
+    local title="$1" acquisition_log="$2" attempt=1 result=0 delay="${JOBS_SDK_RETRY_DELAY:-2}" maximum="${JOBS_SDK_RETRY_MAX_DELAY:-30}"
+    local task_pid="" offset=0 failure="" interrupted=0 history="${2}.attempts.log"
+    shift 2
+    [[ "$delay" == <-> && "$maximum" == <-> && "$maximum" -gt 0 && "$delay" -le "$maximum" ]] || return 2
+    trap 'interrupted=130; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' INT
+    trap 'interrupted=143; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' TERM
+    trap 'interrupted=129; [[ -z "$task_pid" ]] || jobs_sdk_stop_tree "$task_pid"' HUP
+    while true; do
+        jobs_sdk_retry_note "$acquisition_log" "▶ SDK 获取：$title；第 $attempt 次（失败自动重试，Ctrl+C 结束）"
+        offset=0
+        [[ ! -f "$acquisition_log" ]] || offset="$(/usr/bin/wc -c < "$acquisition_log")"
+        [[ "${JOBS_SDK_LOG_REPLACED:-0}" != 1 ]] || offset=0
+        # 显式继承 stdin；后台调用仍能进行工具自身的许可/认证交互。
+        "$@" <&0 &
+        task_pid=$!
+        result=0
+        wait "$task_pid" || result=$?
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        if [[ -f "$acquisition_log" ]]; then
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            print -r -- "━━ $title：第 $attempt 次，退出码 $result ━━" >> "$history"
+            /usr/bin/tail -c +$((offset + 1)) "$acquisition_log" >> "$history"
+        fi
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        # 部分获取器下载失败仍返回0，明确失败详情不能冒充SDK就绪。
+        if (( result == 0 )) && print -r -- "$failure" | /usr/bin/grep -Eqi 'Failed to download|Error downloading|Unable to download|Could not download|Download failed'; then
+            result=1
+        fi
+        (( result != 0 )) || return 0
+        # 超时的调用方应返回124；外部中断状态不能被重试循环吞掉。
+        case "$result" in 129|130|131|137|143) return "$result" ;; 126|127) return "$result" ;; esac
+        failure=""
+        if [[ -f "$acquisition_log" ]]; then
+            # 兼容调用方每次重建机器输出文件：缩短后从文件开头读取。
+            (( $(/usr/bin/wc -c < "$acquisition_log") >= offset )) || offset=0
+            failure="$(/usr/bin/tail -c +$((offset + 1)) "$acquisition_log" | /usr/bin/tail -c 65536)"
+        fi
+        if print -r -- "$failure" | /usr/bin/grep -Eqi 'File exists|Permission denied|Operation not permitted|No space left on device|Read-only file system|Bad CPU type|Exec format error|unknown option|unrecognized option|invalid argument|version .* (does not exist|not found)|license[^[:cntrl:]]*(not accepted|rejected)|licenses?[^[:cntrl:]]*not accepted|HTTP[^[:cntrl:]]*(401|403|404)|returned error: (401|403|404)|Authentication failed|could not read Username'; then
+            jobs_sdk_retry_note "$acquisition_log" "✖ $title 遇到权限、许可、版本或本地环境错误（$result），已停止；请按原始日志处理。"
+            return "$result"
+        fi
+        jobs_sdk_retry_note "$acquisition_log" "⚠ $title 获取未完成（退出码 $result）；${delay} 秒后自动重试，保留已有缓存。"
+        /bin/sleep "$delay" &
+        task_pid=$!
+        wait "$task_pid" || { (( interrupted == 0 )) || return "$interrupted"; return 130; }
+        task_pid=""
+        (( interrupted == 0 )) || return "$interrupted"
+        (( attempt++ ))
+        (( delay < maximum )) && delay=$(( delay * 2 ))
+        (( delay <= maximum )) || delay="$maximum"
+    done
+}
+# JOBS_SDK_RETRY_END
+
 # 准备展示所需路径；在确认前只计算变量，不创建文件。
 android_prepare_context() {
     local source_path="${(%):-%x}"
@@ -68,6 +144,7 @@ show_script_intro_and_wait() {
     android_log '2、新建时先选完整设备清单，再选匹配 Apple Silicon / Intel 的手机或平板系统映像。'
     android_log '3、首屏回车即授权本次自动体检、补齐或修复必要 SDK / Java / 命令行工具 / emulator；健康组件不升级。工具下载约数百 MB，选中映像可能数 GB，不再逐层询问安装。'
     android_log '4、不覆盖或清理任何现有 AVD，不安装 Homebrew，不改 Shell 配置或系统代理。'
+    android_log '➤ SDK / Java 下载、清单和组件获取失败自动持续重试，无次数或总时长上限；Ctrl+C 主动结束。'
     android_log '5、无映像时自动读取官方清单，选中后直接安装；SDK 许可证仍须本人阅读接受。列表回车选首项，q / Esc / Ctrl+C 取消；最后回车才创建。'
     android_log "日志位置：${LOG_FILE}（确认后创建；--check / --help 不写日志）"
     if (( $# > 1 )); then
@@ -106,7 +183,7 @@ android_initialize_runtime() {
 }
 # 为只读探测设置有限等待，只终止本函数启动的进程。
 android_timed() {
-    local limit="$1" child_pid watchdog_pid result=0
+    local limit="$1" child_pid watchdog_pid result=0 started=$SECONDS
     shift
     "$@" &
     child_pid=$!
@@ -122,6 +199,7 @@ android_timed() {
     wait "$watchdog_pid" 2>/dev/null
     if (( result >= 128 )); then
         print -u2 -r -- "命令超时或被终止（${limit} 秒）：${1:t}"
+        (( result == 130 || SECONDS - started < limit )) || result=124
     fi
     return "$result"
 }
@@ -197,15 +275,29 @@ android_temurin_url_allowed() {
     return 1
 }
 # 逐跳核对官方 HTTPS 下载主机，不加载 curlrc，也不把签名查询串写入日志。
-android_download_temurin() {
-    local url="$1" target="$2" limit="$3" curl_bin="$(command -v curl 2>/dev/null)" http_code="" next_url="" hop=0
+android_download_temurin_once() {
+    local url="$1" target="$2" limit="$3" curl_bin="$(command -v curl 2>/dev/null)" http_code="" next_url="" hop=0 request_target=""
+    local -a resume=()
     while (( hop < 5 )); do
-        android_temurin_url_allowed "$url" || { android_log '✖ Java 下载跳转到未授权来源，停止。' '1;31'; return 1; }
-        if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" --fail --show-error --progress-bar --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --dump-header "${target}.headers" --output "$target" --write-out '%{http_code}' "$url")"; then
+        request_target="$target"
+        resume=()
+        if [[ "$target" == *.tar.gz ]]; then
+            if [[ "$url" == https://github.com/* ]]; then
+                request_target="${target}.redirect"
+            else
+                resume=(--continue-at -)
+            fi
+        fi
+        android_temurin_url_allowed "$url" || { android_log '✖ invalid argument：Java 下载跳转到未授权来源，停止。' '1;31'; return 1; }
+        if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" "${resume[@]}" --fail --show-error --progress-bar --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --dump-header "${target}.headers" --output "$request_target" --write-out '%{http_code}' "$url" 2> >(/usr/bin/tee -a "$LOG_FILE" >&2))"; then
+            if [[ "$http_code" == 416 && "$target" == *.tar.gz && -f "$target" ]]; then
+                return 0
+            fi
             android_log "✖ Temurin 官方下载失败（HTTP ${http_code:-未知}），未发布 Java。" '1;31'
             return 1
         fi
-        if [[ "$http_code" == 200 ]]; then
+        if [[ "$http_code" == 200 || "$http_code" == 206 || "$http_code" == 416 ]]; then
+            [[ "$request_target" == "$target" ]] || /bin/mv -f -- "$request_target" "$target" || return 1
             android_log "➤ Java 下载来源主机：${${url#https://}%%/*}"
             return 0
         fi
@@ -219,8 +311,12 @@ android_download_temurin() {
         esac
         (( hop += 1 ))
     done
-    android_log '✖ Java 下载跳转次数超限，停止。' '1;31'
+    android_log '✖ invalid argument：Java 下载跳转次数超限，停止。' '1;31'
     return 1
+}
+# SDK 获取重试只包围传输，不重放解压、发布或项目操作。
+android_download_temurin() {
+    jobs_sdk_retry 'Temurin 官方 SDK 下载' "$LOG_FILE" android_download_temurin_once "$@"
 }
 # 使用系统 JSON 解析器核对 Temurin 21、宿主架构、官方归档 URL 与 SHA256。
 android_read_java_asset() {
@@ -413,14 +509,24 @@ android_network_failure_hint() {
     android_log '➤ 可用 ANDROID_SIM_PROXY=http://主机:端口 指定本次代理；或在 Android Studio SDK Manager 安装 Command-line Tools 21.0、Android Emulator 和所需映像后重试。'
 }
 # 下载固定官方 HTTPS 地址，不跟随重定向，失败时保留明确诊断。
-android_download_official() {
+android_download_official_once() {
     local url="$1" target="$2" limit="$3" http_code="" curl_bin="$(command -v curl 2>/dev/null)"
     [[ "$url" == https://dl.google.com/android/repository/* && -n "$curl_bin" ]] || return 1
-    if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" --fail --show-error --progress-bar --proto '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --output "$target" --write-out '%{http_code}' "$url")" || [[ "$http_code" != 200 ]]; then
-        android_log "✖ Google 官方下载失败：${url}；${http_code}" '1;31'
+    local -a resume=()
+    [[ "$target" != *.zip ]] || resume=(--continue-at -)
+    if ! http_code="$("$curl_bin" --disable "${ANDROID_SIM_CURL_PROXY[@]}" "${resume[@]}" --fail --show-error --progress-bar --proto '=https' --connect-timeout 10 --max-time "$limit" --max-redirs 0 --output "$target" --write-out '%{http_code}' "$url" 2> >(/usr/bin/tee -a "$LOG_FILE" >&2))" || [[ "$http_code" != 200 && "$http_code" != 206 && "$http_code" != 416 ]]; then
+        if [[ "$http_code" == 416 && "$target" == *.zip && -f "$target" ]]; then
+            return 0
+        fi
+        android_log "✖ Google 官方下载失败：${url}；HTTP ${http_code}" '1;31'
         android_network_failure_hint
         return 1
     fi
+}
+android_download_official() {
+    [[ "$1" == https://dl.google.com/android/repository/* ]] || return 2
+    command -v curl >/dev/null 2>&1 || return 127
+    jobs_sdk_retry 'Google Android SDK 下载' "$LOG_FILE" android_download_official_once "$@"
 }
 # 固定已验证的传统 CLI 21.0 契约；从官方元数据取得归档与摘要，不追随 CLI 启动器版 latest。
 android_read_tools_archive() {
@@ -608,13 +714,37 @@ android_install_package() {
     local package="$1" result=0
     android_show_install_source "$package"
     android_log "➤ 自动安装本次必要组件：${package}；SDK 许可证由你阅读并选择。"
-    NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --install "$package" --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
-    result=${pipestatus[1]}
+    jobs_sdk_retry "Android SDK 组件 ${package}" "$LOG_FILE" android_install_package_once "$package" || result=$?
     if (( result != 0 )); then
         android_log "✖ 组件安装失败（退出码 ${result}）：${package}；来源：Google 官方 Android SDK Repository。" '1;31'
         android_network_failure_hint
         return "$result"
     fi
+}
+# 单次只安装选定组件；保留原生许可输入与实时输出。
+android_install_package_once() {
+    local result=0 directory="$ANDROID_SIM_SDK/${(j:/:)${(s:;:)1}}" offset=0 output=""
+    [[ ! -f "$LOG_FILE" ]] || offset="$(/usr/bin/wc -c < "$LOG_FILE")"
+    NO_COLOR=1 FORCE_COLOR=0 TERM=dumb "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --install "$1" --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+    result=${pipestatus[1]}
+    output="$(/usr/bin/tail -c +$((offset + 1)) "$LOG_FILE")"
+    if print -r -- "$output" | /usr/bin/grep -Eqi 'Failed to find package|Unknown package|Package .* not found'; then
+        android_log '✖ invalid argument：选定 SDK 包或版本不存在，停止下游。' '1;31'
+        return 2
+    fi
+    (( result == 0 )) || return "$result"
+    case "$1" in
+        emulator) [[ -x "$directory/emulator" ]] && return 0 ;;
+        system-images\;*) [[ -f "$directory/system.img" && -f "$directory/source.properties" ]] && return 0 ;;
+        platform-tools) [[ -x "$directory/adb" ]] && return 0 ;;
+        platforms\;*) [[ -f "$directory/android.jar" ]] && return 0 ;;
+        build-tools\;*) [[ -x "$directory/aapt2" ]] && return 0 ;;
+        ndk\;*) [[ -x "$directory/ndk-build" ]] && return 0 ;;
+        cmake\;*) [[ -x "$directory/bin/cmake" ]] && return 0 ;;
+        *) [[ -f "$directory/source.properties" || -f "$directory/package.xml" ]] && return 0 ;;
+    esac
+    android_log "⚠ SDK 获取未就绪：${1}；安装器返回成功但所需文件缺失，将继续获取。" '1;33'
+    return 1
 }
 # 缺失 emulator 自动补齐；损坏登记包仅重装 emulator 工具包，始终保留 AVD。
 android_ensure_emulator() {
@@ -735,7 +865,7 @@ android_image_rows() {
 android_remote_images() {
     local output="" result=0
     android_log '➤ 将从 Google 官方 Android SDK Repository 查询稳定系统映像；不会修改系统代理。'
-    if ! output="$(android_timed 60 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1)"; then
+    if ! output="$(jobs_sdk_retry 'Google SDK 系统映像清单' "$LOG_FILE" android_remote_images_once)"; then
         android_log "✖ 读取 Google SDK 清单失败：${output}" '1;31'
         android_network_failure_hint
         return 1
@@ -750,6 +880,21 @@ android_remote_images() {
         android_network_failure_hint
         return 1
     fi
+}
+# 获取清单独立重试；工具返回成功但报告网络失败时仍视为未完成。
+android_remote_images_once() {
+    local output="" result=0
+    output="$(android_timed 60 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>&1)" || result=$?
+    print -r -- "$output" >> "$LOG_FILE"
+    if (( result == 0 )) && print -r -- "$output" | /usr/bin/grep -Eqi 'Failed to download|Failed to fetch|IO exception.*(download|manifest)|Failed to.*(source lists|repository)|Could not download|network.*failed|Connection.*(reset|timed out)|UnknownHostException'; then
+        result=1
+    fi
+    if (( result == 0 )); then
+        print -r -- "$output"
+    else
+        print -u2 -r -- "$output"
+    fi
+    return "$result"
 }
 # 优先使用已装映像，允许显式另选下载；安装成功后确认映像文件实际存在。
 android_select_image() {

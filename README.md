@@ -78,18 +78,18 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **82 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 2026-10-30 依据选择器和根管理映射去重，共 10 个现行安装单元；Flutter 的四十五项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
+> **84 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 2026-11-04 依据选择器和根管理映射去重，共 10 个现行安装单元；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
 
 | 功能分组 | 选项数 | 可逐项勾选的功能 |
 | --- | --- | --- |
 | IDE | 3 | 用 Android Studio / VSCode / Xcode 打开项目 |
 | Git | 6 | 拉取到最新、提交回退、打开远程地址、复制远程地址、动态代理、空白 Commit 并 Push |
 | 通用 | 11 | 复制绝对路径、新建文件、运行授权、解除运行授权、显示 / 隐藏文件、用终端打开、用终端查看文件内容、合并分卷、拆分文件、清理 Android / OpenHarmony 构建产物、更新代码地图 |
-| Flutter | 45 | Flutter开发相关辅助工具；一键配置、Gradle 分发 / 构建插件、Pub、私库迁移、Android 原生、Pods、SPM、OpenHarmony、原生库构建、平台资源、Web 依赖，以及运行、SDK、打包、体检、生成、修复和清理 |
+| Flutter | 47 | Flutter开发相关辅助工具；一键配置、一键提取 / 导入、Gradle 分发 / 构建插件、Pub、私库迁移、Android 原生、Pods、SPM、OpenHarmony、原生库构建、平台资源、Web 依赖，以及运行、SDK、打包、体检、生成、修复和清理 |
 | iOS / CocoaPods | 12 | `Pod Install`、`Pod Update` 相邻，iOS 构建产物清理、其它 iOS 辅助工具及 IPA 免编译重签分别勾选 |
 | 模拟器 | 5 | 新建 iOS / Android / Harmony 模拟器、Android / Harmony 模拟器检测与修复 |
 
-新增“🔐 提取Flutter项目工程私库依赖”和“📥 导入Flutter项目工程私库依赖”两个独立叶子，支持 Git、path、自建 hosted Pub 包及其间接依赖的源码与文件级校验迁移。快照类型与声明验证后精确输入 `YES` 才导入；不迁移机器凭据、不自动 `pub get`。使用和边界见 [Flutter 私库迁移](./JobsFlutterTools/README.md#private-dependency-migration)。
+“🧳 一键提取 Flutter 依赖”和“📥 一键导入 Flutter 依赖”位于提取 / 导入组首项，默认私库，支持 ZIP 及按内容识别改名的原始 Pub / Gradle 缓存。专用 Pub 私库叶子继续支持 Git、path、自建 hosted 包及间接依赖。完整预检后精确输入 `YES` 才导入，冲突不覆盖；不迁移机器凭据、不自动 `pub get`。底稿清单与范围见 [Flutter 私库迁移](./JobsFlutterTools/README.md#private-dependency-migration)。
 
 `MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。2026-10-29 按根层 `.xcodeproj/project.pbxproj` 核对，共 31 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 10 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
@@ -171,7 +171,25 @@ ruby ./Tests/DesktopFinderMenuTests.rb
 
 31 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。各功能工程使用普通目录，不使用工程内 `.gitmodules`、gitlink 或 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
 
-安装面板按叶功能独立选择，并按十个现行安装单元去重构建。桌面、IDE／Git、Flutter、iOS 分别由聚合包维持菜单顺序；旧工程保留兼容源码，每个功能目录只保留一个管理入口，六个桌面功能入口只启停各自叶子。Terminal 当前三项、iOS 辅助十一项均可逐项选择。文档目录转换统一使用根目录的 [目录过滤器](./.jobs-markdown-toc/README.md)。
+安装面板按叶功能独立选择，并按十个现行安装单元去重构建。桌面、IDE／Git、Flutter、iOS 分别由聚合包维持菜单顺序；旧工程保留兼容源码，每个功能目录只保留一个管理入口，六个桌面功能入口只启停各自叶子。Terminal 当前三项、iOS 辅助十一项均可逐项选择。文档目录转换统一使用工程外的工具，见 [单仓管理与外置目录工具](#single-repository-management)。
+
+
+**主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
+
+**安装 / 卸载位置：** 面板提供“使用「应用程序」文件夹安装 / 卸载”复选框，默认不勾选。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
+
+**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示默认不勾选的“安装成功后清除此轮构建产物”。明确勾选后，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；构建目录路线及卸载模式隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
+
+**联合 App 内置管理：** 打开 `Jobs自定义右键菜单.app` 可管理并卸载已安装功能，不要求保留原源码目录。安装 / 更新仍使用源码仓中的管理入口；App 内的管理会话独立于 App 本体，卸载最后一个模块时也能完成剩余步骤并保留结果日志。
+
+卸载按同一复选框选定的位置执行，所选位置没有 App 时保留另一位置及其功能配置；共享宿主仍有未卸载菜单时保留 App，最后一项移除后注销并删除该功能模块；联合 App 的最后一个模块移除后才删除外层 `Jobs自定义右键菜单.app`。切换位置安装会把登记切到新位置，构建目录中的另一份产物保留；所选功能的旧版顶层自有 App 在成功提交后收拢至联合 App，未知 App 不覆盖或删除。完整说明见[App 部署支持库](./Scripts/【MacOS】AppDeployment.zsh/README.md)。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
 
 ## 一、<span id="environment-prerequisites">环境先决条件</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -329,12 +347,22 @@ cd MacOS_Extension
 
 原根目录的子模块下载、关联修复和 `gitmodules` 更新三个入口已撤销。安装器只检查本仓工程文件是否完整；缺失时列出具体路径并停止，由使用者恢复完整源码后重试。各工程原有独立构建、安装及卸载能力保持不变。
 
-新克隆后，在本仓根目录安装一次文档过滤器；维护本地 `[toc]`，正常整文件暂存时生成远端折叠目录。命令和首次接入边界见 [目录过滤器说明](./.jobs-markdown-toc/README.md)。
+忽略规则集中在根目录 `./.gitignore`，各功能目录不再保留独立 `.gitignore`；功能专属规则带目录前缀，保持原有作用范围。
+
+<strong id="external-markdown-toc">文档目录工具与 Git 属性存放在工程外</strong>
+
+本机仍维护本地 `[toc]`，正常整文件暂存时生成远端折叠目录，检出时还原标签。`.jobs-markdown-toc` 工具与精确清单存放在用户数据目录，属性规则位于本仓实际 Git 元数据的 `info/attributes`；工程树不携带 `.gitattributes` 或目录转换工具。
+
+在本仓根目录查看本机配置，并只读验证目录转换：
 
 ```shell
-node ./.jobs-markdown-toc/MarkdownToc.mjs install
-node ./.jobs-markdown-toc/MarkdownToc.mjs verify
+git rev-parse --git-path info/attributes
+git config --local --get filter.jobs-markdown-toc.clean
+node "$(git config --local --get jobs.markdown-toc-tool)" status
+node "$(git config --local --get jobs.markdown-toc-tool)" verify
 ```
+
+维护、预览与恢复方式见外置工具同目录的 `README.md`。本地配置不会随源码克隆传播；换机或全新克隆时，需另行部署外置工具、精确清单和本地属性。
 
 ## 六、<span id="repository-layout-and-entrypoints">本仓目录与脚本入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -343,8 +371,6 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 ```text
 .
 ├── .gitignore
-├── .gitattributes
-├── .jobs-markdown-toc/  # 本仓文档目录工具与精确清单
 ├── 【MacOS】🧩管理Finder扩展.command
 ├── icon.png
 ├── JobsGitRemoteCopier/  # 本仓普通源码目录
@@ -407,8 +433,8 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 * [JobsGitProxyConfigurator](./JobsGitProxyConfigurator/README.md)：保留完整动态代理脚本与旧独立工程，管理入口转交项目工具包对应单项。仅安装菜单不会执行 Git 配置；卸载菜单保留已安装的 Git 运行态，需从配置脚本选择恢复。
 * [JobsIOSTools](./JobsIOSTools/README.md)：独立 iOS 辅助菜单包；十一项可分别安装，资源内含完整业务，本地 Pod 编译只对直接含 `*.podspec` 的目录显示。独立管理入口与 README 平级。
 * [Scripts 目录说明](./Scripts/README.md)：安装器使用的原生功能选择界面及调用约定。
-* [目录过滤器说明](./.jobs-markdown-toc/README.md)：本仓自包含转换工具与精确文档清单；本地保留 `[toc]`，整文件暂存时自动生成折叠目录。受控文档按根工具精确清单登记，新增文档与安装映射分别核对。
-* [work 目录说明](./work/README.md)：本地 DerivedData、生成 App 与扩展的保存位置及 Git 忽略边界。安装器直接从其中注册 App / appex，清理前应先在对应管理入口选择卸载以停用、注销，不能把它当作可随手删除的纯缓存；复制 Git 地址可在总面板或单功能管理入口逐项卸载。
+- [外置目录工具](#external-markdown-toc)：工具与精确文档清单保存在工程外，本机 Git 属性指向外置转换器；本地保留 `[toc]`，整文件暂存时自动生成折叠目录。新增文档按精确清单登记。
+* [work 目录说明](./work/README.md)：本地 DerivedData、生成 App 与扩展的保存位置及 Git 忽略边界。未勾选“使用「应用程序」文件夹安装 / 卸载”时，安装器直接注册其中的 App / appex，正在使用时不能当作纯缓存删除；勾选后登记 `/Applications` 中的副本，构建输出可清理；复制 Git 地址可在总面板或单功能管理入口逐项卸载。
 * 总管理面板安装和卸载共用同一份 82 叶功能清单；支持选择一个、多个、整组或全部功能，共享工程只移除所选配置。
 
 ### <span id="jobs-toc-heading-11" data-jobs-toc="v2">[【MacOS】🧩管理Finder扩展.command](./【MacOS】🧩管理Finder扩展.command)</span><!-- jobs-toc:heading-end -->
@@ -433,7 +459,7 @@ node ./.jobs-markdown-toc/MarkdownToc.mjs verify
 | 构建工具 | Xcode 未固定精确版本；工程 `LastUpgradeCheck = 2650` | 此字段仅为工程升级检查记录，最低可构建 Xcode 版本待实机矩阵核实；用 `xcodebuild -version` 记录实际环境。 |
 | 最低系统 | macOS `12.0` | 31 个工程全部 target 的 `MACOSX_DEPLOYMENT_TARGET`（2026-10-29）。 |
 | 安装 / 维护 | 系统 zsh、osascript、swiftc、PlugInKit、Git；Ruby 用于隔离测试 | 未设精确版本；本机版本由环境自检确认，不把本机输出视为仓库版本约束。 |
-| Node 工具链 | 文档 Node.js `20+`；CodeGraph `1.6.2` 安装链要求 `>=20 <25`，修复使用 Homebrew `node@24` | `.jobs-markdown-toc/README.md` 与 Terminal 工程 `TerminalOpener.swift`；CodeGraph 兼容范围于 2026-10-20 复核，健康既有工具先复用，非精确补丁版本锁。 |
+| Node 工具链 | 文档 Node.js `20+`；CodeGraph `1.6.2` 安装链要求 `>=20 <25`，修复使用 Homebrew `node@24` | 外置目录工具说明与 Terminal 工程 `TerminalOpener.swift`；CodeGraph 兼容范围于 2026-10-20 复核，健康既有工具先复用，非精确补丁版本锁。 |
 | 功能工具 | FVM / fzf / Flutter / Dart；Pod 功能直接使用终端环境中的 CocoaPods；CodeGraph 经健康检查复用 | 工具按功能使用现有环境或原有安装链，版本来源与风险见[依赖清单](#direct-dependencies)。 |
 | Android 模拟器工具链 | SDK Command-line Tools、Java / Android Studio JBR、Android Emulator 与系统映像均未锁精确版本 | `JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh` 逐层体检并自动补齐，按主机硬件选择 `arm64-v8a` / `x86_64` 映像；只使用选定 SDK，SDK 许可证由本人确认。 |
 | 依赖锁定 | 无已入库 `Package.resolved`、`Podfile.lock`、`pubspec.lock` 或 npm 锁文件 | 扩展源码没有第三方 SPM / Pod 包依赖；目标项目自己的锁文件属于操作对象，不属于扩展依赖。源码版本统一由本仓提交记录；这不替代外部工具自身的版本锁。 |
@@ -516,7 +542,7 @@ flowchart TD
 | 网络与安全 | 涉及出站 HTTPS、Git 认证复用；无自有 OAuth / JWT / Session 服务、接口加解密或证书绑定实现。FVM 官方清单和来源校验在 `JobsFlutterVersionMgr/Scripts/ManageFlutterVersion.zsh`；Git 网络能力由 Git 承担，不复制用户密钥。 |
 | 持久化 / 缓存 / 迁移 | 涉及功能选择配置、终端日志、恢复快照、构建缓存；`JobsTerminalShared/FinderMenuFeatureConfiguration.swift` 位于 Terminal 工程，FVM 脚本保留项目配置字段；无自有数据库 / 通用数据库迁移层。 |
 | 端能力 | 涉及 Finder Sync、剪贴板、LaunchServices、AppleEvent / Terminal，见各 `FinderSync.swift`、宿主 `AppDelegate.swift`；蓝牙、推送、定位、相机、相册、生物识别、扫码、NFC、支付未实现，复制路径不计系统分享能力。 |
-| 国际化 / 埋点 / 崩溃 | 当前中文菜单与文案；未发现本仓多语言资源表、分析 SDK、崩溃上传 SDK。系统 Console / 终端日志用于诊断。 |
+| 国际化 / 埋点 / 崩溃 | 管理面板通过 `Scripts/SelectFinderExtensionFeatures.swift` 内置翻译表提供简体中文、繁体中文、英文及跟随系统；总面板、随包面板与联合 App 内置面板共用。系统右键业务菜单及工具输出保留各功能原文。未引入分析 SDK 或崩溃上传 SDK；系统 Console / 终端日志用于诊断。 |
 | 热更新 / CI / 多环境 | 无热更新服务与 dev / test / prod API 配置；各工程 Debug / Release。本仓未配置 CI；`Tests/FlutterInstallerIntegrationTests.rb` 为本地隔离集成检查，工程测试各自维护。 |
 | 后端工程能力 | 幂等、限流、降级、熔断、分布式锁、业务事务、链路追踪、灰度、对账均无服务端实现；安装去重、临时目录权限和 Git 快照是本地安全机制。 |
 | 权限 / 隐私 / 脱敏 | 各工程 `*.entitlements`、`Info.plist` 管理 Finder / 自动化权限；外部路径与远程地址进入日志时需按各实现脱敏，复制 Git 地址按功能保留原始值。未发现已入库 `PrivacyInfo.xcprivacy`，发布前需按实际 API / 数据行为复核，不宣称已经完成商店隐私验收。 |
@@ -586,7 +612,7 @@ xcodebuild \
 | --- | --- |
 | dev / test / prod | 未设置服务器环境；Debug / Release 在各 `project.pbxproj`。Terminal 功能配置由安装选择与 `FinderMenuFeatureConfiguration.swift` 管理；测试使用临时项目，避免写真实仓库。 |
 | 启动 | 用 Xcode 运行同名宿主 Scheme，或按第三章根管理入口部署；FVM、拉取、提取、模拟器创建宿主只做后台转发，不应期待独立管理窗口。 |
-| 测试 | 本仓运行 `ruby ./Tests/FlutterInstallerIntegrationTests.rb`；工程 `Tests/` 按各自 README 运行；文档只读检查 `node ./.jobs-markdown-toc/MarkdownToc.mjs verify`。 |
+| 测试 | 本仓运行 `ruby ./Tests/FlutterInstallerIntegrationTests.rb`；工程 `Tests/` 按各自 README 运行；文档只读检查见 [外置目录工具](#external-markdown-toc) 的 `verify` 命令。 |
 | 菜单缺失 | 检查 Finder 扩展启用、签名与同 Bundle ID 旧注册；按既有维护章节处理，不能仅以构建成功认定真实菜单可用。 |
 | 找不到子工程 / 工具 | 工程缺失时恢复本仓完整源码；缺 Xcode Command Line Tools 或对应 SDK 时先修环境。目标路径、Pod 同层 `Podfile` / `*.xcodeproj` 或 Flutter 根声明不合法时修目标，不绕过门禁。 |
 | 网络 / 离线 | 本仓没有 API 假数据模式；FVM 官方列表失败仅可选就绪缓存，其余联网工具依原实现停止并展示来源与错误。 |

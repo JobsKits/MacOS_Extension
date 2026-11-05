@@ -1,12 +1,13 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：ManageExtension.zsh（App 内部后台管理器）
-# - 核心用途：一个入口管理本功能的安装 / 更新与卸载。
+# - 核心用途：一个入口管理本功能的安装 / 更新、卸载与构建产物清理。
 # - 影响范围：当前用户 Finder 菜单、对应构建产物与专用功能配置；保留源码和业务数据。
 # - 运行提示：直接打开 GUI，在面板选择安装 / 更新或卸载；底部实时日志允许复制。
 # shell: zsh
 
 MANAGER_ACTION=""
+MANAGER_STOP_REQUEST_FILE="${JOBS_FINDER_STOP_REQUEST_FILE:-}"
 MANAGER_NON_INTERACTIVE=0
 MANAGER_SKIP_RESTART=0
 MANAGER_REQUESTED_FEATURES=""
@@ -16,23 +17,40 @@ MANAGER_GUI_LEAF_FEATURES=""
 MANAGER_UI_SCOPE="pod_install,ios-disable-sandbox,ios-install-cocoapods,ios-pods-source-github,ios-extract-pods,ios-pod-update,ios-xcode-dependencies,ios-pod-repo-update,ios-pod-build-check,ios-code-snippets,ios-clean-build-artifacts"
 # 支持上级面板在完成确认后调用；显式参数不会改变本目录的功能边界。
 manager_parse_options() {
+  local install_location="${JOBS_FINDER_INSTALL_LOCATION:-build}" cleanup_build_products="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}"
   MANAGER_ENTRY_DIR="${ZSH_ARGZERO:A:h:h}"
   while (( $# > 0 )); do
     case "$1" in
       --action) (( $# >= 2 )) || return 2; MANAGER_ACTION="$2"; shift ;;
       --action=*) MANAGER_ACTION="${1#--action=}" ;;
+      --install-location) (( $# >= 2 )) || return 2; install_location="$2"; shift ;;
+      --install-location=*) install_location="${1#--install-location=}" ;;
+      --cleanup-build-products) cleanup_build_products=1 ;;
+      --stop-request-file) (( $# >= 2 )) && [[ "$2" == /* ]] || return 2; MANAGER_STOP_REQUEST_FILE="$2"; shift ;;
+      --stop-request-file=*) MANAGER_STOP_REQUEST_FILE="${1#--stop-request-file=}"; [[ "$MANAGER_STOP_REQUEST_FILE" == /* ]] || return 2 ;;
       --non-interactive) MANAGER_NON_INTERACTIVE=1 ;;
       --gui-session) MANAGER_GUI_SESSION=1 ;;
       --skip-finder-restart) MANAGER_SKIP_RESTART=1 ;;
       --scope|--features) (( $# >= 2 )) || return 2; MANAGER_REQUESTED_FEATURES="$2"; shift ;;
       --features=*) MANAGER_REQUESTED_FEATURES="${1#--features=}" ;;
-      --help|-h) print '用法：双击管理，或 --action install|uninstall --non-interactive [--features 功能ID,...] [--skip-finder-restart]'; return 10 ;;
+      --help|-h) print '用法：双击管理，或 --action install|uninstall|cleanup --non-interactive [--features 功能ID,...] [--skip-finder-restart] [--install-location build|applications] [--cleanup-build-products] [--stop-request-file PATH]'; return 10 ;;
       *) print -u2 -r -- "✖ 未知参数：$1"; return 2 ;;
     esac
     shift
   done
+  [[ "$install_location" == build || "$install_location" == applications ]] || { print -u2 "✖ 安装位置必须是 build 或 applications。"; return 2; }
+  [[ "$cleanup_build_products" == 0 || "$cleanup_build_products" == 1 ]] || { print -u2 '✖ 构建产物清理开关必须是 0 或 1。'; return 2; }
+  if [[ "$cleanup_build_products" == 1 && ( "$install_location" != applications || "${MANAGER_ACTION:-install}" != install ) ]]; then
+    print -u2 '✖ 仅安装到应用程序目录时允许清除此轮构建产物。'
+    return 2
+  fi
+  [[ "$MANAGER_ACTION" != cleanup || "$install_location" == applications ]] || { print -u2 '✖ 独立清理仅允许应用程序目录模式。'; return 2; }
+  [[ -z "$MANAGER_STOP_REQUEST_FILE" || "$MANAGER_STOP_REQUEST_FILE" == /* ]] || { print -u2 '✖ 停止请求文件必须使用绝对路径。'; return 2; }
+  export JOBS_FINDER_STOP_REQUEST_FILE="$MANAGER_STOP_REQUEST_FILE"
+  export JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="$cleanup_build_products"
+  export JOBS_FINDER_INSTALL_LOCATION="$install_location"
   manager_prepare_gui_features || return $?
-  [[ -z "$MANAGER_ACTION" || "$MANAGER_ACTION" == install || "$MANAGER_ACTION" == uninstall ]] || return 2
+  [[ -z "$MANAGER_ACTION" || "$MANAGER_ACTION" == install || "$MANAGER_ACTION" == uninstall || "$MANAGER_ACTION" == cleanup ]] || return 2
   (( ! MANAGER_NON_INTERACTIVE )) || [[ -n "$MANAGER_ACTION" ]] || { print -u2 '✖ 非交互调用必须明确 --action。'; return 2; }
 }
 # 不支持颜色时保留纯文本自述，确认前不创建日志或修改系统。
@@ -76,6 +94,10 @@ manager_prepare_gui_features() {
         ;;
       JobsIOSTools) [[ "$feature" != pod_install ]] || mapped=ios-pod-install ;;
     esac
+    if [[ "$MANAGER_ACTION" == cleanup ]]; then
+      local cleanup_identifier="$(manager_gui_identifier "$mapped")"
+      (( ${allowed[(Ie)$cleanup_identifier]} )) || { print -u2 -r -- "✖ 功能不属于本入口：$feature"; return 2; }
+    fi
     prepared+=("$mapped")
   done
   MANAGER_REQUESTED_FEATURES="${(j:,:)prepared}"
@@ -101,6 +123,7 @@ manager_gui_identifier() {
 }
 # 完整仓转交总管理器的受限范围，独立包使用随包源码且仍能整体复制。
 manager_open_gui() {
+  local -x JOBS_FINDER_STOP_REQUEST_FILE=""
   local entry="${MANAGER_ENTRY_DIR:h}/Scripts/ManageFinderExtensions.zsh" helper="$MANAGER_ENTRY_DIR/Scripts/FinderManagerGUI.zsh"
   local scope="$MANAGER_UI_SCOPE" identifier="" feature="" selected=() allowed=("${(@s:,:)MANAGER_UI_SCOPE}")
   if [[ -n "$MANAGER_REQUESTED_FEATURES" ]]; then
@@ -112,7 +135,8 @@ manager_open_gui() {
     scope="${(j:,:)selected}"
   fi
   if [[ -f "$entry" ]]; then
-    local arguments=(--scope "$scope" --action "${MANAGER_ACTION:-install}")
+    local arguments=(--scope "$scope" --action "${MANAGER_ACTION:-install}" --install-location "$JOBS_FINDER_INSTALL_LOCATION")
+    [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" != 1 ]] || arguments+=(--cleanup-build-products)
     (( ! MANAGER_GUI_SESSION )) || arguments+=(--gui-session)
     exec /bin/zsh "$entry" "${arguments[@]}"
   fi
@@ -127,14 +151,20 @@ manager_open_gui() {
 manager_choose_action() {
   manager_intro_line title "━━━━━━━━━━ ${ZSH_ARGZERO:t} ━━━━━━━━━━"
   manager_intro_line body "来源：${MANAGER_ENTRY_DIR}；仅管理当前范围内的 Finder 功能。"
-  manager_intro_line body '安装构建并启用菜单；卸载保留未选菜单、源码与业务数据，完成后刷新 Finder。'
+  manager_intro_line body '安装构建并启用菜单；卸载保留未选菜单；清理只删除已安装 App 对应构建产物。'
   return 0
 }
 # 逐叶回传真实运行状态；不使用无法核实的百分比。
 manager_emit_progress() {
   local state="$1" feature="" message="" identifier=""
   case "$state" in
-    running) [[ "$MANAGER_ACTION" == uninstall ]] && message='正在卸载' || message='正在安装 / 更新' ;;
+    running)
+      case "$MANAGER_ACTION" in
+        uninstall) message='正在卸载' ;;
+        cleanup) message='正在清理构建产物' ;;
+        *) message='正在安装 / 更新' ;;
+      esac
+      ;;
     succeeded) message='成功' ;;
     failed) message='失败，请查看下方日志' ;;
   esac
@@ -179,6 +209,10 @@ manager_main() {
 }
 # 校验与业务复用原分支；任何失败保留真实退出码。
 manager_execute_operation() {
+  if [[ "$MANAGER_ACTION" == cleanup ]]; then
+    run_cleanup_operation
+    return $?
+  fi
   manager_validate_existing_configuration || return $?
   if [[ "$MANAGER_ACTION" == install ]]; then
     run_install_operation
@@ -200,9 +234,200 @@ manager_validate_existing_configuration() {
   done
 }
 
+# 从本包加载部署函数；独立复制不依赖上级仓库。
+manager_load_deployment() {
+  local package_root="${MANAGER_ENTRY_DIR:-${ZSH_ARGZERO:A:h:h}}"
+  source "$package_root/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh"
+}
+# 只清理当前宿主的历史构建根，保留已安装 App、功能配置和登记。
+manager_cleanup_existing_build_products() {
+  manager_load_deployment || return $?
+  local built_app=""
+  built_app="$(manager_built_application_path)" || return $?
+  jobs_deployment_cleanup_existing_build_products "$built_app" "${built_app:h:h:h:h}" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension
+}
+# 清理入口不进入共享叶配置校验、安装或卸载分支。
+run_cleanup_operation() {
+  manager_cleanup_existing_build_products
+}
+# 总面板可传入它自己的构建产物，但不能改变本包 App 名与身份。
+manager_built_application_path() {
+  local package_root="${MANAGER_ENTRY_DIR:-${ZSH_ARGZERO:A:h:h}}" built_app=""
+  built_app="${JOBS_FINDER_BUILT_APP_PATH:-$package_root/work/DerivedData/Build/Products/Debug/JobsIOSTools.app}"
+  [[ "$built_app" == /* && "${built_app:t}" == JobsIOSTools.app ]] || return 2
+  print -r -- "$built_app"
+}
+# App 事务开始前保存共享功能配置，登记失败时恢复原字节和权限。
+manager_capture_install_configuration() {
+  local temporary_root="${TMPDIR:-/tmp}"
+  MANAGER_DEPLOYMENT_CONFIG="${HOME}/Library/Application Support/JobsIOSTools/EnabledFeatures.txt"
+  MANAGER_DEPLOYMENT_CONFIG_BACKUP="$(/usr/bin/mktemp -d "${temporary_root%/}/JobsFinderConfiguration.XXXXXXXX")" || return 1
+  [[ ! -L "$MANAGER_DEPLOYMENT_CONFIG" && ! -L "${MANAGER_DEPLOYMENT_CONFIG:h}" ]] || return 1
+  if [[ -e "$MANAGER_DEPLOYMENT_CONFIG" ]]; then
+    [[ -f "$MANAGER_DEPLOYMENT_CONFIG" ]] || return 1
+    /bin/cp -p "$MANAGER_DEPLOYMENT_CONFIG" "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/original" || return 1
+  fi
+}
+# 读取原配置后不覆盖外部编辑，缺失与空配置分别保留。
+manager_validate_install_configuration_snapshot() {
+  [[ -n "${MANAGER_DEPLOYMENT_CONFIG_BACKUP:-}" ]] || return 0
+  if [[ -f "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/original" ]]; then
+    /usr/bin/cmp -s "$MANAGER_DEPLOYMENT_CONFIG" "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/original"
+  else
+    [[ ! -e "$MANAGER_DEPLOYMENT_CONFIG" && ! -L "$MANAGER_DEPLOYMENT_CONFIG" ]]
+  fi
+}
+# 发布完成后记录本次写入，退出时不覆盖其它进程的后续修改。
+manager_record_install_configuration() {
+  [[ -n "${MANAGER_DEPLOYMENT_CONFIG_BACKUP:-}" ]] || return 0
+  /bin/cp -p "$MANAGER_DEPLOYMENT_CONFIG" "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/published"
+}
+# 清理本次私有配置快照；失败恢复未完成时保留以便核对。
+manager_release_install_configuration() {
+  [[ -n "${MANAGER_DEPLOYMENT_CONFIG_BACKUP:-}" ]] || return 0
+  [[ -d "$MANAGER_DEPLOYMENT_CONFIG_BACKUP" && ! -L "$MANAGER_DEPLOYMENT_CONFIG_BACKUP" && "${MANAGER_DEPLOYMENT_CONFIG_BACKUP:t}" == JobsFinderConfiguration.* ]] || return 1
+  /bin/rm -r -- "$MANAGER_DEPLOYMENT_CONFIG_BACKUP" || return 1
+  MANAGER_DEPLOYMENT_CONFIG_BACKUP=""
+}
+# 部署未提交时，App 和已发布配置一起撤回；失败保留备份与真实错误。
+manager_rollback_install_deployment() {
+  local original_result="${1:-$?}" temporary="" recovery_failed=0
+  if [[ -n "${MANAGER_DEPLOYMENT_CONFIG_BACKUP:-}" && -f "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/published" ]]; then
+    if /usr/bin/cmp -s "$MANAGER_DEPLOYMENT_CONFIG" "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/published"; then
+      if [[ -f "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/original" ]]; then
+        temporary="$(/usr/bin/mktemp "${MANAGER_DEPLOYMENT_CONFIG}.restore.XXXXXXXX")" || recovery_failed=1
+        if (( ! recovery_failed )); then
+          /bin/cp -p "$MANAGER_DEPLOYMENT_CONFIG_BACKUP/original" "$temporary" && /bin/mv -f "$temporary" "$MANAGER_DEPLOYMENT_CONFIG" || recovery_failed=1
+        fi
+      else
+        /bin/rm -f -- "$MANAGER_DEPLOYMENT_CONFIG" || recovery_failed=1
+      fi
+    else
+      print -u2 -r -- "⚠ 配置已被外部修改，未覆盖；保留备份：$MANAGER_DEPLOYMENT_CONFIG_BACKUP"
+      recovery_failed=1
+    fi
+  fi
+  if (( $+functions[jobs_deployment_rollback] )); then
+    jobs_deployment_rollback || recovery_failed=1
+  fi
+  if (( ! recovery_failed )); then
+    manager_release_install_configuration || true
+  fi
+  return "$original_result"
+}
+# 构建完成后部署完整 App，再让原登记逻辑使用选中位置。
+manager_deploy_built_application() {
+  manager_load_deployment || exit $?
+  local built_app="$APP_PATH"
+  MANAGER_DEPLOYMENT_BUILT_APP_PATH="$built_app"
+  manager_capture_install_configuration || exit $?
+  jobs_deployment_install "$built_app" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension || exit $?
+  APP_PATH="$(jobs_deployment_app_path "$built_app")" || exit $?
+  EXTENSION_PATH="$APP_PATH/Contents/PlugIns/JobsIOSToolsFinderSync.appex"
+  jobs_deployment_retire_other_copies "$APP_PATH" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension || exit $?
+}
+# 仅在部署提交后清理本包此次 DerivedData；失败只提示，不撤回已安装的 App。
+manager_cleanup_build_products() {
+  [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" == 1 ]] || return 0
+  local package_root="${MANAGER_ENTRY_DIR:-${ZSH_ARGZERO:A:h:h}}"
+  if ! jobs_deployment_cleanup_build_products "$MANAGER_DEPLOYMENT_BUILT_APP_PATH" "$package_root/work/DerivedData" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension; then
+    print -u2 -r -- '⚠ App 已安装成功，但清除此轮构建产物失败；已保留应用程序目录中的 App，请查看日志。'
+  fi
+  return 0
+}
+# 登记和配置均成功才释放旧 App 备份；退出失败由部署事务恢复。
+manager_commit_deployment() {
+  jobs_deployment_commit || exit $?
+  manager_release_install_configuration || exit $?
+  manager_cleanup_build_products
+}
+# 精确删除所选位置；不枚举或全局禁用同 ID 的其它副本。
+manager_remove_selected_application() {
+  if [[ "${JOBS_FINDER_INSTALL_LOCATION:-build}" == applications ]]; then
+    jobs_deployment_uninstall "$1" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension
+  else
+    jobs_deployment_validate_app "$1" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension || return $?
+    jobs_deployment_unregister_app "$1" JobsIOSToolsFinderSync.appex || return $?
+    /bin/rm -r -- "$1"
+  fi
+}
+# 共享叶移除先保留其它配置，最后一叶才删除本次选中位置的 App。
+manager_uninstall_selected_application() {
+  manager_load_deployment || return $?
+  local built_app="" selected_app="" other_enabled=0 config="" configured="" entry="" normalized="" temporary=""
+  local allowed=() requested=() remaining=() values=()
+  built_app="$(manager_built_application_path)" || return $?
+  selected_app="$(jobs_deployment_app_path "$built_app")" || return $?
+  if [[ ! -e "$selected_app" && ! -L "$selected_app" ]]; then
+    print -r -- "ℹ 所选位置未安装，无需卸载：$selected_app"
+    return 0
+  fi
+  jobs_deployment_validate_app "$selected_app" com.jobs.JobsIOSTools JobsIOSToolsFinderSync.appex com.jobs.JobsIOSTools.FinderSyncExtension || return $?
+  jobs_deployment_has_other_enabled "$selected_app" com.jobs.JobsIOSTools.FinderSyncExtension || other_enabled=$?
+  (( other_enabled <= 1 )) || return "$other_enabled"
+  if (( other_enabled == 0 )); then
+    print -r -- 'ℹ 另一位置的副本正在使用；只移除所选副本，保留公共配置。'
+    manager_remove_selected_application "$selected_app"
+    return $?
+  fi
+  config="${HOME}/Library/Application Support/JobsIOSTools/EnabledFeatures.txt"
+  for entry in ${(s:,:)MANAGER_UI_SCOPE}; do
+    normalized="$entry"
+    case JobsIOSTools in
+      JobsFlutterTools) normalized="${entry#flutter-}" ;;
+      JobsTerminalOpener)
+        case "$entry" in
+          terminal_open) normalized=open ;;
+          file_content) normalized=file-content ;;
+          file_merge) normalized=file-merge ;;
+          file_split) normalized=file-split ;;
+          clean_build_artifacts) normalized=clean-build-artifacts ;;
+          codegraph_bootstrap) normalized=codegraph-bootstrap ;;
+        esac ;;
+      JobsIOSTools) [[ "$entry" != pod_install ]] || normalized=ios-pod-install ;;
+    esac
+    allowed+=("$normalized")
+  done
+  requested=("${allowed[@]}")
+  [[ -z "$MANAGER_REQUESTED_FEATURES" ]] || requested=("${(@s:,:)MANAGER_REQUESTED_FEATURES}")
+  configured="${(j:,:)allowed}"
+  if [[ -e "$config" || -L "$config" ]]; then
+    [[ -f "$config" && ! -L "$config" && -r "$config" && ! -L "${config:h}" ]] || return 1
+    configured="$(<"$config")"
+  fi
+  for entry in ${(s:,:)configured}; do
+    [[ "$entry" != ios-clean-cache ]] || entry=ios-clean-build-artifacts
+    (( ${allowed[(Ie)$entry]} )) || return 1
+    (( ${requested[(Ie)$entry]} )) || remaining+=("$entry")
+  done
+  if (( ${#remaining} > 0 )); then
+    [[ ! -L "$config" && ! -L "${config:h}" ]] || return 1
+    /bin/mkdir -p "${config:h}" || return 1
+    temporary="$(/usr/bin/mktemp "${config}.XXXXXXXX")" || return 1
+    if ! print -nr -- "${(j:,:)remaining}" > "$temporary" || ! /bin/chmod 600 "$temporary" || ! /bin/mv -f "$temporary" "$config"; then
+      /bin/rm -f -- "$temporary"
+      return 1
+    fi
+    print -r -- "✔ 仅关闭所选动作，保留：${(j:,:)remaining}；位置：$selected_app"
+    manager_restart_finder 2>/dev/null || true
+    return 0
+  fi
+  manager_remove_selected_application "$selected_app" || return $?
+  [[ ! -e "$config" ]] || /bin/rm -f -- "$config" || return $?
+  manager_restart_finder 2>/dev/null || true
+}
+
 # 原install实现只在所选分支加载，保留可独立复制运行的能力。
 run_install_operation() {
 (
+# EXIT 属于整个安装子 Shell，不能在部署辅助函数返回时提前回滚。
+TRAPEXIT() {
+  local original_result=$?
+  if (( $+functions[manager_rollback_install_deployment] )); then
+    manager_rollback_install_deployment "$original_result"
+  fi
+  return "$original_result"
+}
 # 脚本自述：
 # - 脚本名称：ManageExtension.zsh（App 内部后台管理器）
 # - 核心用途：独立构建、注册并启用“iOS辅助工具”文件右键扩展。
@@ -399,6 +624,7 @@ write_feature_configuration() {
 }
 # 安装子集与已有选择合并，未选但已安装的功能保持启用。
 persist_feature_selection() {
+  (( ! $+functions[manager_validate_install_configuration_snapshot] )) || manager_validate_install_configuration_snapshot || exit $?
   local existing=""
   [[ ! -f "$FEATURE_CONFIG" ]] || existing="$(/bin/cat "$FEATURE_CONFIG")"
   local -a enabled=(${(s:,:)existing})
@@ -411,6 +637,7 @@ persist_feature_selection() {
     fi
   done
   write_feature_configuration "${(j:,:)result}" || { log '✖ 功能配置保存失败。'; exit 1; }
+  (( ! $+functions[manager_record_install_configuration] )) || manager_record_install_configuration || exit $?
   log "✔ 启用功能：${(j:,:)result}"
 }
 
@@ -420,8 +647,10 @@ main() {
   initialize_runtime # 确认后准备本次运行日志。
   check_environment # 核验完整开发工具链与工程。
   build_extension # 独立构建并验证 App 身份和签名。
+  manager_deploy_built_application # 把完整 App 部署至本次选择的位置，失败保留原安装。
   persist_feature_selection # 仅构建成功后保存已选功能。
   register_extension # 注册固定扩展并刷新文件菜单。
+  manager_commit_deployment # 登记成功后提交部署事务。
 }
 
 
@@ -666,18 +895,8 @@ main() {
 }
 
 
-# 外层统一负责交互；这里仅准备原分支的展示路径与经过验证的功能参数。
-show_script_intro_and_wait() {
-  (( $+functions[prepare_display_context] )) && prepare_display_context
-  local feature_options=(--non-interactive)
-  [[ -z "$MANAGER_REQUESTED_FEATURES" ]] || feature_options+=(--features "$MANAGER_REQUESTED_FEATURES")
-  parse_feature_options "${feature_options[@]}"
-  return 0
-}
-confirm_uninstall() {
-  return 0
-}
-main "$@"
+# 外层统一负责交互；卸载只进入所选位置实现，旧全副本枚举不参与本次管理。
+manager_uninstall_selected_application
 )
 }
 

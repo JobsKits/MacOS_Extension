@@ -86,6 +86,20 @@ function devices(path, project) {
         return value.id + '\t' + field(value.name || value.id) + ' — ' + platform;
     }).join('\n');
 }
+// 预缓存只针对已选择设备的平台，不扩大为全部平台下载。
+function precachePlatform(path, selectedId) {
+    var values = readJSON(path);
+    if (!Array.isArray(values)) throw new Error('Flutter设备响应必须是数组。');
+    var selected = values.filter(function (value) { return value && value.id === selectedId; });
+    if (selected.length !== 1) throw new Error('所选设备已不在本轮设备清单中，请重新加载。');
+    var platform = String(selected[0].targetPlatform || selected[0].platform || '').toLowerCase();
+    if (/^android/.test(platform)) return 'android';
+    if (/^ios/.test(platform)) return 'ios';
+    if (/^(darwin|macos)/.test(platform)) return 'macos';
+    if (/^web/.test(platform)) return 'web';
+    if (/^(ohos|openharmony)/.test(platform)) return 'ohos';
+    return '';
+}
 // 兼容外部提供的官方 daemon emulator 结果数组，只列出已有 Android AVD。
 function emulators(path) {
     var values = readJSON(path);
@@ -654,7 +668,7 @@ function daemonCommand(path, operation) {
 function logFormatter(write) {
     var progress = Object.create(null), packages = 0, warnings = 0, spm = false, systemIndexNotice = false;
     function emit(level, text) {
-        String(text).split(/\r?\n/).forEach(function (line) {
+        String(text).split(/\r\n|\r|\n/).forEach(function (line) {
             if (line.trim()) write('[' + level + '] ' + line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ''));
         });
     }
@@ -789,7 +803,7 @@ function watchLog(path, exitPath) {
         text += decoded || '';
         var rest = pending.subdataWithRange($.NSMakeRange(used, count - used));
         pending = $.NSMutableData.dataWithData(rest);
-        var lines = text.split('\n'); text = lines.pop(); lines.forEach(format);
+        var lines = text.split(/\r\n|\r|\n/); text = lines.pop(); lines.forEach(format);
     }
     try {
         while (true) {
@@ -809,6 +823,59 @@ function watchLog(path, exitPath) {
     } finally { handle.closeFile; }
 }
 
+// 下载前只读本地元数据；未初始化的Dart不能靠执行SDK来探测版本。
+function sdkDownloadContext(root, declared, gitTag, gitRevision, host, engineOverride, target) {
+    function localText(relative) {
+        try { return readText(root.replace(/\/+$/, '') + '/' + relative, 65536).trim(); }
+        catch (_) { return ''; }
+    }
+    function version(value) { return typeof value === 'string' && /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z._+-]+)?(?:\s+\([^\r\n]*\))?$/.test(value) ? value : ''; }
+    function revision(value) { return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value) ? value.toLowerCase() : ''; }
+    var machine = null;
+    try { machine = JSON.parse(localText('bin/cache/flutter.version.json')); } catch (_) {}
+    if (!machine || Array.isArray(machine) || typeof machine !== 'object') machine = {};
+    var localVersion = version(gitTag), localSource = 'Git HEAD精确tag';
+    if (!localVersion) {
+        localVersion = version(localText('version'));
+        localSource = 'SDK本地version记录，未执行核验';
+    }
+    if (!localVersion && (!gitRevision || machine.frameworkRevision === gitRevision)) {
+        localVersion = version(machine.frameworkVersion);
+        localSource = 'flutter.version.json本地记录，未执行核验';
+    }
+    var engine = revision(engineOverride) || (!engineOverride ? revision(localText('bin/internal/engine.version')) : '');
+    var engineSource = engineOverride ? '当前进程FLUTTER_PREBUILT_ENGINE_VERSION' : 'bin/internal/engine.version';
+    var dart = '', dartSource = '';
+    if (engine) {
+        dart = version(localText('bin/internal/dart-sdk.version'));
+        if (dart) dartSource = 'SDK声明bin/internal/dart-sdk.version';
+        if (!dart && revision(machine.engineRevision) === engine) {
+            dart = version(machine.dartSdkVersion);
+            if (dart) dartSource = '与目标engine一致的flutter.version.json';
+        }
+        if (!dart && revision(localText('bin/cache/engine-dart-sdk.stamp')) === engine) {
+            dart = version(localText('bin/cache/dart-sdk/version'));
+            if (dart) dartSource = '与目标engine一致的当前Dart缓存';
+        }
+    }
+    var lines = [
+        '━━━━━━━━━━ SDK下载上下文（本地只读） ━━━━━━━━━━',
+        '项目声明：' + (declared ? 'Flutter ' + field(declared) : '未声明FVM版本（使用已解析SDK）'),
+        'SDK本地身份：' + (localVersion ? 'Flutter ' + field(localVersion) + '（' + localSource + '）' : '版本尚未解析，不以目录名冒充实际版本'),
+        'SDK根目录：' + field(root),
+        '下载宿主：' + field(host),
+        '运行目标：' + field(target || '尚未选择；先准备SDK自身组件'),
+        '目标Engine：' + (engine ? engine + '（' + engineSource + '）' : '尚未解析；以下载器后续真实输出为准'),
+        '目标Dart：' + (dart ? field(dart) + '（' + dartSource + '；目标版本不等于已安装验收）' : '版本尚未解析，待目标SDK下载完成后确认；不使用dart-sdk.old旧版本')
+    ];
+    if (revision(gitRevision)) lines.splice(3, 0, 'SDK源码提交：' + revision(gitRevision));
+    if (declared && localVersion && declared.replace(/^v/, '') !== localVersion.replace(/^v/, '')) {
+        lines.push('⚠ 项目声明与SDK本地版本不同，请核对上述来源；此处只展示，不切换或修复SDK。');
+    }
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    return lines.join('\n');
+}
+
 // 严格分发内部协议，参数数量错误时直接失败。
 function run(argv) {
     var mode = argv[0];
@@ -818,12 +885,14 @@ function run(argv) {
     }
     if (mode === 'format-log' && args.length === 1) {
         var output = [], format = logFormatter(function (line) { output.push(line); });
-        readText(args[0], 16 * 1024 * 1024).split('\n').forEach(format);
+        readText(args[0], 16 * 1024 * 1024).split(/\r\n|\r|\n/).forEach(format);
         return output.join('\n');
     }
     if (mode === 'validate' && args.length === 1) {
         return validate(args[0]) ? 'true' : 'false';
     }
+    if (mode === 'sdk-download-context' && args.length === 7) return sdkDownloadContext.apply(null, args);
+    if (mode === 'precache-platform' && args.length === 2) return precachePlatform(args[0], args[1]);
     if (mode === 'devices' && (args.length === 1 || args.length === 2)) {
         return devices(args[0], args[1]);
     }

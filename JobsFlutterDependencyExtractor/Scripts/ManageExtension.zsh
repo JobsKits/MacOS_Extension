@@ -1,12 +1,13 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：ManageExtension.zsh（App 内部后台管理器）
-# - 核心用途：一个入口管理本功能的安装 / 更新与卸载。
+# - 核心用途：一个入口管理本功能的安装 / 更新、卸载与构建产物清理。
 # - 影响范围：当前用户 Finder 菜单、对应构建产物与专用功能配置；保留源码和业务数据。
 # - 运行提示：直接打开 GUI，在面板选择安装 / 更新或卸载；底部实时日志允许复制。
 # shell: zsh
 
 MANAGER_ACTION=""
+MANAGER_STOP_REQUEST_FILE="${JOBS_FINDER_STOP_REQUEST_FILE:-}"
 MANAGER_NON_INTERACTIVE=0
 MANAGER_SKIP_RESTART=0
 MANAGER_REQUESTED_FEATURES=""
@@ -16,23 +17,40 @@ MANAGER_GUI_LEAF_FEATURES=""
 MANAGER_UI_SCOPE="flutter-extract"
 # 支持上级面板在完成确认后调用；显式参数不会改变本目录的功能边界。
 manager_parse_options() {
+  local install_location="${JOBS_FINDER_INSTALL_LOCATION:-build}" cleanup_build_products="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}"
   MANAGER_ENTRY_DIR="${ZSH_ARGZERO:A:h:h}"
   while (( $# > 0 )); do
     case "$1" in
       --action) (( $# >= 2 )) || return 2; MANAGER_ACTION="$2"; shift ;;
       --action=*) MANAGER_ACTION="${1#--action=}" ;;
+      --install-location) (( $# >= 2 )) || return 2; install_location="$2"; shift ;;
+      --install-location=*) install_location="${1#--install-location=}" ;;
+      --cleanup-build-products) cleanup_build_products=1 ;;
+      --stop-request-file) (( $# >= 2 )) && [[ "$2" == /* ]] || return 2; MANAGER_STOP_REQUEST_FILE="$2"; shift ;;
+      --stop-request-file=*) MANAGER_STOP_REQUEST_FILE="${1#--stop-request-file=}"; [[ "$MANAGER_STOP_REQUEST_FILE" == /* ]] || return 2 ;;
       --non-interactive) MANAGER_NON_INTERACTIVE=1 ;;
       --gui-session) MANAGER_GUI_SESSION=1 ;;
       --skip-finder-restart) MANAGER_SKIP_RESTART=1 ;;
       --scope|--features) (( $# >= 2 )) || return 2; MANAGER_REQUESTED_FEATURES="$2"; shift ;;
       --features=*) MANAGER_REQUESTED_FEATURES="${1#--features=}" ;;
-      --help|-h) print '用法：双击管理，或 --action install|uninstall --non-interactive [--features 功能ID,...] [--skip-finder-restart]'; return 10 ;;
+      --help|-h) print '用法：双击管理，或 --action install|uninstall|cleanup --non-interactive [--features 功能ID,...] [--skip-finder-restart] [--install-location build|applications] [--cleanup-build-products] [--stop-request-file PATH]'; return 10 ;;
       *) print -u2 -r -- "✖ 未知参数：$1"; return 2 ;;
     esac
     shift
   done
+  [[ "$install_location" == build || "$install_location" == applications ]] || { print -u2 "✖ 安装位置必须是 build 或 applications。"; return 2; }
+  [[ "$cleanup_build_products" == 0 || "$cleanup_build_products" == 1 ]] || { print -u2 '✖ 构建产物清理开关必须是 0 或 1。'; return 2; }
+  if [[ "$cleanup_build_products" == 1 && ( "$install_location" != applications || "${MANAGER_ACTION:-install}" != install ) ]]; then
+    print -u2 '✖ 仅安装到应用程序目录时允许清除此轮构建产物。'
+    return 2
+  fi
+  [[ "$MANAGER_ACTION" != cleanup || "$install_location" == applications ]] || { print -u2 '✖ 独立清理仅允许应用程序目录模式。'; return 2; }
+  [[ -z "$MANAGER_STOP_REQUEST_FILE" || "$MANAGER_STOP_REQUEST_FILE" == /* ]] || { print -u2 '✖ 停止请求文件必须使用绝对路径。'; return 2; }
+  export JOBS_FINDER_STOP_REQUEST_FILE="$MANAGER_STOP_REQUEST_FILE"
+  export JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="$cleanup_build_products"
+  export JOBS_FINDER_INSTALL_LOCATION="$install_location"
   manager_prepare_gui_features || return $?
-  [[ -z "$MANAGER_ACTION" || "$MANAGER_ACTION" == install || "$MANAGER_ACTION" == uninstall ]] || return 2
+  [[ -z "$MANAGER_ACTION" || "$MANAGER_ACTION" == install || "$MANAGER_ACTION" == uninstall || "$MANAGER_ACTION" == cleanup ]] || return 2
   (( ! MANAGER_NON_INTERACTIVE )) || [[ -n "$MANAGER_ACTION" ]] || { print -u2 '✖ 非交互调用必须明确 --action。'; return 2; }
 }
 # 不支持颜色时保留纯文本自述，确认前不创建日志或修改系统。
@@ -76,6 +94,10 @@ manager_prepare_gui_features() {
         ;;
       JobsIOSTools) [[ "$feature" != pod_install ]] || mapped=ios-pod-install ;;
     esac
+    if [[ "$MANAGER_ACTION" == cleanup ]]; then
+      local cleanup_identifier="$(manager_gui_identifier "$mapped")"
+      (( ${allowed[(Ie)$cleanup_identifier]} )) || { print -u2 -r -- "✖ 功能不属于本入口：$feature"; return 2; }
+    fi
     prepared+=("$mapped")
   done
   MANAGER_REQUESTED_FEATURES="${(j:,:)prepared}"
@@ -101,6 +123,7 @@ manager_gui_identifier() {
 }
 # 完整仓转交总管理器的受限范围，独立包使用随包源码且仍能整体复制。
 manager_open_gui() {
+  local -x JOBS_FINDER_STOP_REQUEST_FILE=""
   local entry="${MANAGER_ENTRY_DIR:h}/Scripts/ManageFinderExtensions.zsh" helper="$MANAGER_ENTRY_DIR/Scripts/FinderManagerGUI.zsh"
   local scope="$MANAGER_UI_SCOPE" identifier="" feature="" selected=() allowed=("${(@s:,:)MANAGER_UI_SCOPE}")
   if [[ -n "$MANAGER_REQUESTED_FEATURES" ]]; then
@@ -112,7 +135,8 @@ manager_open_gui() {
     scope="${(j:,:)selected}"
   fi
   if [[ -f "$entry" ]]; then
-    local arguments=(--scope "$scope" --action "${MANAGER_ACTION:-install}")
+    local arguments=(--scope "$scope" --action "${MANAGER_ACTION:-install}" --install-location "$JOBS_FINDER_INSTALL_LOCATION")
+    [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" != 1 ]] || arguments+=(--cleanup-build-products)
     (( ! MANAGER_GUI_SESSION )) || arguments+=(--gui-session)
     exec /bin/zsh "$entry" "${arguments[@]}"
   fi
@@ -127,14 +151,20 @@ manager_open_gui() {
 manager_choose_action() {
   manager_intro_line title "━━━━━━━━━━ ${ZSH_ARGZERO:t} ━━━━━━━━━━"
   manager_intro_line body "来源：${MANAGER_ENTRY_DIR}；仅管理当前范围内的 Finder 功能。"
-  manager_intro_line body '安装构建并启用菜单；卸载保留未选菜单、源码与业务数据，完成后刷新 Finder。'
+  manager_intro_line body '安装构建并启用菜单；卸载保留未选菜单；清理只删除已安装 App 对应构建产物。'
   return 0
 }
 # 逐叶回传真实运行状态；不使用无法核实的百分比。
 manager_emit_progress() {
   local state="$1" feature="" message="" identifier=""
   case "$state" in
-    running) [[ "$MANAGER_ACTION" == uninstall ]] && message='正在卸载' || message='正在安装 / 更新' ;;
+    running)
+      case "$MANAGER_ACTION" in
+        uninstall) message='正在卸载' ;;
+        cleanup) message='正在清理构建产物' ;;
+        *) message='正在安装 / 更新' ;;
+      esac
+      ;;
     succeeded) message='成功' ;;
     failed) message='失败，请查看下方日志' ;;
   esac
@@ -179,6 +209,10 @@ manager_main() {
 }
 # 校验与业务复用原分支；任何失败保留真实退出码。
 manager_execute_operation() {
+  if [[ "$MANAGER_ACTION" == cleanup ]]; then
+    run_cleanup_operation
+    return $?
+  fi
   if [[ "$MANAGER_ACTION" == install ]]; then
     run_install_operation
   else
@@ -199,10 +233,16 @@ run_flutter_operation() {
   fi
   [[ -f "$entry" ]] || { print -u2 '✖ 请保留包含 JobsFlutterTools 的完整 MacOS@Extension 目录。'; return 1; }
   (( ! MANAGER_SKIP_RESTART )) || extra+=(--skip-finder-restart)
+  [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" != 1 ]] || extra+=(--cleanup-build-products)
+  [[ -z "$MANAGER_STOP_REQUEST_FILE" ]] || extra+=(--stop-request-file "$MANAGER_STOP_REQUEST_FILE")
   /bin/zsh "$entry" --action "$action" --features "$selected_features" --non-interactive "${extra[@]}"
 }
 run_install_operation() {
   run_flutter_operation install
+}
+# 独立清理沿用所属宿主和功能白名单，不运行安装或卸载。
+run_cleanup_operation() {
+  run_flutter_operation cleanup
 }
 run_uninstall_operation() {
   run_flutter_operation uninstall

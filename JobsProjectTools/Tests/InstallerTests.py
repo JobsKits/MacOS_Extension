@@ -24,6 +24,22 @@ class InstallerTests(unittest.TestCase):
         self.log = self.base / 'calls.log'
         self.extension = self.base / 'work/DerivedData/Build/Products/Debug/JobsProjectTools.app/Contents/PlugIns/JobsProjectToolsFinderSync.appex'
         self.extension.mkdir(parents=True)
+        deployment = self.base / 'Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh'
+        deployment.parent.mkdir(parents=True)
+        # 只测试项目菜单事务；新部署系统边界由专门临时 App 夹具验证。
+        deployment.write_text("""
+jobs_deployment_app_path() { print -r -- "$1"; }
+jobs_deployment_install() { return 0; }
+jobs_deployment_retire_other_copies() { return 0; }
+jobs_deployment_commit() { return 0; }
+jobs_deployment_rollback() { return 0; }
+jobs_deployment_has_other_enabled() { return 1; }
+jobs_deployment_validate_app() { [[ "$1" == "$PROJECT_ROOT"/* && -d "$1" ]]; }
+jobs_deployment_unregister_app() {
+  "$PROJECT_ROOT/pluginkit" -r "$1/Contents/PlugIns/$2" || return $?
+  "$LSREGISTER" -u "$1"
+}
+""")
         source = (ROOT / 'JobsProjectTools/Scripts/ManageProjectTools.zsh').read_text()
         source = source.replace('PROJECT_ROOT="${0:A:h:h}"', f'PROJECT_ROOT="{self.base}"')
         source = source.replace('CONFIG_DIR="${HOME}/Library/Application Support/JobsProjectTools"', f'CONFIG_DIR="{self.config.parent}"')
@@ -38,12 +54,16 @@ with (base/'calls.log').open('a') as f: f.write(name+' '+repr(args)+'\\n')
 state_path=base/'state.json'
 state=json.loads(state_path.read_text())
 if name=='xcodebuild' and (base/'fail-build').exists(): sys.exit(9)
+if name=='xcodebuild': pathlib.Path({str(self.extension)!r}).mkdir(parents=True,exist_ok=True)
 if name=='pluginkit':
  if '-m' in args:
   identifier=args[args.index('-i')+1]
   if identifier in state:
    location={str(self.extension)!r} if identifier=={GROUP_ID!r} else '/old.app/Contents/PlugIns/old.appex'
    print(state[identifier]+' '+identifier+'(1.0) '+location)
+ elif '-r' in args:
+  state[{GROUP_ID!r}]='-'
+  state_path.write_text(json.dumps(state))
  elif '-e' in args:
   if (base/'fail-register').exists(): sys.exit(8)
   state[args[args.index('-i')+1]]='+' if args[args.index('-e')+1]=='use' else '-'
@@ -59,6 +79,7 @@ if name=='pluginkit':
                 source = source[:start] + f'LSREGISTER="{path}"' + source[end:]
             else:
                 source = source.replace(f'/usr/bin/{name}', str(path))
+        source = source.replace('  jobs_deployment_commit || return $?\n', '  [[ ! -e "$PROJECT_ROOT/fail-after-configuration" ]] || return 7\n  jobs_deployment_commit || return $?\n', 1)
         self.script = self.base / 'manage.zsh'
         self.script.write_text(source)
 
@@ -88,6 +109,23 @@ if name=='pluginkit':
         self.assertEqual(json.loads(self.state.read_text())[GROUP_ID], '-')
         self.run_script('install', 'vscode_opener')
         self.assertEqual(self.configured(), {'vscode_opener'})
+
+    def test_failure_after_configuration_publication_restores_exact_prior_files(self):
+        self.config.parent.mkdir(parents=True, exist_ok=True)
+        self.config.write_text('git-pull')
+        self.config.chmod(0o640)
+        git_marker = self.config.parent / 'GitMenuMigrationVersion.txt'
+        rollback_marker = self.config.parent / 'GitRollbackMigrationVersion.txt'
+        git_marker.write_text('previous-git-marker')
+        rollback_marker.write_text('previous-rollback-marker')
+        before_terminal = self.terminal.read_bytes()
+        (self.base / 'fail-after-configuration').touch()
+        self.run_script('install', 'vscode_opener', success=False)
+        self.assertEqual(self.config.read_text(), 'git-pull')
+        self.assertEqual(self.config.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(git_marker.read_text(), 'previous-git-marker')
+        self.assertEqual(rollback_marker.read_text(), 'previous-rollback-marker')
+        self.assertEqual(self.terminal.read_bytes(), before_terminal)
 
     def test_build_and_registration_failures_keep_legacy_and_configuration(self):
         for marker in ['fail-build', 'fail-register']:

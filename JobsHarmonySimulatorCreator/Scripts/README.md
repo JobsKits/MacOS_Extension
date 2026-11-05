@@ -27,6 +27,20 @@
 | [CreateHarmonySimulator.zsh](./CreateHarmonySimulator.zsh) | 发现兼容工具、缺失时从 SDL 安装并校验 Mac ARM64 CLT，检查创建能力，缺镜像时调用官方 CLI 下载选中的 Release 镜像，保护名称、创建并查询验证后按需启动。 |
 | [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | Xcode 构建后注册当前 App / appex 并检查准确启用路径；可用跳过标志交给安装器统一注册，不创建模拟器。 |
 
+
+**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，默认 `build`。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
+
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。默认不清理；UI 仅在应用程序安装模式显示清理选项，退出该组合就清空。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+
+安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
+
+
+**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+
+**App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
+
 ## 一、<span id="run">业务入口与命令</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```shell
@@ -43,7 +57,9 @@
 
 华为官方下载中心获取模拟器配套工具需要登录；免登录替代源使用 [SDL 镜像](https://libsdl.org/harmonyos-devtools/)。Mac ARM64 固定 CLT 6.1.1.280，校验大小、固定 SHA-256、ZIP 路径和工具能力后新增独立目录。摘要来自 SDL 快照，系统镜像由官方 CLI 按所选项另行下载。完整说明见[功能 README](../README.md)。`HARMONY_CLT_ARCHIVE` 可复用同版本本地 ZIP，仍需校验。
 
-`HARMONY_EMULATOR_BIN` 指定工具文件；`DEVECO_STUDIO_HOME` 或 `TOOL_HOME` 指定 DevEco / CLT 根目录。显式错误路径直接停止，保留现有设备。没有已下载 Release 镜像时查询官方可下载清单，回车默认选最新稳定版手机镜像；展示随附协议原文并由本人回车同意后执行 `-license accept`，再执行 `-install ... -force`。仅镜像安装省略重复确认，创建与启动不传 `-force`；安装后必须在本地清单验证所选类型与版本，失败即停止，不循环复检。启动保留 stdin 处理官方额外交互。调用方式以[官方文档](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-emulator-command-line)及本机 `-help` 为准。
+`HARMONY_EMULATOR_BIN` 指定工具文件；`DEVECO_STUDIO_HOME` 或 `TOOL_HOME` 指定 DevEco / CLT 根目录。显式错误路径直接停止，保留现有设备。没有已下载 Release 镜像时查询官方可下载清单，回车默认选最新稳定版手机镜像；展示随附协议原文并由本人回车同意后执行 `-license accept`，再执行 `-install ... -force`。仅镜像安装省略重复确认，创建与启动不传 `-force`；工具包、官方在线清单和镜像获取失败默认自动持续重试，间隔从 2 秒递增到最多 30 秒，无次数或总时长上限；不重复已经完成的版本选择与许可确认，保留下载进度与逐次日志，Ctrl+C 可终止。明确本地权限、磁盘、版本或许可错误停止。安装器退出零仍须验证本地选中镜像，未出现时继续自动获取，就绪后才继续创建。启动保留 stdin 处理官方额外交互。调用方式以[官方文档](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-emulator-command-line)及本机 `-help` 为准。
+
+`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置重试初始间隔 / 最大间隔，默认 2 / 30 秒；不设置总次数或总时长上限。当前操作日志保留终端原始详情，相邻的 `.attempts.log` 追加各次获取结果。Ctrl+C / TERM / HUP 停止本轮获取子进程与后续重试，已安装 SDK 和设备保留。
 
 ## 二、<span id="tests">隔离验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

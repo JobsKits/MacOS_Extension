@@ -126,8 +126,13 @@ pe_read_environment() {
     /usr/bin/plutil -convert xml1 -o /dev/null "$config" >/dev/null 2>&1 || { pe_log '✖ 环境配置损坏；请检查原文件后重新配置。'; return 1; }
     platform="$(/usr/bin/plutil -extract Platform raw -o - "$config" 2>/dev/null)"
     [[ -z "$platform" || "$platform" == MacOS ]] || { pe_log "✖ 环境配置来自 $platform，请在本机重新配置，保留旧文件作为参考。"; return 1; }
-    PE_CONFIG_FLUTTER="$(/usr/bin/plutil -extract FlutterPath raw -o - "$config" 2>/dev/null)" || return 1
-    PE_CONFIG_JAVA="$(/usr/bin/plutil -extract JavaHome raw -o - "$config" 2>/dev/null)" || return 1
-    [[ "$PE_CONFIG_FLUTTER" == /* && "$PE_CONFIG_JAVA" == /* ]] || return 1
+    PE_CONFIG_FLUTTER="$(/usr/bin/plutil -extract FlutterPath raw -o - "$config" 2>/dev/null)" || { pe_log "✖ 环境记录缺少FlutterPath：$config；请重新一键配置。"; return 1; }
+    PE_CONFIG_JAVA="$(/usr/bin/plutil -extract JavaHome raw -o - "$config" 2>/dev/null)" || { pe_log "✖ 环境记录缺少JavaHome：$config；请重新一键配置。"; return 1; }
+    [[ "$PE_CONFIG_FLUTTER" == /* ]] || { pe_log '✖ 环境记录FlutterPath不是绝对路径，请重新一键配置。'; return 1; }
+    if [[ -z "$PE_CONFIG_JAVA" ]]; then
+        [[ "$(/usr/bin/plutil -extract JavaMode raw -o - "$config" 2>/dev/null)" == none ]] || { pe_log '✖ 空JavaHome必须明确标记JavaMode为none，请重新一键配置。'; return 1; }
+    else
+        [[ "$PE_CONFIG_JAVA" == /* ]] || { pe_log '✖ 环境记录JavaHome不是绝对路径，请重新一键配置。'; return 1; }
+    fi
     PE_PLATFORM="$platform"
 }

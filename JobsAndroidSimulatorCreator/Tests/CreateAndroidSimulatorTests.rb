@@ -50,14 +50,19 @@ class CreateAndroidSimulatorTests < Minitest::Test
         [[ "${FIXTURE_TOOLS_BROKEN:-0}" != 1 ]] || exit 7
         print -r -- 19.0
       elif [[ "$*" == *--list* ]]; then
-        [[ "${FIXTURE_LIST_FAIL:-0}" != 1 ]] || { print -r -- 'network fixture failed' >&2; exit 6; }
+        [[ "${FIXTURE_LIST_FAIL:-0}" != 1 ]] || { print -r -- 'Permission denied: fixture repository' >&2; exit 6; }
+        count=$(/usr/bin/grep -c -- '--list --channel' "$FIXTURE_EVENTS")
+        (( count > ${FIXTURE_LIST_RETRY:-0} )) || { print -r -- 'network fixture failed' >&2; exit 6; }
+        (( count > ${FIXTURE_LIST_ZERO_RETRY:-0} )) || { print -r -- 'Warning: Failed to download any source lists! IO exception while downloading manifest' >&2; exit 0; }
         print -r -- 'Available Packages:'
         print -r -- "$FIXTURE_PACKAGE | 1 | Android image"
         print -r -- 'system-images;android-99-preview;google_apis;arm64-v8a | 1 | preview'
         print -r -- 'system-images;android-38;android-wear;arm64-v8a | 1 | watch'
       elif [[ "$*" == *--install* ]]; then
-        [[ "${FIXTURE_INSTALL_FAIL:-0}" != 1 ]] || { print -r -- 'download fixture failed' >&2; exit 5; }
-        [[ "${FIXTURE_INSTALL_BROKEN:-0}" != 1 ]] || exit 0
+        [[ "${FIXTURE_INSTALL_FAIL:-0}" != 1 ]] || { print -r -- 'Permission denied: fixture SDK' >&2; exit 5; }
+        count=$(/usr/bin/grep -c -- '--install' "$FIXTURE_EVENTS")
+        (( count > ${FIXTURE_INSTALL_RETRY:-0} )) || { print -r -- 'download fixture failed' >&2; exit 5; }
+        (( count > ${FIXTURE_INSTALL_ZERO_RETRY:-0} )) || exit 0
         if [[ "$*" == *'--install emulator'* ]]; then
           /bin/mkdir -p "$ANDROID_HOME/emulator"
           /bin/cp "$FIXTURE_EMULATOR_TEMPLATE" "$ANDROID_HOME/emulator/emulator"
@@ -108,6 +113,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
       'HOME' => @root, 'JAVA_HOME' => @jdk, 'ANDROID_HOME' => @sdk,
       'ANDROID_SDK_ROOT' => @sdk, 'ANDROID_AVD_HOME' => @avd,
       'ANDROID_USER_HOME' => File.join(@root, '.android'), 'TMPDIR' => File.join(@root, 'logs'),
+      'JOBS_SDK_RETRY_DELAY' => '0', 'JOBS_SDK_RETRY_MAX_DELAY' => '1',
       'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'NO_COLOR' => '1', 'TERM' => 'dumb',
       'ANDROID_SIM_PROXY' => 'direct', 'https_proxy' => nil, 'HTTPS_PROXY' => nil,
       'all_proxy' => nil, 'ALL_PROXY' => nil, 'no_proxy' => nil, 'NO_PROXY' => nil,
@@ -183,12 +189,14 @@ class CreateAndroidSimulatorTests < Minitest::Test
       print -r -- "curl:$url" >> "$FIXTURE_EVENTS"
       print -r -- "curl-target:$target" >> "$FIXTURE_EVENTS"
       print -r -- "stage-mode:$(/usr/bin/stat -f %Lp "${target:h}")" >> "$FIXTURE_EVENTS"
+      count=$(/usr/bin/grep -Fxc -- "curl:$url" "$FIXTURE_EVENTS")
+      (( count > ${FIXTURE_CURL_RETRY:-0} )) || { print -u2 -r -- 'Connection reset by peer: fixture archive'; exit 28; }
       if [[ "$url" == https://dl.google.com/android/repository/repository2-3.xml ]]; then
         /bin/cp "$FIXTURE_BOOTSTRAP_XML" "$target"
       elif [[ "$url" == https://api.adoptium.net/* ]]; then
         /bin/cp "$FIXTURE_JAVA_JSON" "$target"
       elif [[ "$url" == https://github.com/* || "$url" == https://release-assets.githubusercontent.com/* ]]; then
-        [[ "${FIXTURE_JAVA_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
+        [[ "${FIXTURE_JAVA_DOWNLOAD_FAIL:-0}" != 1 ]] || { print -u2 -r -- "Permission denied: fixture Java archive"; exit 22; }
         if [[ "${FIXTURE_JAVA_REDIRECT:-0}" == 1 && "$url" == https://github.com/* ]]; then
           print -r -- $'HTTP/1.1 302 Found\r\nLocation: https://release-assets.githubusercontent.com/fixture/java.tar.gz?signature=private-token\r\n' > "$headers"
           print -rn -- 302
@@ -196,7 +204,7 @@ class CreateAndroidSimulatorTests < Minitest::Test
         fi
         /bin/cp "$FIXTURE_JAVA_TAR" "$target"
       else
-        [[ "${FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
+        [[ "${FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL:-0}" != 1 ]] || { print -u2 -r -- "Permission denied: fixture SDK archive"; exit 22; }
         /bin/cp "$FIXTURE_BOOTSTRAP_ZIP" "$target"
       fi
       print -rn -- 200
@@ -254,9 +262,11 @@ class CreateAndroidSimulatorTests < Minitest::Test
     Open3.capture2e(@env, '/bin/zsh', SCRIPT, *(args.empty? ? ['--check'] : args))
   end
 
-  def test_standalone_and_finder_script_are_identical
-    assert File.exist?(STANDALONE), STANDALONE
-    assert_equal File.binread(STANDALONE), File.binread(SCRIPT)
+  def test_finder_and_bundled_simulator_resources_have_the_same_core
+    desktop = File.expand_path('../../JobsDesktopTools/Resource/CreateAndroidSimulator.zsh', __dir__)
+    support = File.expand_path('../../JobsFlutterTools/Scripts/Tools/AndroidSdkSupport.zsh', __dir__)
+    assert_equal File.binread(SCRIPT), File.binread(desktop)
+    assert_equal File.binread(SCRIPT).split('# <<< Jobs Android simulator core <<<').first, File.binread(support)
   end
 
   def test_full_health_check_is_read_only
@@ -514,13 +524,98 @@ class CreateAndroidSimulatorTests < Minitest::Test
     refute_includes events, 'create avd'
   end
 
-  def test_emulator_post_install_health_failure_stops
+  def test_emulator_download_retries_twice_then_continues_without_confirmation
     FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
-    @env['FIXTURE_INSTALL_BROKEN'] = '1'
-    output, result = interactive("\n", '--create')
-    refute result.success?, output
-    assert_includes output, '安装后复检仍失败'
-    assert_equal 1, events.scan('--install emulator').length
+    @env['FIXTURE_INSTALL_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--install emulator').length
+    assert_includes output, '自动重试'
+    refute_includes events, 'create avd'
+  end
+
+  def test_remote_catalog_retries_twice_then_can_cancel_selection
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_LIST_RETRY'] = '2'
+    output, result = interactive("\n\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--list --channel').length
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_sdk_list_zero_exit_with_failed_source_lists_keeps_retrying
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_LIST_ZERO_RETRY'] = '2'
+    output, result = interactive("\n\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--list --channel').length
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_component_metadata_only_zero_exit_retries_until_required_payload_is_ready
+    manager = File.join(@root, 'component-sdkmanager')
+    executable(manager, <<~'ZSH')
+      #!/bin/zsh
+      counter="$FIXTURE_COMPONENT_TARGET.calls"
+      count=0
+      [[ ! -f "$counter" ]] || count="$(/bin/cat "$counter")"
+      (( count += 1 ))
+      /bin/mkdir -p "${FIXTURE_COMPONENT_TARGET:h}" "$FIXTURE_COMPONENT_ROOT"
+      print -r -- "$count" > "$counter"
+      print -r -- 'Pkg.Revision=1' > "$FIXTURE_COMPONENT_ROOT/source.properties"
+      # 模拟SDK Manager退出零且先落元数据，第三次才真正补齐有效载荷。
+      (( count > 2 )) || exit 0
+      if [[ "$FIXTURE_COMPONENT_EXECUTABLE" == 1 ]]; then
+        print -r -- $'#!/bin/zsh\nexit 0' > "$FIXTURE_COMPONENT_TARGET"
+        /bin/chmod 700 "$FIXTURE_COMPONENT_TARGET"
+      else
+        : > "$FIXTURE_COMPONENT_TARGET"
+      fi
+    ZSH
+    components = [
+      ['platform-tools', 'adb', true],
+      ['platforms;android-36', 'android.jar', false],
+      ['build-tools;36.0.0', 'aapt2', true],
+      ['ndk;28.1.13356709', 'ndk-build', true],
+      ['cmake;3.31.6', 'bin/cmake', true]
+    ]
+    command = <<~'ZSH'
+      source <(/usr/bin/sed '$d' "$1")
+      android_prepare_context
+      ANDROID_SIM_SDK="$2"
+      ANDROID_SIM_SDKMANAGER="$3"
+      LOG_FILE="$5"
+      ANDROID_SIM_LOG_READY=1
+      android_install_package "$4"
+    ZSH
+    components.each do |package, payload, runnable|
+      directory = File.join(@sdk, package.tr(';', '/'))
+      target = File.join(directory, payload)
+      env = @env.merge('FIXTURE_COMPONENT_ROOT' => directory,
+                       'FIXTURE_COMPONENT_TARGET' => target,
+                       'FIXTURE_COMPONENT_EXECUTABLE' => runnable ? '1' : '0')
+      log = File.join(@root, 'logs', package.tr(';', '-') + '.log')
+      output, result = Timeout.timeout(8) do
+        Open3.capture2e(env, '/bin/zsh', '-c', command, 'test', SCRIPT, @sdk, manager, package, log)
+      end
+      assert result.success?, "#{package}: #{output}"
+      assert_equal '3', File.read(target + '.calls').strip, package
+      assert File.file?(target), package
+      assert File.executable?(target), package if runnable
+      assert_includes output, 'SDK 获取未就绪'
+      assert File.file?(log + '.attempts.log'), package
+    end
+  end
+
+  def test_emulator_zero_exit_without_files_retries_until_ready
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    @env['FIXTURE_INSTALL_ZERO_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, 'SDK 获取未就绪'
+    assert_equal 3, events.scan('--install emulator').length
     refute_includes events, 'create avd'
   end
 
@@ -553,12 +648,13 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert_includes output, '已新增 AVD'
   end
 
-  def test_image_post_install_failure_does_not_create
+  def test_image_zero_exit_without_files_retries_until_ready_then_can_cancel
     FileUtils.rm_rf(File.join(@sdk, 'system-images'))
-    @env['FIXTURE_INSTALL_BROKEN'] = '1'
-    output, result = interactive("\n\n\n", '--create')
-    refute result.success?, output
-    assert_includes output, '映像安装后复检失败'
+    @env['FIXTURE_INSTALL_ZERO_RETRY'] = '2'
+    output, result = interactive("\n\n\n\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, 'SDK 获取未就绪'
+    assert_equal 3, events.scan("--install #{PACKAGE}").length
     refute_includes events, 'create avd'
   end
 
@@ -641,7 +737,18 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
   end
 
-  def test_official_bootstrap_download_failure_stops_without_retries
+  def test_google_metadata_and_archive_retry_until_both_succeed
+    bootstrap_fixture
+    @env['FIXTURE_CURL_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
+    assert_equal 6, events.scan('curl:').length
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    refute_includes events, 'create avd'
+  end
+
+  def test_official_bootstrap_local_download_error_stops_without_retries
     bootstrap_fixture
     @env['FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL'] = '1'
     output, result = interactive("\n", '--create')
@@ -793,7 +900,17 @@ class CreateAndroidSimulatorTests < Minitest::Test
     assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
   end
 
-  def test_temurin_download_failure_is_not_retried_or_published
+  def test_temurin_metadata_and_archive_retry_until_both_succeed
+    java_fixture
+    @env['FIXTURE_CURL_RETRY'] = '2'
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_equal 3, events.scan('curl:https://api.adoptium.net/').length
+    assert_equal 3, events.scan('curl:https://github.com/').length
+    assert_equal 1, Dir.glob(File.join(@root, 'Library/Java/JavaVirtualMachines/temurin-21-*.jdk')).length
+  end
+
+  def test_temurin_local_download_error_is_not_retried_or_published
     java_fixture
     @env['FIXTURE_JAVA_DOWNLOAD_FAIL'] = '1'
     output, result = java_bootstrap

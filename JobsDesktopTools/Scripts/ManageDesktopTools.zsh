@@ -11,6 +11,7 @@ CONFIG_DIR=""
 CONFIG_PATH=""
 MARKER_PATH=""
 APP_PATH=""
+BUILT_APP_PATH=""
 EXTENSION_PATH=""
 DERIVED_PATH=""
 LOG_FILE=""
@@ -19,6 +20,7 @@ TEMPORARY_ROOT=""
 LOCK_PATH=""
 LOCK_HELD=0
 OPERATION=""
+STOP_REQUEST_FILE="${JOBS_FINDER_STOP_REQUEST_FILE:-}"
 NON_INTERACTIVE=0
 SKIP_RESTART=0
 HAD_CONFIG=0
@@ -44,25 +46,45 @@ prepare_context() {
   CONFIG_PATH="${CONFIG_DIR}/EnabledFeatures.txt"
   MARKER_PATH="${CONFIG_DIR}/MigrationVersion.txt"
   DERIVED_PATH="${PROJECT_ROOT}/work/DerivedData"
-  APP_PATH="${DERIVED_PATH}/Build/Products/Debug/JobsDesktopTools.app"
-  EXTENSION_PATH="${APP_PATH}/Contents/PlugIns/JobsDesktopToolsFinderSync.appex"
+  BUILT_APP_PATH="${DERIVED_PATH}/Build/Products/Debug/JobsDesktopTools.app"
   LOCK_PATH="${CONFIG_DIR}/.manager-lock"
   TEMPORARY_ROOT="${TMPDIR:-/tmp}"
   LOG_FILE="${TEMPORARY_ROOT%/}/JobsDesktopToolsInstall.log"
   OPERATION="${1:-}"
-  [[ "$OPERATION" == install || "$OPERATION" == uninstall ]] || { print -u2 '用法：install|uninstall 功能ID... [--non-interactive] [--skip-finder-restart]'; return 2; }
+  [[ "$OPERATION" == install || "$OPERATION" == uninstall || "$OPERATION" == cleanup ]] || { print -u2 '用法：install|uninstall|cleanup 功能ID... [--non-interactive] [--skip-finder-restart]'; return 2; }
   shift
-  local value=""
-  for value in "$@"; do
+  local value="" install_location="${JOBS_FINDER_INSTALL_LOCATION:-build}" cleanup_build_products="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}"
+  while (( $# )); do
+    value="$1"
     case "$value" in
       --non-interactive|--install|--uninstall) NON_INTERACTIVE=1 ;;
       --skip-finder-restart) SKIP_RESTART=1 ;;
+      --install-location) (( $# >= 2 )) || return 2; install_location="$2"; shift ;;
+      --install-location=*) install_location="${value#--install-location=}" ;;
+      --cleanup-build-products) cleanup_build_products=1 ;;
+      --stop-request-file) (( $# >= 2 )) && [[ "$2" == /* ]] || return 2; STOP_REQUEST_FILE="$2"; shift ;;
+      --stop-request-file=*) STOP_REQUEST_FILE="${1#--stop-request-file=}"; [[ "$STOP_REQUEST_FILE" == /* ]] || return 2 ;;
       *)
         (( ${FEATURES[(Ie)$value]} )) || { print -u2 "✖ 未知桌面功能：$value"; return 2; }
         (( ${REQUESTED[(Ie)$value]} )) || REQUESTED+=("$value")
         ;;
     esac
+    shift
   done
+  [[ "$install_location" == build || "$install_location" == applications ]] || return 2
+  [[ "$cleanup_build_products" == 0 || "$cleanup_build_products" == 1 ]] || return 2
+  if [[ "$cleanup_build_products" == 1 && ( "$install_location" != applications || "$OPERATION" != install ) ]]; then
+    print -u2 '✖ 仅安装到应用程序目录时允许清除此轮构建产物。'
+    return 2
+  fi
+  [[ "$OPERATION" != cleanup || "$install_location" == applications ]] || { print -u2 '✖ 独立清理仅允许应用程序目录模式。'; return 2; }
+  [[ -z "$STOP_REQUEST_FILE" || "$STOP_REQUEST_FILE" == /* ]] || return 2
+  export JOBS_FINDER_STOP_REQUEST_FILE="$STOP_REQUEST_FILE"
+  export JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="$cleanup_build_products"
+  export JOBS_FINDER_INSTALL_LOCATION="$install_location"
+  source "$PROJECT_ROOT/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh" || return $?
+  APP_PATH="$(jobs_deployment_app_path "$BUILT_APP_PATH")" || return $?
+  EXTENSION_PATH="$APP_PATH/Contents/PlugIns/JobsDesktopToolsFinderSync.appex"
   (( ${#REQUESTED} > 0 )) || { print -u2 '✖ 至少明确选择一项功能，不会隐式全选。'; return 2; }
 }
 # 首屏声明操作范围；兼容转发入口复用本层说明及唯一一次确认。
@@ -77,7 +99,7 @@ show_script_intro_and_wait() {
   fi
   print -r -- "1、操作：${OPERATION}；功能：${(j:,:)REQUESTED}。"
   print -r -- "2、来源：${PROJECT_ROOT}；产物：${APP_PATH}。"
-  print -r -- '3、安装只合并所选叶子并迁移已启用旧菜单；卸载只移除所选叶子。安装登记不运行任何业务。'
+  print -r -- '3、安装合并所选叶子；卸载只移除所选叶子；清理仅删除已安装 App 对应构建产物。'
   print -r -- '4、影响：当前用户扩展及专用配置；完成后按需刷新 Finder，Ctrl+C 取消。'
   print -r -- "5、日志：${LOG_FILE}；失败备份在日志记录的事务目录。"
   (( NON_INTERACTIVE )) && return 0
@@ -87,6 +109,7 @@ show_script_intro_and_wait() {
 }
 # 确认后准备日志和互斥锁，防止两个入口同时覆盖配置。
 initialize_runtime() {
+  [[ "$OPERATION" != cleanup ]] || return 0
   setopt NO_NOMATCH PIPE_FAIL
   : > "$LOG_FILE" || exit 1
   [[ ! -L "$CONFIG_DIR" && ! -L "$CONFIG_PATH" && ! -L "$MARKER_PATH" ]] || { print -u2 '✖ 配置位置是符号链接，已停止。'; exit 1; }
@@ -128,7 +151,9 @@ extension_is_enabled() {
 # 首次迁移当前启用旧叶子；后续不重新打开用户已经关闭的功能。
 plan_configuration() {
   local index=0 feature=""
-  extension_is_enabled "$EXTENSION_ID" && WAS_ENABLED=1
+  local enabled_paths=""
+  enabled_paths="$(jobs_deployment_enabled_extension_paths "$EXTENSION_ID")" || return 1
+  (( ${${(@f)enabled_paths}[(Ie)$EXTENSION_PATH]} == 0 )) || WAS_ENABLED=1
   for index in {1..6}; do
     if extension_is_enabled "${LEGACY_IDS[$index]}"; then
       LEGACY_ENABLED+=("${LEGACY_IDS[$index]}")
@@ -148,7 +173,7 @@ plan_configuration() {
 # 构建前保存现有完整 App；业务资源固定从本包获取。
 build_and_verify() {
   [[ "$(/usr/bin/uname -s)" == Darwin ]] || return 1
-  if [[ -d "$APP_PATH" ]]; then
+  if [[ "$JOBS_FINDER_INSTALL_LOCATION" == build && -d "$APP_PATH" ]]; then
     [[ ! -L "$APP_PATH" ]] || return 1
     HAD_APP=1
     /usr/bin/ditto "$APP_PATH" "$TRANSACTION_DIR/previous.app" || return 1
@@ -160,6 +185,8 @@ build_and_verify() {
     -configuration Debug -destination "platform=macOS,arch=$(/usr/bin/uname -m)" \
     -derivedDataPath "$DERIVED_PATH" build 2>&1 | /usr/bin/tee -a "$LOG_FILE"
   (( ${pipestatus[1]} == 0 )) || return 1
+  jobs_deployment_install "$BUILT_APP_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID" || return $?
+  jobs_deployment_retire_other_copies "$APP_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID" || return $?
   [[ -d "$EXTENSION_PATH" ]] || return 1
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")" == com.jobs.desktoptools ]] || return 1
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$EXTENSION_PATH/Contents/Info.plist")" == "$EXTENSION_ID" ]] || return 1
@@ -224,28 +251,43 @@ publish_marker() {
   /bin/mv -f "$temporary" "$MARKER_PATH"
 }
 # 安装登记不执行 URL 或打开宿主，因此不会创建模拟器或切换隐藏状态。
+# 成功提交 App 和功能配置后才清理本轮构建；清理失败不回滚已安装 App。
+cleanup_committed_build_products() {
+  [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" == 1 ]] || return 0
+  if ! jobs_deployment_cleanup_build_products "$BUILT_APP_PATH" "$PROJECT_ROOT/work/DerivedData" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID"; then
+    print -u2 -r -- '⚠ App 已安装成功，但清除此轮构建产物失败；已保留应用程序目录中的 App，请查看日志。'
+  fi
+  return 0
+}
 install_features() {
   build_and_verify || return 1
   register_and_verify || return 1
   publish_configuration || return 1
   retire_legacy || return 1
   publish_marker || return 1
+  jobs_deployment_commit || return $?
+  cleanup_committed_build_products
 }
-# 删除一项只更新该叶；最后一项移除后才停用统一菜单。
+# 最后一项移除后，只注销并删除本次所选位置的完整 App。
 disable_aggregate_extension() {
   REGISTRATION_CHANGED=1
-  /usr/bin/pluginkit -e ignore -i "$EXTENSION_ID" || return 1
-  [[ ! -d "$EXTENSION_PATH" ]] || /usr/bin/pluginkit -r "$EXTENSION_PATH"
+  if [[ "$JOBS_FINDER_INSTALL_LOCATION" == applications ]]; then
+    jobs_deployment_uninstall "$APP_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID"
+  else
+    jobs_deployment_validate_app "$APP_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID" || return $?
+    jobs_deployment_unregister_app "$APP_PATH" JobsDesktopToolsFinderSync.appex || return $?
+    /bin/rm -r -- "$APP_PATH"
+  fi
 }
 # 保留其它功能配置和完整 App，避免卸载一叶破坏共享业务资源。
 uninstall_features() {
   if (( HAD_CONFIG )); then
     publish_configuration || return 1
-    if (( ${#ENABLED} == 0 )); then
-      disable_aggregate_extension || return 1
-    fi
   fi
-  retire_legacy
+  retire_legacy || return 1
+  if (( ! HAD_CONFIG || ${#ENABLED} == 0 )); then
+    disable_aggregate_extension || return 1
+  fi
 }
 # 失败恢复本事务发布的配置及原启用状态，保护外部并发修改。
 rollback_transaction() {
@@ -265,18 +307,24 @@ rollback_transaction() {
       /bin/rm -f "$MARKER_PATH"
     fi
   fi
-  if [[ "$OPERATION" == install ]] && (( BUILD_STARTED || REGISTRATION_CHANGED )); then
-    /usr/bin/pluginkit -e ignore -i "$EXTENSION_ID" 2>/dev/null || true
+  if [[ "$OPERATION" == install && "$JOBS_FINDER_INSTALL_LOCATION" == applications ]]; then
+    jobs_deployment_rollback || return 1
+  elif [[ "$OPERATION" == install ]] && (( BUILD_STARTED || REGISTRATION_CHANGED )); then
     if (( HAD_APP )); then
       [[ "$APP_PATH" == "$PROJECT_ROOT"/work/DerivedData/Build/Products/Debug/JobsDesktopTools.app && ! -L "$APP_PATH" ]] || return 1
       [[ ! -e "$APP_PATH" ]] || /bin/rm -r "$APP_PATH"
       /usr/bin/ditto "$TRANSACTION_DIR/previous.app" "$APP_PATH" || return 1
-      "$LSREGISTER" -f "$APP_PATH" || true
-      /usr/bin/pluginkit -a "$EXTENSION_PATH" || true
+      if (( WAS_ENABLED )); then
+        "$LSREGISTER" -f "$APP_PATH" || true
+        /usr/bin/pluginkit -a "$EXTENSION_PATH" || true
+      fi
     else
       [[ ! -d "$EXTENSION_PATH" ]] || /usr/bin/pluginkit -r "$EXTENSION_PATH" || true
       [[ ! -d "$APP_PATH" ]] || "$LSREGISTER" -u "$APP_PATH" || true
     fi
+  fi
+  if [[ "$JOBS_FINDER_INSTALL_LOCATION" == build ]]; then
+    jobs_deployment_rollback || return 1
   fi
   if (( WAS_ENABLED && REGISTRATION_CHANGED )); then
     [[ ! -d "$EXTENSION_PATH" ]] || /usr/bin/pluginkit -a "$EXTENSION_PATH" || true
@@ -289,6 +337,26 @@ rollback_transaction() {
 }
 # 保留非零结果；一次刷新统一菜单，不运行任何叶子业务。
 execute_operation() {
+  if [[ "$OPERATION" == cleanup ]]; then
+    jobs_deployment_cleanup_existing_build_products "$BUILT_APP_PATH" "$DERIVED_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID"
+    return $?
+  fi
+  if [[ "$OPERATION" == uninstall ]]; then
+    if [[ ! -e "$APP_PATH" && ! -L "$APP_PATH" ]]; then
+      TRANSACTION_COMMITTED=1
+      log "ℹ 所选位置未安装，无需卸载：$APP_PATH"
+      return 0
+    fi
+    jobs_deployment_validate_app "$APP_PATH" com.jobs.desktoptools JobsDesktopToolsFinderSync.appex "$EXTENSION_ID" || return $?
+    local other_enabled=0
+    jobs_deployment_has_other_enabled "$APP_PATH" "$EXTENSION_ID" || other_enabled=$?
+    (( other_enabled <= 1 )) || return "$other_enabled"
+    if (( other_enabled == 0 )); then
+      disable_aggregate_extension || return $?
+      TRANSACTION_COMMITTED=1
+      return 0
+    fi
+  fi
   read_configuration && plan_configuration || { rollback_transaction; exit 1; }
   if [[ "$OPERATION" == install ]]; then
     install_features

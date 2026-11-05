@@ -41,7 +41,7 @@ if [[ -z "$REPAIR_API" ]]; then
   REPAIR_API="$(/usr/bin/perl -0777 -ne 'if (/compileSdkVersion\s*=\s*(\d+)/) { print $1; exit }' "${REPAIR_FILES[@]}")"
   fi
 fi
-catalog="$(android_timed 120 "$ANDROID_SIM_SDKMANAGER" --sdk_root="$ANDROID_SIM_SDK" --list --channel=0 "${ANDROID_SIM_SDK_PROXY[@]}" 2>>"$LOG_FILE")" || { android_log '✖ 无法读取官方组件清单。'; exit 1; }
+catalog="$(jobs_sdk_retry 'Android SDK组件清单' "$LOG_FILE" android_remote_images_once)" || exit $?
 if [[ -z "$REPAIR_API" ]]; then
   REPAIR_API="$(print -r -- "$catalog" | /usr/bin/sed -nE 's/^[[:space:]]*platforms;android-([0-9]+)[[:space:]]*\|.*/\1/p' | /usr/bin/sort -nu | /usr/bin/tail -1)"
 fi

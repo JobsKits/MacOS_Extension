@@ -96,12 +96,14 @@ class FileCreatorInstallerIntegrationTests < Minitest::Test
       }
       output, errors, result = run_definitions(<<~'ZSH', directory, replacements: replacements)
         WORKSPACE_DIR="$1"
+        selected_location_has_app() { return 0; }
+        another_location_is_active() { return 1; }
         jobs_record_manager() { print -r -- "WORKER=${(j:|:)@}|skip=$JOBS_SKIP_FINDER_RESTART"; }
         parse_feature_selection file-create || exit 1
         uninstall_selected_features || exit $?
       ZSH
       assert result.success?, errors
-      assert_equal ["WORKER=#{entry}|--action|uninstall|--non-interactive|--skip-finder-restart|skip=1"], output.lines.map(&:chomp).grep(/^WORKER=/)
+      assert_equal ["WORKER=#{entry}|--action|uninstall|--non-interactive|--skip-finder-restart|--install-location|build|skip=1"], output.lines.map(&:chomp).grep(/^WORKER=/)
       assert_includes output, "JOBS_MANAGER_EVENT\tfile-create\tsucceeded"
       refute_includes errors, 'blocked unexpected system operation'
     end

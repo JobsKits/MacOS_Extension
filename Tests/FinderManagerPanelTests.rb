@@ -158,7 +158,7 @@ class FinderManagerPanelTests < Minitest::Test
               expect(isRunning, "task belongs to the panel")
               expect(executionLabel!.stringValue.contains("0.0%") && executionLabel!.stringValue.contains("安装用时 00:00:00"), "click starts progress and elapsed time at zero")
               expect(executionTimer?.isValid == true, "timer runs independently of output")
-              expect(!installButton!.isEnabled && !actionControl!.isEnabled && !closeButton!.isEnabled, "controls lock during execution")
+              expect(installButton!.isEnabled && installButton!.title == "停止安装" && !actionControl!.isEnabled && !closeButton!.isEnabled, "install exposes cooperative stop while other controls lock")
               expect(!windowShouldClose(window!), "closing cannot abandon an active install")
               NSApplication.shared.sendAction(menu.items[0].submenu!.items[0].action!, to: self, from: nil)
               expect(isRunning, "Cmd+Q menu cannot abandon an active install")

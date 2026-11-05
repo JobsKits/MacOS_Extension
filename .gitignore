@@ -106,3 +106,21 @@ CompilationCache.noindex/
 !/JobsXcodeOpener/【MacOS】管理用Xcode打开Finder扩展.app/**
 !/【MacOS】🧩管理Finder扩展.app/
 !/【MacOS】🧩管理Finder扩展.app/**
+
+# Feature-local caches migrated from the former child ignore files.
+/JobsAndroidStudioOpener/**/work/
+/JobsFlutterVersionMgr/**/work/
+/JobsXcodeOpener/**/work/
+/JobsGitRollback/**/work/
+/JobsGitPuller/**/work/
+/JobsFlutterRunner/**/work/
+/JobsVSCodeOpener/**/work/
+/JobsFlutterRunner/**/.fvm/
+
+# Preserve the former child rules' precedence over launcher exceptions.
+/JobsAndroidStudioOpener/**/*.app/
+/JobsFlutterVersionMgr/**/*.app/
+/JobsXcodeOpener/**/*.app/
+/JobsGitRollback/**/*.app/
+/JobsGitPuller/**/*.app/
+/JobsVSCodeOpener/**/*.app/

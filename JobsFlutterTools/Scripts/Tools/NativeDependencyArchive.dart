@@ -100,7 +100,7 @@ class _Options {
   _Options(List<String> arguments) {
     if (arguments.isEmpty || !{'export', 'import'}.contains(arguments.first)) {
       _fail(
-        '用法：NativeDependencyArchive.dart export|import --project <绝对路径> --kind <类别> --directory <目录> --source-root|--target-root <目录> --platform <平台> --tool-version <版本> [--check] [--confirm YES]',
+        '用法：NativeDependencyArchive.dart export|import --project <绝对路径> --kind <类别> --directory <目录> --source-root|--target-root <目录> --platform <平台> --tool-version <版本> [--flutter-cache] [--check] [--confirm YES]',
       );
     }
     operation = arguments.first;
@@ -109,6 +109,11 @@ class _Options {
       if (key == '--check') {
         if (check) _fail('参数重复：--check');
         check = true;
+        continue;
+      }
+      if (key == '--flutter-cache') {
+        if (flutterCache) _fail('参数重复：--flutter-cache');
+        flutterCache = true;
         continue;
       }
       if (!{
@@ -132,6 +137,8 @@ class _Options {
     toolVersion = values['--tool-version'] ?? '';
     if (!_kinds.contains(kind) || !_platforms.contains(platform))
       _fail('依赖类别或目标平台无效。');
+    if (flutterCache && kind != 'precache')
+      _fail('--flutter-cache 只用于 Flutter 平台资源快照。');
     if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9 ._+()=-]{0,255}$')
             .hasMatch(toolVersion) ||
         !RegExp(r'[0-9]').hasMatch(toolVersion)) {
@@ -149,6 +156,13 @@ class _Options {
       _fail('导出只能指定 source-root，导入只能指定 target-root。');
     }
     root = _directory(values[key]!, required: operation == 'export');
+    if (kind == 'precache' &&
+        !flutterCache &&
+        root.replaceAll('\\', '/').toLowerCase().endsWith('/bin/cache'))
+      _fail('bin/cache 必须使用 --flutter-cache 白名单布局，不能按旧 artifacts 布局全量复制。');
+    if (flutterCache &&
+        !root.replaceAll('\\', '/').toLowerCase().endsWith('/bin/cache'))
+      _fail('Flutter 平台资源根必须为 bin/cache；只处理明确白名单，不复制整个缓存。');
     final userHome =
         Platform.environment[Platform.isWindows ? 'USERPROFILE' : 'HOME'];
     if (Directory(root).parent.path == root ||
@@ -175,6 +189,7 @@ class _Options {
       directory;
   final Map<String, String> values = {};
   bool check = false;
+  bool flutterCache = false;
 }
 
 class _Record {
@@ -294,6 +309,194 @@ List<_Record> _inventory(
   records.sort((a, b) => a.path.compareTo(b.path));
   return records;
 }
+
+// v2 只收平台资源；stamp 必须伴随本次载荷，不能让未迁移的 Dart / tools 被误判为就绪。
+Map<String, List<String>> _precacheStampRequirements() {
+  return {
+    'flutter_web_sdk.stamp': ['flutter_web_sdk/'],
+    'engine_stamp.stamp': ['engine_stamp.json'],
+    'material_fonts.stamp': ['artifacts/material_fonts/'],
+    'gradle_wrapper.stamp': [
+      'artifacts/gradle_wrapper/gradlew',
+      'artifacts/gradle_wrapper/gradlew.bat',
+      'artifacts/gradle_wrapper/gradle/wrapper/gradle-wrapper.jar',
+    ],
+    for (final name in [
+      'libimobiledevice',
+      'libusbmuxd',
+      'libplist',
+      'openssl',
+      'libimobiledeviceglue',
+      'ios-deploy',
+    ])
+      '$name.stamp': ['artifacts/$name/'],
+    'ios-sdk.stamp': [
+      for (final mode in ['ios', 'ios-profile', 'ios-release']) ...[
+        'artifacts/engine/$mode/',
+        'artifacts/engine/$mode/LICENSE',
+      ],
+    ],
+    'macos-sdk.stamp': [
+      for (final mode in [
+        'darwin-x64',
+        'darwin-x64-profile',
+        'darwin-x64-release',
+      ])
+        'artifacts/engine/$mode/',
+    ],
+    'android-sdk.stamp': [
+      for (final arch in ['arm', 'arm64', 'x64'])
+        for (final mode in ['profile', 'release'])
+          'artifacts/engine/android-$arch-$mode/${Platform.isMacOS
+              ? 'darwin-x64'
+              : Platform.isWindows
+              ? 'windows-x64'
+              : 'linux-x64'}/',
+    ],
+    'android-internal-build-artifacts.stamp': [
+      for (final name in [
+        'android-x86',
+        'android-x64',
+        'android-arm',
+        'android-arm-profile',
+        'android-arm-release',
+        'android-arm64',
+        'android-arm64-profile',
+        'android-arm64-release',
+        'android-x64-profile',
+        'android-x64-release',
+      ])
+        'artifacts/engine/$name/',
+    ],
+  };
+}
+
+bool _hasPrecachePayload(List<_Record> files, String required) => files.any(
+  (record) => required.endsWith('/')
+      ? record.path.startsWith(required)
+      : record.path == required,
+);
+
+bool _precacheStampHasPayload(String stamp, List<_Record> files) {
+  final requirements = _precacheStampRequirements();
+  if (stamp == 'flutter_sdk.stamp' ||
+      stamp == 'font-subset.stamp' ||
+      stamp == 'windows-sdk.stamp' ||
+      stamp == 'linux-sdk.stamp') {
+    final host = stamp == 'windows-sdk.stamp'
+        ? 'windows'
+        : stamp == 'linux-sdk.stamp'
+        ? 'linux'
+        : Platform.isMacOS
+        ? 'darwin-x64'
+        : Platform.isWindows
+        ? 'windows'
+        : 'linux';
+    final hosts = host == 'darwin-x64' ? [host] : ['$host-x64', '$host-arm64'];
+    return hosts.any((candidate) {
+      final paths = stamp == 'flutter_sdk.stamp'
+          ? [
+              'artifacts/engine/common/',
+              'artifacts/engine/$candidate/',
+              'pkg/sky_engine/',
+              'pkg/flutter_gpu/',
+            ]
+          : stamp == 'font-subset.stamp'
+          ? ['artifacts/engine/$candidate/font-subset${Platform.isWindows ? '.exe' : ''}']
+          : [
+              for (final mode in ['', '-profile', '-release'])
+                'artifacts/engine/$candidate$mode/',
+            ];
+      return paths.isNotEmpty &&
+          paths.every((path) => _hasPrecachePayload(files, path));
+    });
+  }
+  final paths = requirements[stamp];
+  return paths != null &&
+      paths.every((path) => _hasPrecachePayload(files, path));
+}
+
+bool _precacheAllowedPath(String path) =>
+    path.startsWith('artifacts/') ||
+    path.startsWith('flutter_web_sdk/') ||
+    path.startsWith('pkg/sky_engine/') ||
+    path.startsWith('pkg/flutter_gpu/') ||
+    path == 'engine_stamp.json';
+
+List<_Record> _precacheInventory(String root) {
+  final records = <_Record>[];
+  for (final relative in [
+    'artifacts',
+    'flutter_web_sdk',
+    'pkg/sky_engine',
+    'pkg/flutter_gpu',
+  ]) {
+    final path = _join(root, relative);
+    final type = FileSystemEntity.typeSync(path, followLinks: false);
+    if (type == FileSystemEntityType.notFound) continue;
+    if (type != FileSystemEntityType.directory) _fail('平台资源不是普通目录：$relative');
+    if (!_inside(root, Directory(path).resolveSymbolicLinksSync()))
+      _fail('平台资源目录越界：$relative');
+    records.addAll(
+      _inventory(path, kind: 'precache').map(
+        (record) => _Record(
+          '$relative/${record.path}',
+          record.source,
+          record.size,
+          record.sha256,
+          record.executable,
+        ),
+      ),
+    );
+  }
+  final engineStamp = _join(root, 'engine_stamp.json');
+  final engineStampType = FileSystemEntity.typeSync(
+    engineStamp,
+    followLinks: false,
+  );
+  if (engineStampType != FileSystemEntityType.notFound &&
+      engineStampType != FileSystemEntityType.file)
+    _fail('引擎元数据不是普通文件。');
+  if (engineStampType == FileSystemEntityType.file)
+    records.add(_record('engine_stamp.json', engineStamp));
+  final stampNames = {
+    ..._precacheStampRequirements().keys,
+    'flutter_sdk.stamp',
+    'font-subset.stamp',
+    'windows-sdk.stamp',
+    'linux-sdk.stamp',
+  };
+  for (final stamp in stampNames) {
+    final path = _join(root, stamp);
+    if (FileSystemEntity.typeSync(path, followLinks: false) ==
+        FileSystemEntityType.notFound)
+      continue;
+    if (FileSystemEntity.typeSync(path, followLinks: false) !=
+        FileSystemEntityType.file)
+      _fail('平台资源 stamp 不是普通文件：$stamp');
+    if (_precacheStampHasPayload(stamp, records))
+      records.add(_record(stamp, path));
+  }
+  records.sort((a, b) => a.path.compareTo(b.path));
+  return records;
+}
+
+void _validatePrecacheInventory(List<_Record> files) {
+  for (final record in files) {
+    final path = record.path;
+    if (path.endsWith('.stamp') && !path.contains('/')) {
+      if (!_precacheStampHasPayload(path, files))
+        _fail('快照 stamp 缺少配对平台资源：$path');
+    } else if (!_precacheAllowedPath(path)) {
+      _fail('快照超出 Flutter 平台资源白名单：$path');
+    }
+  }
+}
+
+List<_Record> _sourceInventory(_Options options, List<String> pubRoots) =>
+    options.flutterCache
+    ? _precacheInventory(options.root)
+    : _inventory(options.root, kind: options.kind, resolvedPubRoots: pubRoots);
 
 // 只承认本次实际解析的本地 Pub 包；绝不把整个用户目录或项目祖先提升为可信来源。
 List<String> _resolvedPubRoots(_Options options) {
@@ -636,11 +839,8 @@ void _export(_Options options) {
   final pubRoots = options.kind == 'pods'
       ? _resolvedPubRoots(options)
       : <String>[];
-  final files = _inventory(
-    options.root,
-    kind: options.kind,
-    resolvedPubRoots: pubRoots,
-  );
+  final files = _sourceInventory(options, pubRoots);
+  if (options.flutterCache) _validatePrecacheInventory(files);
   if (files.isEmpty) _fail('来源没有可归档的普通文件。');
   if (options.check) {
     stdout.writeln(jsonEncode(_plan(options, files)));
@@ -658,14 +858,7 @@ void _export(_Options options) {
       _ensureParents(payload.path, record.path, []);
       _copy(record, File(_join(payload.path, record.path)));
     }
-    if (!_sameRecords(
-          files,
-          _inventory(
-            options.root,
-            kind: options.kind,
-            resolvedPubRoots: pubRoots,
-          ),
-        ) ||
+    if (!_sameRecords(files, _sourceInventory(options, pubRoots)) ||
         !_sameRecords(locks, _projectLocks(options)) ||
         (options.kind == 'pods' &&
             (pubConfiguration != _pubConfigurationStamp(options) ||
@@ -674,7 +867,7 @@ void _export(_Options options) {
       _fail('归档期间来源或工程锁发生变化，未发布快照。');
     final manifest = {
       'format': _format,
-      'formatVersion': 1,
+      'formatVersion': options.flutterCache ? 2 : 1,
       'kind': options.kind,
       'hostOS': Platform.operatingSystem,
       'platform': options.platform,
@@ -717,7 +910,7 @@ void _import(_Options options) {
   final manifest = jsonDecode(manifestFile.readAsStringSync());
   if (manifest is! Map ||
       manifest['format'] != _format ||
-      manifest['formatVersion'] != 1 ||
+      !{1, 2}.contains(manifest['formatVersion']) ||
       manifest.keys.toSet().difference({
         'format',
         'formatVersion',
@@ -735,6 +928,9 @@ void _import(_Options options) {
       manifest['platform'] != options.platform ||
       manifest['toolVersion'] != options.toolVersion)
     _fail('快照宿主、类别、平台或工具版本不兼容，未写入。');
+  final extendedPrecache = manifest['formatVersion'] == 2;
+  if (extendedPrecache && (options.kind != 'precache' || !options.flutterCache))
+    _fail('v2 平台资源快照须使用 --flutter-cache 和 bin/cache 目标根。');
   final expected = _readRecords(manifest['files']);
   final expectedLocks = _readRecords(manifest['projectLocks']);
   if (expected.isEmpty || !_sameRecords(expectedLocks, _projectLocks(options)))
@@ -742,10 +938,18 @@ void _import(_Options options) {
   final payload = _directory(_join(options.directory, 'payload'));
   final files = _inventory(payload, snapshot: true);
   if (!_sameRecords(expected, files)) _fail('快照文件清单或哈希不匹配，未写入。');
+  if (extendedPrecache) _validatePrecacheInventory(files);
+  // 旧 v1 只含 artifacts 的相对内容；新入口仍可还原，但不能补造缺失的 Web SDK 或 stamp。
+  final targetRoot = _directory(
+    options.flutterCache && !extendedPrecache
+        ? _join(options.root, 'artifacts')
+        : options.root,
+    required: false,
+  );
   var reused = 0;
   for (final record in files) {
-    _verifyTargetParents(options.root, record.path);
-    final path = _join(options.root, record.path);
+    _verifyTargetParents(targetRoot, record.path);
+    final path = _join(targetRoot, record.path);
     final type = FileSystemEntity.typeSync(path, followLinks: false);
     if (type == FileSystemEntityType.notFound) continue;
     if (type != FileSystemEntityType.file ||
@@ -760,9 +964,14 @@ void _import(_Options options) {
   final createdFiles = <_Record>[];
   final createdDirectories = <String>[];
   try {
-    for (final record in files) {
-      _ensureParents(options.root, record.path, createdDirectories);
-      final destination = File(_join(options.root, record.path));
+    // 完成全部资源后才发布 stamp；中断不能先留下已就绪标记。
+    final orderedFiles = [
+      ...files.where((record) => !record.path.endsWith('.stamp')),
+      ...files.where((record) => record.path.endsWith('.stamp')),
+    ];
+    for (final record in orderedFiles) {
+      _ensureParents(targetRoot, record.path, createdDirectories);
+      final destination = File(_join(targetRoot, record.path));
       final type = FileSystemEntity.typeSync(
         destination.path,
         followLinks: false,

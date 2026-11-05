@@ -108,7 +108,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               buildWindow(screenSize: NSSize(width: 1440, height: 900))
               let all = FeatureOption.all.map { $0.identifier }
               let grouped = FeatureGroup.all.flatMap { $0.identifiers }
-              expect(FeatureOption.flutter.count == 45 && all.count == 82, "all leaf actions include file creation, viewer, merge and split")
+              expect(FeatureOption.flutter.count == 47 && all.count == 84, "all leaf actions include file creation, viewer, merge and split")
               expect(!all.contains("git-sourcetree"), "retired Sourcetree entry is absent from management choices")
               let privateActions = ["flutter-export-private-dependencies", "flutter-import-private-dependencies"]
               expect(privateActions.allSatisfy { action in all.filter { $0 == action }.count == 1 }, "private export and import each occur exactly once")
@@ -167,7 +167,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               flutter.clear.performClick(nil)
               expect(checkedIdentifiers().count == 37, "Flutter clear changes all leaf actions only")
               checkboxes.first { $0.option.identifier == "flutter-package-android" }!.button.performClick(nil)
-              expect(flutter.summary.stringValue == "已选 1 / 45", "one Flutter submenu can be installed")
+              expect(flutter.summary.stringValue == "已选 1 / 47", "one Flutter submenu can be installed")
               print("group controls and function identifiers passed")
           }
 

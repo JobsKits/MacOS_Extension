@@ -29,11 +29,15 @@ hb_setup_prerequisites() {
     developer="$(/usr/bin/xcode-select -p 2>/dev/null)"
     if [[ -n "$developer" && -d "$developer" ]] && /usr/bin/git --version >/dev/null 2>&1 && /usr/bin/xcrun clang --version >/dev/null 2>&1; then return 0; fi
     pe_event flutter.bootstrap.clt flutter.bootstrap 'Command Line Tools' attention '需要本人完成Apple工具安装/许可'
-    pe_log '⚠ Homebrew安装需要Apple Command Line Tools。回车打开官方安装界面；安装与许可由本人处理，完成后重新运行。'
-    IFS= read -r 'answer?回车打开CLT安装；其它输入取消：' || return 130
-    [[ -z "$answer" ]] || return 130
-    /usr/bin/xcode-select --install || { pe_log '➤ 系统未启动新安装，请检查已有安装窗口或在完整Xcode中完成首次配置。'; return 3; }
-    return 3
+    pe_log '⚠ Homebrew需要Apple CLT，自动打开官方安装界面；许可由本人处理，完成后自动复检继续，Ctrl+C结束等待。'
+    /usr/bin/xcode-select --install || pe_log '➤ 系统未启动新安装，请检查已有安装窗口或完整Xcode首次配置；继续等待工具就绪。'
+    pe_log 'ℹ 下载由Apple系统安装器管理，网络失败需在该窗口重试；脚本不代签许可、不改softwareupdate设置或升级系统。'
+    while true; do
+        developer="$(/usr/bin/xcode-select -p 2>/dev/null)"
+        if [[ -n "$developer" && -d "$developer" ]] && /usr/bin/git --version >/dev/null 2>&1 && /usr/bin/xcrun clang --version >/dev/null 2>&1; then return 0; fi
+        pe_log '➤ Apple CLT尚未就绪，10秒后自动复检；无需重开本脚本。'
+        /bin/sleep 10 || return 130
+    done
 }
 # 精确YES选择系统目录，其他输入保留用户目录默认，不探测管理员密码。
 hb_setup_choose_mode() {
@@ -66,7 +70,7 @@ hb_setup_install_user() {
     tag="$(/usr/bin/plutil -extract tag_name raw -o - "$stage/release.json" 2>/dev/null)" || return 1
     [[ "$tag" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]] || { pe_log '✖ 官方稳定版本元数据无效；保留下载现场。'; return 1; }
     pe_log "➤ Homebrew官方固定tag：$tag；用户路径安装可能需要本机编译依赖。"
-    pe_run_logged /usr/bin/env GIT_TERMINAL_PROMPT=0 /usr/bin/git -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 clone --depth 1 --branch "$tag" --single-branch https://github.com/Homebrew/brew.git "$stage/brew" || return $?
+    pe_run_logged /usr/bin/env GIT_TERMINAL_PROMPT=0 /usr/bin/git -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 clone --progress --depth 1 --branch "$tag" --single-branch https://github.com/Homebrew/brew.git "$stage/brew" || return $?
     pe_run_logged /usr/bin/git -C "$stage/brew" checkout -b stable || return $?
     pe_run_logged /usr/bin/git -C "$stage/brew" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' || return $?
     /bin/mkdir -p "$stage/brew/Cellar" "$stage/brew/Caskroom" "$stage/brew/etc" "$stage/brew/var" || return 1

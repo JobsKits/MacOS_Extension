@@ -39,6 +39,10 @@ class HarmonyFlutterVersionTests < Minitest::Test
         print -- 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/evil;touch injected'
         exit 0
       fi
+      if [[ "$1" == init ]]; then
+        /bin/mkdir -p "$2/.git"
+        exit 0
+      fi
       if [[ "$1" == clone ]]; then
         [[ "${FAKE_CLONE_FAIL:-0}" != 1 ]] || exit 41
         local target="${@[-1]}"
@@ -50,7 +54,15 @@ class HarmonyFlutterVersionTests < Minitest::Test
       fi
       if [[ "$1" == -C ]]; then
         local target="$2"; shift 2
+        while [[ "$1" == -c ]]; do shift 2; done
         case "$1" in
+          fetch)
+            [[ "${FAKE_CLONE_FAIL:-0}" != 1 ]] || { print -u2 'Permission denied: fixture download target'; exit 41; }
+            /bin/mkdir -p "$target/bin"
+            print -r -- "$FAKE_SHA" > "$target/.commit"
+            /bin/cp "$FAKE_BIN/.flutter-template" "$target/bin/flutter"
+            /bin/chmod +x "$target/bin/flutter"
+            exit 0 ;;
           checkout) exit 0 ;;
           rev-parse) /bin/cat "$target/.commit" ;;
           remote) print -r -- "${FAKE_WRONG_SOURCE:-$FAKE_REPO}" ;;
@@ -64,7 +76,7 @@ class HarmonyFlutterVersionTests < Minitest::Test
     write_mock('.flutter-template', <<~'ZSH')
       print -r -- "sdk|${(j: :)@}" >> "$FAKE_TRACE"
       if [[ "$1" == --version ]]; then
-        [[ "${FAKE_SDK_FAIL:-0}" != 1 ]] || exit 42
+        [[ "${FAKE_SDK_FAIL:-0}" != 1 ]] || { print -u2 'Bad CPU type in executable'; exit 42; }
         print -r -- 'Flutter OH fixture'
       elif [[ "$1" == build && "$2" == -h ]]; then
         [[ "${FAKE_NO_HAP:-0}" == 1 ]] || print -r -- 'hap'
@@ -243,7 +255,7 @@ class HarmonyFlutterVersionTests < Minitest::Test
     create_cached_sdk
     output, status = invoke(environment: { 'FAKE_OFFLINE' => '1' })
     assert status.success?, output
-    assert_includes output, '只提供带来源记录的本机缓存'
+    assert_includes output, '仅提供带来源记录的本机缓存'
     refute_includes trace, 'git|clone'
     output, status = invoke(environment: { 'FAKE_OFFLINE' => '1', 'FAKE_WRONG_SOURCE' => 'https://example.invalid/fork.git' })
     refute status.success?, output

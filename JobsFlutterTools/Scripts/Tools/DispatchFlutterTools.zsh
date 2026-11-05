@@ -5,9 +5,14 @@ TOOLS_DIR="${0:A:h}"
 [[ $# == 2 && "$2" == /* && -d "$2" ]] || { print -u2 '用法：DispatchFlutterTools.zsh <动作> <Flutter项目绝对路径>'; exit 2; }
 TOOLS_ACTION="$1"
 TOOLS_PROJECT="${2:A}"
-[[ -f "$TOOLS_PROJECT/pubspec.yaml" && ( "$TOOLS_ACTION" == clean-build-artifacts || "$TOOLS_ACTION" == import-dependencies || "$TOOLS_ACTION" == import-private-dependencies || -d "$TOOLS_PROJECT/lib" ) ]] || { print -u2 '请选择 Flutter 项目根目录。'; exit 1; }
+[[ -f "$TOOLS_PROJECT/pubspec.yaml" && ( "$TOOLS_ACTION" == clean-build-artifacts || "$TOOLS_ACTION" == import-dependencies || "$TOOLS_ACTION" == import-private-dependencies || "$TOOLS_ACTION" == import-all-dependencies || "$TOOLS_ACTION" == export-all-dependencies || -d "$TOOLS_PROJECT/lib" ) ]] || { print -u2 '请选择 Flutter 项目根目录。'; exit 1; }
 export PATH="$PATH:$HOME/.pub-cache/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
 cd -- "$TOOLS_PROJECT" || exit 1
+# 迁移内核只读写本地文件，先于工程 FVM 门禁解析已有原生 Dart。
+case "$TOOLS_ACTION" in
+  export-all-dependencies|import-all-dependencies)
+    exec /bin/zsh "$TOOLS_DIR/【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh" --project "$TOOLS_PROJECT" --mode "${TOOLS_ACTION%%-*}" ;;
+esac
 # 静态产物清理不调用 SDK；先限定为 Flutter 根目录，避免绕过统一菜单清理原生项目。
 if [[ "$TOOLS_ACTION" == clean-build-artifacts ]]; then
   [[ ! -L "$2" ]] || { print -u2 '目标必须是实际 Flutter 项目文件夹，不能是符号链接。'; exit 1; }

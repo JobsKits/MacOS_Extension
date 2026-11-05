@@ -29,22 +29,35 @@ with tempfile.TemporaryDirectory(prefix='Jobs private 菜单 ') as temporary:
     package.mkdir(parents=True)
     (package / 'pubspec.yaml').write_text('name: private_pkg\nversion: 1.0.0\n')
     (package / 'LICENSE').write_text('license\n')
-    (source / 'pubspec.lock').write_text('packages:\n  private_pkg:\n    source: git\n    version: "1.0.0"\n')
+    flutter_package = base / '缓存/flutter'
+    flutter_package.mkdir()
+    (flutter_package / 'pubspec.yaml').write_text('name: flutter\nversion: 0.0.0\n')
+    (source / 'pubspec.lock').write_text('packages:\n  flutter:\n    source: sdk\n    version: "0.0.0"\n  private_pkg:\n    source: git\n    version: "1.0.0"\n')
     (source / '.dart_tool').mkdir()
-    (source / '.dart_tool/package_config.json').write_text(json.dumps({'configVersion': 2, 'packages': [{'name': 'demo', 'rootUri': source.as_uri()+'/'}, {'name': 'private_pkg', 'rootUri': package.as_uri()+'/'}]}))
+    (source / '.dart_tool/package_config.json').write_text(json.dumps({'configVersion': 2, 'packages': [{'name': 'demo', 'rootUri': source.as_uri()+'/'}, {'name': 'private_pkg', 'rootUri': package.as_uri()+'/'}, {'name': 'flutter', 'rootUri': flutter_package.as_uri()+'/'}]}))
     env = dict(os.environ, TMPDIR=str(base)+'/', NO_COLOR='1', DART_SUPPRESS_ANALYTICS='true', CI='true')
     def dispatch(action, project, stdin):
         result = subprocess.run(['/bin/zsh', str(TOOLS / 'DispatchFlutterTools.zsh'), action, str(project)], input=stdin, text=True, capture_output=True, env=env, timeout=60)
         assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout
-    exported = dispatch('export-private-dependencies', source, '\n'+str(output)+'\n')
+    exported = dispatch('export-private-dependencies', source, '\n'+str(output)+'\nx\n')
     assert '私库模式' in exported
     snapshot, = output.iterdir()
     assert json.loads((snapshot/'manifest.json').read_text())['snapshotKind'] == 'flutter-private-dependencies'
+    default_output = base / '普通提取默认私库'
+    default_export = dispatch('extract', source, '\n'+str(default_output)+'\n\nx\n')
+    default_snapshot, = default_output.iterdir()
+    assert json.loads((default_snapshot/'manifest.json').read_text())['snapshotKind'] == 'flutter-private-dependencies'
+    assert '默认只提取私库' in default_export
+    all_output = base / '普通提取明确全量'
+    all_export = dispatch('extract', source, '\n'+str(all_output)+'\n \nx\n')
+    all_snapshot, = all_output.iterdir()
+    assert 'snapshotKind' not in json.loads((all_snapshot/'manifest.json').read_text())
+    assert '已明确选择全提取' in all_export
     cancelled = dispatch('import-private-dependencies', target, '\n'+str(snapshot)+'\nNO\n')
     assert '已取消' in cancelled and not (target/'vendor').exists()
-    imported = dispatch('import-private-dependencies', target, '\n\n'+str(snapshot)+'\nYES\n')
-    assert '尚未输入依赖目录' in imported and '导入完成' in imported
+    imported = dispatch('import-dependencies', target, '\n\n'+str(snapshot)+'\nYES\n')
+    assert '尚未输入依赖目录' in imported and '导入完成' in imported and '自动使用私库导入模式' in imported
     assert 'vendor/flutter_dependencies/' in (target/'pubspec_overrides.yaml').read_text()
     assert (target/'pubspec.yaml').read_text() == manifest
 print('PASS: private export/import dispatcher, cancellation, empty input retry, no-lib target, native Dart and local overrides')

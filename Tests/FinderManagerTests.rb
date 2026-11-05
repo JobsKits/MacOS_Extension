@@ -14,7 +14,8 @@ class FinderManagerTests < Minitest::Test
     replacements.each { |from, to| source = source.gsub(from, to) }
     Dir.mktmpdir('jobs-finder-manager-') do |directory|
       fixture = File.join(directory, '管理 定义.zsh')
-      File.write(fixture, source + "\nLOG_FILE=/dev/null\n" + checks)
+      # These cases isolate shared feature configuration; location guards have separate filesystem fixtures.
+      File.write(fixture, source + "\nLOG_FILE=/dev/null\nselected_location_has_app() { return 0; }\nanother_location_is_active() { return 1; }\n" + checks)
       Open3.capture3('/bin/zsh', fixture, *arguments, stdin_data: stdin)
     end
   end
