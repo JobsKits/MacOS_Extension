@@ -41,6 +41,105 @@ function identifier(value) {
     return typeof value === 'string' && value.length > 0 && !/[\u0000-\u0020\u007f-\u009f]/.test(value)
         ? value : null;
 }
+// 只识别已核验的通用制品结构；未知登记保守回到正常预缓存流程。
+function knownUniversalLayout(root) {
+    var source = readText(root + '/packages/flutter_tools/lib/src/flutter_cache.dart', 1024 * 1024);
+    var classes = Object.create(null), starts = [], match;
+    var declaration = /^(?:abstract\s+)?class\s+([A-Za-z_]\w*)(?:\s+extends\s+([A-Za-z_]\w*))?[^\n{]*\{/gm;
+    while ((match = declaration.exec(source))) starts.push({ name: match[1], parent: match[2], start: match.index });
+    starts.forEach(function (entry, index) {
+        classes[entry.name] = { parent: entry.parent, text: source.slice(entry.start, index + 1 < starts.length ? starts[index + 1].start : source.length) };
+    });
+    function artifactKind(name, depth) {
+        var entry = classes[name];
+        if (!entry || depth > 4) return '';
+        var kinds = entry.text.match(/DevelopmentArtifact\.([A-Za-z_]\w*)/g) || [];
+        if (!kinds.length) return artifactKind(entry.parent, depth + 1);
+        var kind = kinds[0];
+        return kinds.every(function (value) { return value === kind; }) ? kind : '';
+    }
+    var registered = [], registration = /\bregisterArtifact\(\s*([A-Za-z_]\w*)\s*\(/g;
+    while ((match = registration.exec(source))) registered.push(match[1]);
+    if (!registered.length || registered.length !== (source.match(/\bregisterArtifact\s*\(/g) || []).length) return false;
+    var universal = [];
+    for (var index = 0; index < registered.length; index += 1) {
+        var kind = artifactKind(registered[index], 0);
+        if (!kind) return false;
+        if (kind === 'DevelopmentArtifact.universal') universal.push(registered[index]);
+    }
+    if (universal.sort().join(',') !== ['FontSubsetArtifacts', 'FlutterSdk', 'GradleWrapper', 'IosUsbArtifacts', 'MaterialFonts', 'PubDependencies'].sort().join(',')) return false;
+    function stringList(text, expression) {
+        var list = text.match(expression);
+        if (!list || /[^\s,'A-Za-z0-9_.-]/.test(list[1])) return '';
+        return (list[1].match(/'([^']*)'/g) || []).map(function (value) { return value.slice(1, -1); }).join(',');
+    }
+    return stringList(classes.FlutterSdk.text, /getPackageDirs\(\)\s*=>\s*const\s*<String>\[([^\]]*)\]/) === 'sky_engine,flutter_gpu'
+        && stringList(classes.IosUsbArtifacts.text, /artifactNames\s*=\s*<String>\[([^\]]*)\]/) === 'libimobiledevice,libusbmuxd,libplist,openssl,libimobiledeviceglue,ios-deploy'
+        && stringList(classes.GradleWrapper.text, /_gradleScripts\s*=>\s*<String>\[([^\]]*)\]/) === 'gradlew,gradlew.bat'
+        && /\['common',\s*'flutter_patched_sdk\.zip'\]/.test(classes.FlutterSdk.text)
+        && /\['common',\s*'flutter_patched_sdk_product\.zip'\]/.test(classes.FlutterSdk.text)
+        && /\['darwin-x64',\s*'darwin-\$arch\/artifacts\.zip'\]/.test(classes.FlutterSdk.text)
+        && /\['darwin-x64',\s*'darwin-\$arch\/\$artifactName\.zip'\]/.test(classes.FontSubsetArtifacts.text);
+}
+// 只读核对本地缓存，避免健康 SDK 因网络预检而失去离线运行能力。
+function universalReady(root) {
+    try {
+        if (typeof root !== 'string' || root[0] !== '/' || /[\u0000-\u001f\u007f]/.test(root)) return false;
+        root = root.replace(/\/+$/, '');
+        if (!knownUniversalLayout(root)) return false;
+        var cache = root + '/bin/cache';
+        function directory(path) {
+            var info = attributes(path);
+            return !!info && info.NSFileType === 'NSFileTypeDirectory';
+        }
+        function file(path, executable) {
+            var info = attributes(path);
+            return !!info && info.NSFileType === 'NSFileTypeRegular'
+                && (!executable || !!$.NSFileManager.defaultManager.isExecutableFileAtPath($(path)));
+        }
+        function stamp(name, expected) {
+            return !!expected && readText(cache + '/' + name + '.stamp', 65536).trim() === expected;
+        }
+        var engine = readText(cache + '/engine.stamp', 1024).trim();
+        if (!/^[0-9a-f]{40}$/.test(engine)) return false;
+        var environment = ObjC.deepUnwrap($.NSProcessInfo.processInfo.environment);
+        var expectedEngine = environment.FLUTTER_PREBUILT_ENGINE_VERSION || readText(root + '/bin/internal/engine.version', 1024).trim();
+        if (engine !== expectedEngine || !stamp('engine-dart-sdk', engine)) return false;
+        if (!['flutter_sdk', 'font-subset', 'engine_stamp'].every(function (name) { return stamp(name, engine); })) return false;
+        var engineInfo = readJSON(cache + '/engine_stamp.json');
+        if (!engineInfo || engineInfo.git_revision !== engine) return false;
+        if (!['pkg/sky_engine', 'pkg/flutter_gpu', 'artifacts/engine/common/flutter_patched_sdk',
+            'artifacts/engine/common/flutter_patched_sdk_product', 'artifacts/engine/darwin-x64'].every(function (path) { return directory(cache + '/' + path); })) return false;
+        if (!['dart-sdk/bin/dart', 'artifacts/engine/darwin-x64/flutter_tester',
+            'artifacts/engine/darwin-x64/font-subset'].every(function (path) { return file(cache + '/' + path, true); })) return false;
+        var artifacts = ['material_fonts', 'gradle_wrapper', 'libimobiledevice', 'libusbmuxd', 'libplist', 'openssl', 'libimobiledeviceglue', 'ios-deploy'];
+        if (!artifacts.every(function (name) {
+            var version = readText(root + '/bin/internal/' + name + '.version', 65536).trim();
+            return stamp(name, version) && directory(cache + '/artifacts/' + name);
+        })) return false;
+        if (!['gradle_wrapper/gradlew', 'gradle_wrapper/gradlew.bat', 'gradle_wrapper/gradle/wrapper/gradle-wrapper.jar'].every(function (path) { return file(cache + '/artifacts/' + path, false); })) return false;
+        if (!['libimobiledevice/idevicescreenshot', 'libimobiledevice/idevicesyslog', 'libusbmuxd/iproxy', 'ios-deploy/ios-deploy'].every(function (path) { return file(cache + '/artifacts/' + path, true); })) return false;
+        if (!file(cache + '/pkg/sky_engine/pubspec.yaml', false) || !file(cache + '/pkg/flutter_gpu/pubspec.yaml', false)) return false;
+        var configPath = root + '/packages/flutter_tools/.dart_tool/package_config.json';
+        var config = readJSON(configPath), names = Object.create(null);
+        if (!config || config.configVersion !== 2 || !Array.isArray(config.packages) || !config.packages.length) return false;
+        var baseURL = $.NSURL.fileURLWithPath($(configPath));
+        return config.packages.every(function (entry) {
+            if (!entry || typeof entry.name !== 'string' || !entry.name || names[entry.name]
+                || typeof entry.rootUri !== 'string' || !entry.rootUri || /[\u0000-\u0020\u007f]/.test(entry.rootUri)) return false;
+            names[entry.name] = true;
+            var url = $.NSURL.URLWithStringRelativeToURL($(entry.rootUri), baseURL);
+            if (!url) return false;
+            url = url.absoluteURL;
+            var host = ObjC.unwrap(url.host) || '';
+            if (ObjC.unwrap(url.scheme) !== 'file' || (host && host !== 'localhost') || ObjC.unwrap(url.query) || ObjC.unwrap(url.fragment)) return false;
+            var path = ObjC.unwrap(url.path);
+            return !!path && directory(path) && file(path.replace(/\/+$/, '') + '/pubspec.yaml', false);
+        });
+    } catch (_) {
+        return false;
+    }
+}
 // 已知平台必须有项目对应平台目录，自定义设备平台保持兼容。
 function projectSupportsPlatform(project, targetPlatform) {
     if (!project) {
@@ -880,6 +979,7 @@ function sdkDownloadContext(root, declared, gitTag, gitRevision, host, engineOve
 function run(argv) {
     var mode = argv[0];
     var args = argv.slice(1);
+    if (mode === 'universal-ready' && args.length === 1) return universalReady(args[0]) ? 'true' : 'false';
     if (mode === 'watch-log' && args.length === 2) {
         watchLog(args[0], args[1]); return;
     }

@@ -9,6 +9,7 @@ require 'tmpdir'
 require 'fileutils'
 require 'json'
 require 'open3'
+require 'uri'
 
 class FlutterRunnerJSONTests < Minitest::Test
   HELPER = File.expand_path('../Scripts/FlutterRunner.jxa', __dir__)
@@ -400,6 +401,111 @@ class FlutterRunnerJSONTests < Minitest::Test
     assert_equal 'stable', successful('fvm-version', write_json('legacy.json', flutterSdkVersion: 'stable')).strip
   end
 
+  def test_universal_ready_reuses_complete_cache_without_executing_or_writing_sdk
+    sdk = universal_sdk_fixture
+    before = Dir.glob(File.join(sdk, '**', '*')).select { |path| File.file?(path) }.to_h do |path|
+      [path, [File.binread(path), File.stat(path).mode, File.mtime(path)]]
+    end
+    assert_equal 'true', successful('universal-ready', sdk).strip
+    before.each do |path, state|
+      assert_equal state, [File.binread(path), File.stat(path).mode, File.mtime(path)], path
+    end
+    refute File.exist?(File.join(@root, 'SDK_EXECUTED'))
+  end
+
+  def test_universal_ready_rejects_missing_package_or_patched_directory_even_with_valid_stamps
+    sdk = universal_sdk_fixture
+    %w[pkg/sky_engine pkg/flutter_gpu artifacts/engine/common/flutter_patched_sdk
+       artifacts/engine/common/flutter_patched_sdk_product artifacts/engine/darwin-x64
+       artifacts/material_fonts artifacts/openssl].each do |relative|
+      path = File.join(sdk, 'bin/cache', relative)
+      saved = path + '.saved'
+      File.rename(path, saved)
+      assert_equal 'false', successful('universal-ready', sdk).strip, relative
+      File.rename(saved, path)
+    end
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_mismatched_engine_artifact_and_version_stamps
+    sdk = universal_sdk_fixture
+    %w[engine engine-dart-sdk flutter_sdk font-subset engine_stamp material_fonts gradle_wrapper
+       libimobiledevice libusbmuxd libplist openssl libimobiledeviceglue ios-deploy].each do |name|
+      path = File.join(sdk, 'bin/cache', name + '.stamp')
+      content = File.read(path)
+      File.write(path, 'stale-version')
+      assert_equal 'false', successful('universal-ready', sdk).strip, name
+      File.write(path, content)
+    end
+    assert_equal 'false', execute('universal-ready', sdk, env: { 'FLUTTER_PREBUILT_ENGINE_VERSION' => 'b' * 40 }).first.strip
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_missing_or_nonexecutable_required_tools
+    sdk = universal_sdk_fixture
+    %w[artifacts/gradle_wrapper/gradle/wrapper/gradle-wrapper.jar
+       artifacts/gradle_wrapper/gradlew.bat pkg/sky_engine/pubspec.yaml
+       artifacts/libimobiledevice/idevicesyslog artifacts/libusbmuxd/iproxy
+       artifacts/ios-deploy/ios-deploy artifacts/engine/darwin-x64/font-subset].each do |relative|
+      path = File.join(sdk, 'bin/cache', relative)
+      saved = path + '.saved'
+      File.rename(path, saved)
+      assert_equal 'false', successful('universal-ready', sdk).strip, relative
+      File.rename(saved, path)
+    end
+    executable = File.join(sdk, 'bin/cache/artifacts/libusbmuxd/iproxy')
+    File.chmod(0o600, executable)
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.chmod(0o700, executable)
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_validates_pub_roots_and_rejects_network_uris_or_invalid_configs
+    sdk = universal_sdk_fixture
+    path = File.join(sdk, 'packages/flutter_tools/.dart_tool/package_config.json')
+    original = File.read(path)
+    config = JSON.parse(original)
+    invalid = [nil, {}, { configVersion: 1, packages: config['packages'] }, { configVersion: 2, packages: [] }]
+    ['https://example.invalid/pkg/', 'file://example.invalid/pkg/', '../missing/', "../bad\npath/", '../?query=1', '../#fragment'].each do |uri|
+      value = JSON.parse(original)
+      value['packages'][1]['rootUri'] = uri
+      invalid << value
+    end
+    duplicate = JSON.parse(original)
+    duplicate['packages'] << duplicate['packages'].first
+    invalid << duplicate
+    invalid.each do |value|
+      File.write(path, JSON.generate(value))
+      assert_equal 'false', successful('universal-ready', sdk).strip, value.inspect
+    end
+    File.write(path, '[')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original)
+    dependency = File.join(sdk, 'packages/flutter_tools/deps/本地 依赖/pubspec.yaml')
+    File.rename(dependency, dependency + '.saved')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.rename(dependency + '.saved', dependency)
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_unknown_layout_or_engine_metadata
+    sdk = universal_sdk_fixture
+    path = File.join(sdk, 'packages/flutter_tools/lib/src/flutter_cache.dart')
+    original = File.read(path)
+    File.write(path, original.sub('registerArtifact(MaterialFonts(this));', 'registerArtifact(NewArtifact(this));'))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original.sub("'sky_engine', 'flutter_gpu'", "'sky_engine', 'flutter_gpu', 'new_package'"))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original)
+    File.rename(path, path + '.saved')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.rename(path + '.saved', path)
+    metadata = File.join(sdk, 'bin/cache/engine_stamp.json')
+    File.write(metadata, JSON.generate(git_revision: 'b' * 40))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    assert_equal 'false', successful('universal-ready', File.join(@root, 'missing SDK')).strip
+  end
+
   def test_fvm_version_rejects_missing_or_unsafe_values
     [{ flutter: '3.47.7; rm -rf /' }, { flutter: '' }, { flutter: 3 }, { other: 'x' }, nil, []].each_with_index do |data, index|
       output, status = execute('fvm-version', write_json("fvm-bad#{index}.json", data))
@@ -462,6 +568,94 @@ class FlutterRunnerJSONTests < Minitest::Test
 
   def ios_runtime(version)
     'com.apple.CoreSimulator.SimRuntime.iOS-' + version
+  end
+
+  # 保留真实缓存结构和源码登记形状，所有“工具”仅写入标记以检测误执行。
+  def universal_sdk_fixture
+    sdk = File.join(@root, 'SDK 中文 空格 $(touch SHOULD_NOT_EXIST)')
+    engine = 'a' * 40
+    put = lambda do |relative, contents, executable = false|
+      path = File.join(sdk, relative)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, contents)
+      File.chmod(0o700, path) if executable
+    end
+    put.call('bin/internal/engine.version', engine)
+    %w[engine engine-dart-sdk flutter_sdk font-subset engine_stamp].each do |name|
+      put.call('bin/cache/' + name + '.stamp', engine + "\n")
+    end
+    put.call('bin/cache/engine_stamp.json', JSON.generate(git_revision: engine))
+    %w[material_fonts gradle_wrapper libimobiledevice libusbmuxd libplist openssl libimobiledeviceglue ios-deploy].each do |name|
+      put.call('bin/internal/' + name + '.version', name + '-version')
+      put.call('bin/cache/' + name + '.stamp', name + "-version\n")
+      FileUtils.mkdir_p(File.join(sdk, 'bin/cache/artifacts', name))
+    end
+    %w[flutter_patched_sdk flutter_patched_sdk_product].each do |name|
+      FileUtils.mkdir_p(File.join(sdk, 'bin/cache/artifacts/engine/common', name))
+    end
+    %w[sky_engine flutter_gpu].each { |name| put.call('bin/cache/pkg/' + name + '/pubspec.yaml', 'name: ' + name) }
+    marker = "#!/bin/zsh\ntouch '#{File.join(@root, 'SDK_EXECUTED')}'\n"
+    %w[bin/flutter bin/cache/dart-sdk/bin/dart bin/cache/artifacts/engine/darwin-x64/flutter_tester
+       bin/cache/artifacts/engine/darwin-x64/font-subset bin/cache/artifacts/libimobiledevice/idevicescreenshot
+       bin/cache/artifacts/libimobiledevice/idevicesyslog bin/cache/artifacts/libusbmuxd/iproxy
+       bin/cache/artifacts/ios-deploy/ios-deploy].each { |path| put.call(path, marker, true) }
+    %w[gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar].each do |path|
+      put.call('bin/cache/artifacts/gradle_wrapper/' + path, 'fixture')
+    end
+    put.call('packages/flutter_tools/pubspec.yaml', 'name: flutter_tools')
+    put.call('packages/flutter_tools/deps/本地 依赖/pubspec.yaml', 'name: local_dependency')
+    external = File.join(@root, '外部 dependency')
+    FileUtils.mkdir_p(external)
+    File.write(File.join(external, 'pubspec.yaml'), 'name: external_dependency')
+    put.call('packages/flutter_tools/.dart_tool/package_config.json', JSON.generate(configVersion: 2, packages: [
+      { name: 'flutter_tools', rootUri: '../' },
+      { name: 'local_dependency', rootUri: URI::DEFAULT_PARSER.escape('../deps/本地 依赖/') },
+      { name: 'external_dependency', rootUri: URI::DEFAULT_PARSER.escape('file://' + external + '/') }
+    ]))
+    put.call('packages/flutter_tools/lib/src/flutter_cache.dart', <<~DART)
+      class FlutterCache {
+        registerArtifact(MaterialFonts(this));
+        registerArtifact(GradleWrapper(this));
+        registerArtifact(FlutterSdk(this));
+        registerArtifact(IosUsbArtifacts(name, this));
+        registerArtifact(FontSubsetArtifacts(this));
+        registerArtifact(PubDependencies());
+        registerArtifact(OtherPlatformArtifacts(this));
+      }
+      class MaterialFonts extends CachedArtifact {
+        MaterialFonts(cache) : super('material_fonts', cache, DevelopmentArtifact.universal);
+      }
+      class GradleWrapper extends CachedArtifact {
+        GradleWrapper(cache) : super('gradle_wrapper', cache, DevelopmentArtifact.universal);
+        List<String> get _gradleScripts => <String>['gradlew', 'gradlew.bat'];
+      }
+      class FlutterSdk extends EngineCachedArtifact {
+        FlutterSdk(cache) : super('flutter_sdk', cache, DevelopmentArtifact.universal);
+        List<String> getPackageDirs() => const <String>['sky_engine', 'flutter_gpu'];
+        List<List<String>> getBinaryDirs() { return <List<String>>[
+          <String>['common', 'flutter_patched_sdk.zip'],
+          <String>['common', 'flutter_patched_sdk_product.zip'],
+          <String>['darwin-x64', 'darwin-$arch/artifacts.zip']
+        ]; }
+      }
+      class IosUsbArtifacts extends CachedArtifact {
+        IosUsbArtifacts(name, cache) : super(name, cache, DevelopmentArtifact.universal);
+        static const artifactNames = <String>['libimobiledevice', 'libusbmuxd', 'libplist', 'openssl', 'libimobiledeviceglue', 'ios-deploy'];
+      }
+      class FontSubsetArtifacts extends EngineCachedArtifact {
+        FontSubsetArtifacts(cache) : super(artifactName, cache, DevelopmentArtifact.universal);
+        List<List<String>> getBinaryDirs() { return <List<String>>[
+          <String>['darwin-x64', 'darwin-$arch/$artifactName.zip']
+        ]; }
+      }
+      class PubDependencies extends ArtifactSet {
+        PubDependencies() : super(DevelopmentArtifact.universal);
+      }
+      class OtherPlatformArtifacts extends ArtifactSet {
+        OtherPlatformArtifacts(cache) : super(DevelopmentArtifact.androidGenSnapshot);
+      }
+    DART
+    sdk
   end
 
   def simulator_fixture

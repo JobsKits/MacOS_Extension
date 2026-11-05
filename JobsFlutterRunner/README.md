@@ -31,6 +31,8 @@
 
 **SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
 
+设备枚举前先检查所选 SDK 的公共缓存；完整本地 stamp、组件目录及工具依赖均就绪时直接复用，不新增联网前提。否则先执行 `flutter precache --universal`，沿用本次网络选路、真实进度和持续重试，单次窗口为 1800 秒，直到就绪或 `Ctrl+C` 结束；这一步不下载所有目标平台。输出保存到 `<操作日志>.discovery-sdk`；每次尝试结束后，将输出和退出码追加到 `<操作日志>.discovery-sdk.attempts.log`，中断时保留当次日志。公共组件完成后才运行短时 `flutter devices --machine`，避免机器模式下的隐式下载被设备查询超时反复中止。
+
 运行和打包在实际 `run` / `build` 前，先为已选设备 / 打包平台执行对应 `flutter precache --ios|--android|--web|--macos|--ohos`，平台资源获取失败持续重试；不会因此反复构建 App。鸿蒙先检查适配 SDK 是否支持 `--ohos`，不支持时在构建前明确说明。
 
 **菜单范围：桌面空白处不显示本功能；文件夹与项目菜单仍按下文条件显示。桌面上选中的项目文件夹不受此空白菜单规则影响。**
@@ -40,9 +42,9 @@
 | 项目 | 实际行为 |
 | --- | --- |
 | 菜单条件 | 精确目录自身的 `pubspec.yaml` 声明 `dependencies.flutter.sdk: flutter`；普通目录才接受，不递归查找，也不把 `flutter_test` 当作项目依据。 |
-| 设备 | 枚举 `flutter devices --machine`，按项目已有平台目录过滤可运行目标，在终端用 fzf 上下键选择并可直接输入关键字筛选；未安装 fzf 或非终端时回退编号输入。支持重新加载、iOS 模拟器及 Android AVD 入口。 |
+| 设备 | 公共 SDK 组件准备就绪后枚举 `flutter devices --machine`，按项目已有平台目录过滤可运行目标，在终端用 fzf 上下键选择并可直接输入关键字筛选；未安装 fzf 或非终端时回退编号输入。支持重新加载、iOS 模拟器及 Android AVD 入口。 |
 | fzf 选择 | 终端内所有列表（设备、模拟器型号、iOS 系统版本、Android AVD）统一走 fzf：`↑/↓` 移动、输入即筛选、回车确认、`Esc` 取消。环境变量 `JOBS_FLUTTER_RUNNER_FZF=0` 可强制关闭并回到编号输入。 |
-| iOS 模拟器缺失 | 内置查询设备型号与已安装 iOS runtime、选择、创建、启动和等待就绪流程；型号按有无可搭配系统优先推荐，选定型号后只列匹配该型号的系统；创建结果不明确时不自动重试，明确不兼容需输入 `r` 才重选；缺 runtime 时提示在 Xcode Settings → Components（旧版 Platforms）安装。新模拟器命名与[独立初始化脚本](<../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md>)一致：`型号名@年.月.日 时:分:秒-进程号`，重名追加 ` (2)`。模拟器界面按当前 Xcode 定位：Xcode 27 为 `Contents/Applications/DeviceHub.app`，旧版为 `Contents/Developer/Applications/Simulator.app`；界面打不开只提示，不终止运行。新建模拟器后等设备进入 Flutter 列表：新 FVM 版本首次冷启动较慢，读取超时依次为 120 / 60 / 30 / 30 秒，共 4 次后才判定未识别。 |
+| iOS 模拟器缺失 | 内置查询设备型号与已安装 iOS runtime、选择、创建、启动和等待就绪流程；型号按有无可搭配系统优先推荐，选定型号后只列匹配该型号的系统；创建结果不明确时不自动重试，明确不兼容需输入 `r` 才重选；缺 runtime 时提示在 Xcode Settings → Components（旧版 Platforms）安装。新模拟器命名与[独立初始化脚本](<../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md>)一致：`型号名@年.月.日 时:分:秒-进程号`，重名追加 ` (2)`。模拟器界面按当前 Xcode 定位：Xcode 27 为 `Contents/Applications/DeviceHub.app`，旧版为 `Contents/Developer/Applications/Simulator.app`；界面打不开只提示，不终止运行。新建模拟器后等设备进入 Flutter 列表，读取超时依次为 120 / 60 / 30 / 30 秒，共 4 次后才判定未识别；这些窗口只用于设备枚举，公共 SDK 下载已提前完成。 |
 | Android 模拟器 | 项目含 `android/` 时可列出 Android SDK 已配置的 AVD，选择后交给独立 launchd job 启动；不创建 AVD，启动后返回设备列表。 |
 | 终端与后台 | `launchd` 管理独立 `flutter run --machine`；终端实时追踪会话 `run.log`。关闭窗口、Ctrl+C 或 `d` 只断开查看；`s` 明确停止。 |
 | 继续查看 | 再次右键同一项目，选择同一设备，连接已有会话；不重复启动同一项目和设备。 |
@@ -221,7 +223,7 @@ ruby ./Tests/FlutterRunLaunchdSmoke.rb
 | 模拟器已启动但界面没弹出 | 设备已 boot 并确认就绪，界面打开失败只记日志、不影响 Flutter 运行；可在 Xcode → Devices and Simulators 手动打开，或按日志里的 UDID 自行 `xcrun simctl boot`。 |
 | 项目声明了 FVM 但 SDK 未就绪 | 常见于换机：`.fvm/flutter_sdk` 仍指向旧机器路径（如 `/Users/<旧用户名>/fvm/versions/x`）而成为断链。脚本读 `.fvmrc` / `.fvm/fvm_config.json` 的版本声明，回车后自动补齐——本机 FVM 缓存已有该版本就只重建链接（秒级、不下载），没有才 `fvm install` 下载；找不到 fvm 命令时提示安装。 |
 | `fvm use` 后仍没有 `.fvm/flutter_sdk` | fvm 在声明版本已一致时可能只写配置、不重建链接；脚本会按本机缓存兜底重建链接，无需手动处理。 |
-| 新建模拟器后卡在"正在读取 Flutter 设备列表" | 新装 FVM 版本的首次 `flutter devices` 要重建 flutter_tools，常超过 30 秒。本脚本在新建模拟器后的读取按 120 / 60 / 30 / 30 秒共重试 4 次，失败时会把 Flutter 最近 5 行输出写入日志；多次超时仍失败时先手动跑一次 `flutter doctor` 完成初始化。 |
+| 模拟器已启动，但 Flutter 设备查询持续超时 | `flutter --version` 成功不代表公共制品完整；`devices --machine` 也可能先隐式补下载，且机器模式不显示进度。运行器先单独补齐公共组件，查看 `<操作日志>.discovery-sdk` 的真实下载与重试结果；完成后普通枚举为 30 秒，模拟器识别按 120 / 60 / 30 / 30 秒重试，失败保留最近输出。已打开的旧终端须重新发起；不要据此重复创建或删除模拟器。 |
 | 构建失败 | 查看 `run.log`，按 Flutter 报错修复目标依赖、签名或 SDK；脚本不会把已提交后台任务等同于启动成功。 |
 | `Failed to index parameter type` / `Failed to check availability in Spotlight` | 若主体为 `WF*`、`ActionKit`、`is.workflow.actions.*`，属于 macOS 快捷指令索引诊断。运行器折叠为一条系统提示，完整内容仍在 `run.log`；索引末尾 `Errored: 0` 只表示该索引过程的结果，不代表 Flutter 已构建成功。 |
 | 长时间停在 `Fetching from …SwiftyGif.git` 等依赖地址 | Flutter 正在等待 Xcode 的 Swift Package Manager 取包。Flutter 3.44 起默认启用并自动迁移，首次运行会下载插件的原生依赖，见[官方说明](https://docs.flutter.dev/packages-and-plugins/swift-package-manager/for-app-developers)。检查该会话的 Flutter、`xcodebuild -resolvePackageDependencies` 与 Git 子进程及后续日志；有存活进程且无最终退出码时，不能凭系统索引消息判定构建失败。 |
@@ -234,7 +236,7 @@ ruby ./Tests/FlutterRunLaunchdSmoke.rb
 
 FVM SDK 自动补齐（2026-10-21）：来源为用户换机后右键运行报"项目声明了 FVM，但本地 `.fvm/flutter_sdk` 尚未就绪"，实际是该链接仍指向旧机器路径（`/Users/jobs/fvm/versions/3.47.7`）而成为断链，本机 FVM 缓存里已经有 3.47.7。现行实现读 `.fvmrc` / `.fvm/fvm_config.json` 的声明版本，自动用本机 fvm 补齐（入口原始确认仍保留）：缓存命中只重建链接不下载，缓存缺失才 `fvm install`；`fvm use` 只写配置不建链接时按本机缓存兜底重建；始终校验 `.fvm/flutter_sdk/bin/flutter` 可执行。找不到 fvm 命令时给出安装提示，不自动安装 Homebrew 或 fvm，也不改动全局 Flutter。
 
-新建模拟器后设备识别等待修复（2026-10-21）：来源为用户新电脑（Xcode 27.1 + FVM 3.35.3）右键运行，模拟器创建、boot、就绪与 Device Hub 全部成功，但随后 `flutter devices --machine` 在 30 秒内未返回，3 次重试后判定未识别而失败。原因是新 FVM 版本首次冷启动要重建 flutter_tools，远超 30 秒。现行实现把"等待 Flutter 识别新建模拟器"抽为独立函数：读取超时依次为 120 / 60 / 30 / 30 秒共 4 次，每次失败打印 Flutter 最近 5 行输出；普通设备刷新仍是 30 秒。
+设备发现与 SDK 获取分开执行：首次 `devices` 在枚举前仍可能下载 `sky_engine`、`flutter_gpu` 和 patched SDK 等公共制品，不能只用 `--version` 成功判断缓存完整。运行器先完成公共制品准备，再进入设备查询；模拟器识别读取依次为 120 / 60 / 30 / 30 秒共 4 次，每次失败打印最近输出，普通设备刷新为 30 秒。设备查询失败不删除已启动模拟器。
 
 模拟器界面定位修复（2026-10-21）：来源为用户新电脑（Xcode 27.1）右键运行报 `Unable to find application named 'Simulator'` 并终止。原因是 Xcode 26 / 27 已把模拟器界面改名为 `DeviceHub.app` 并移到 `Xcode.app/Contents/Applications`，不再有 `Contents/Developer/Applications/Simulator.app`，`open -a Simulator` 因此查不到应用。现行实现用 `xcrun --find simctl` 反推 Xcode 目录，依次尝试 `Simulator.app`（新旧两个位置）与 `DeviceHub.app`，命中哪个用哪个；`Simulator.app` 仍带 `-CurrentDeviceUDID`，`DeviceHub` 只打开并提示按设备名选中。设备已 boot 且就绪确认通过后，界面打开失败只提示、不再终止运行。
 

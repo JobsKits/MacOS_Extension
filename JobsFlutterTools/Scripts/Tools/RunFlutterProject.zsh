@@ -1162,6 +1162,30 @@ prepare_project_fvm_sdk() {
   log "✔ FVM SDK 已就绪：Flutter $version → $REPLY"
 }
 
+# 每次获取的原始输出追加归档；下一轮覆盖当前进度文件前保留已结束尝试。
+acquire_device_discovery_sdk_once() {
+  local output="$LOG_FILE.discovery-sdk" result=0
+  run_bounded 1800 "$output" "$FLUTTER_BIN" precache --universal || result=$?
+  print -r -- "━━ universal：$(/bin/date '+%Y-%m-%d %H:%M:%S')，退出码 $result ━━" >> "$output.attempts.log"
+  [[ ! -f "$output" ]] || /bin/cat "$output" >> "$output.attempts.log"
+  return "$result"
+}
+
+# devices 也会隐式下载公共制品，先以可见进度完成，避免被设备查询的短超时反复中止。
+prepare_device_discovery_sdk() {
+  local output="$LOG_FILE.discovery-sdk" sdk="${FLUTTER_BIN:A:h:h}"
+  if [[ "$(json_helper universal-ready "$sdk" 2>/dev/null)" == true ]]; then
+    log '✓ Flutter 设备发现所需公共SDK缓存已就绪，复用本地组件。'
+    return 0
+  fi
+  if (( ${+functions[show_sdk_download_context]} )); then
+    show_sdk_download_context "$FLUTTER_BIN" '设备发现公共组件（universal）'
+  fi
+  log "▶ 补齐 Flutter 设备发现公共SDK组件；实时显示进度，失败自动重试，Ctrl+C结束；完整日志：$output"
+  RUN_BOUNDED_STREAM=1 JOBS_SDK_LOG_REPLACED=1 JOBS_FLUTTER_ROUTE_MODE=platform jobs_flutter_sdk_retry \
+    'Flutter 设备发现公共SDK' "$output" "$sdk" "" acquire_device_discovery_sdk_once
+}
+
 find_flutter() {
   local candidate="" output="$LOG_FILE.version" result=0
   if [[ -e "$PROJECT_PATH/.fvmrc" || -e "$PROJECT_PATH/.fvm/fvm_config.json" || -L "$PROJECT_PATH/.fvm/flutter_sdk" ]]; then
@@ -1184,6 +1208,7 @@ find_flutter() {
     case "$result" in 129|130|131|137|143) return "$result" ;; esac
     die "Flutter 体检失败：$output"
   }
+  prepare_device_discovery_sdk || return $?
   log "Flutter：$FLUTTER_BIN"
 }
 
@@ -1269,7 +1294,7 @@ select_row() {
   done
 }
 
-# 可选第一个参数为超时秒数；新 FVM 版本首次冷启动 flutter_tools 远超 30 秒，默认留给普通刷新。
+# 设备枚举使用短超时；公共SDK下载已在选择设备前独立完成。
 refresh_devices() {
   local seconds="${1:-30}" output="$LOG_FILE.devices.json" table=""
   log 'ℹ 正在读取 Flutter 设备列表…'
@@ -1451,7 +1476,7 @@ select_ios_simulator() {
   log "ℹ 等待所选模拟器就绪：$simulator_id"
   run_bounded 180 "$LOG_FILE.bootstatus" /usr/bin/xcrun simctl bootstatus "$simulator_id" -b || die "模拟器未在 180 秒内启动完成：$LOG_FILE.bootstatus"
   reveal_simulator_interface "$simulator_id" || log 'ℹ 界面未打开不影响运行；Flutter 仍会使用已启动的模拟器。'
-  # 新建模拟器后 Flutter 首次冷启动可能重建 flutter_tools，前两次给足时间；仍失败再按普通超时重试。
+  # 模拟器启动后等待Flutter设备发现刷新；公共制品已在前置流程准备。
   wait_for_simulator_recognition "$simulator_id"
 }
 

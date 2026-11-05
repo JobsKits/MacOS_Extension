@@ -24,7 +24,10 @@ class FlutterRunnerShellTests < Minitest::Test
 
   def shell(body, input: '', env: {})
     Open3.capture3({ 'HOME' => @tmp, 'NO_COLOR' => '1' }.merge(env), '/bin/zsh', '-f', '-c',
-      "source #{@library.shellescape}\nPROJECT_PATH=#{@tmp.shellescape}\nLOG_FILE=#{File.join(@tmp, 'test.log').shellescape}\n: > \"$LOG_FILE\"\n#{body}", stdin_data: input, chdir: @tmp)
+      "source #{@library.shellescape}\nPROJECT_PATH=#{@tmp.shellescape}\nLOG_FILE=#{File.join(@tmp, 'test.log').shellescape}\n: > \"$LOG_FILE\"\n" \
+      "jobs_flutter_route_prepare() { return 0; }\n" \
+      "jobs_flutter_fvm_runtime() { return 0; }\n" \
+      "jobs_flutter_fvm_install() { install_project_fvm_sdk_once; }\n#{body}", stdin_data: input, chdir: @tmp)
   end
 
   def test_eof_at_first_confirmation_does_not_create_state
@@ -400,9 +403,13 @@ class FlutterRunnerShellTests < Minitest::Test
     flutter = File.join(sdk, 'bin/flutter')
     File.write(flutter, <<~'ZSH')
       #!/bin/zsh
-      [[ "$*" == --version ]] || exit 71
-      printf 'Downloading Dart SDK 20%%\rDownloading Dart SDK 100%%\n' >&2
-      print 'Flutter fixture'
+      case "$*" in
+        --version)
+          printf 'Downloading Dart SDK 20%%\rDownloading Dart SDK 100%%\n' >&2
+          print 'Flutter fixture' ;;
+        'precache --universal') print 'Downloading common SDK 100%' ;;
+        *) exit 71 ;;
+      esac
     ZSH
     File.chmod(0o700, flutter)
     out, err, result = shell('find_flutter')
@@ -411,6 +418,75 @@ class FlutterRunnerShellTests < Minitest::Test
     assert_includes out, 'Flutter fixture'
     assert_includes out, '首次执行可能下载组件'
     assert_equal "Downloading Dart SDK 20%\rDownloading Dart SDK 100%\nFlutter fixture\n", File.read(File.join(@tmp, 'test.log.version'))
+    assert_includes out, 'Downloading common SDK 100%'
+    assert_equal "Downloading common SDK 100%\n", File.read(File.join(@tmp, 'test.log.discovery-sdk'))
+  end
+
+  def test_discovery_sdk_uses_routed_visible_long_acquisition_before_devices
+    out, err, result = shell(<<~'ZSH')
+      FLUTTER_BIN=/fixture/sdk/bin/flutter
+      json_helper() { [[ "$1" == universal-ready ]] && print false; }
+      jobs_flutter_sdk_retry() {
+        [[ "$JOBS_FLUTTER_ROUTE_MODE" == platform && "$RUN_BOUNDED_STREAM" == 1 && "$JOBS_SDK_LOG_REPLACED" == 1 ]] || return 72
+        shift 4
+        "$@"
+      }
+      run_bounded() {
+        [[ "$1" == 1800 && "$3" == "$FLUTTER_BIN" && "$4" == precache && "$5" == --universal && $# == 5 ]] || return 73
+        print 'PUBLIC_CACHE_READY'
+      }
+      prepare_device_discovery_sdk || exit $?
+      print 'DEVICE_DISCOVERY_ALLOWED'
+    ZSH
+    assert result.success?, err
+    assert_match(/PUBLIC_CACHE_READY.*DEVICE_DISCOVERY_ALLOWED/m, out)
+  end
+
+  def test_warm_discovery_sdk_needs_no_network_or_sdk_process
+    out, err, result = shell(<<~'ZSH')
+      FLUTTER_BIN=/fixture/sdk/bin/flutter
+      json_helper() { [[ "$1" == universal-ready ]] && print true; }
+      jobs_flutter_sdk_retry() { print 'UNEXPECTED_NETWORK'; return 74; }
+      run_bounded() { print 'UNEXPECTED_SDK'; return 75; }
+      prepare_device_discovery_sdk || exit $?
+    ZSH
+    assert result.success?, err
+    assert_includes out, '复用本地组件'
+    refute_includes out, 'UNEXPECTED'
+  end
+
+  def test_failed_discovery_sdk_preparation_blocks_device_discovery
+    out, err, result = shell(<<~'ZSH')
+      FLUTTER_BIN=/fixture/sdk/bin/flutter
+      json_helper() { print false; }
+      jobs_flutter_sdk_retry() { return 130; }
+      prepare_device_discovery_sdk || exit $?
+      print 'UNEXPECTED_DEVICES'
+    ZSH
+    assert_equal 130, result.exitstatus, err
+    refute_includes out, 'UNEXPECTED_DEVICES'
+  end
+
+  def test_discovery_sdk_retry_keeps_each_completed_attempt
+    out, err, result = shell(<<~'ZSH')
+      FLUTTER_BIN=/fixture/sdk/bin/flutter
+      json_helper() { print false; }
+      integer downloads=0
+      run_bounded() {
+        (( downloads += 1 ))
+        print -r -- "DOWNLOAD_ATTEMPT=$downloads" > "$2"
+        (( downloads > 1 ))
+      }
+      prepare_device_discovery_sdk || exit $?
+      print 'DEVICE_DISCOVERY_ALLOWED'
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'DEVICE_DISCOVERY_ALLOWED'
+    history = File.read(File.join(@tmp, 'test.log.discovery-sdk.attempts.log'))
+    assert_includes history, 'DOWNLOAD_ATTEMPT=1'
+    assert_includes history, 'DOWNLOAD_ATTEMPT=2'
+    assert_includes history, '退出码 1'
+    assert_includes history, '退出码 0'
   end
 
   def test_missing_ios_simulator_creates_selected_type_and_runtime
