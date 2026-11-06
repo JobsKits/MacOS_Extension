@@ -47,6 +47,8 @@ SDK 安装 / 切换的最终版本核验和 SDK 查看器的候选探针同样�
 
 一键迁移由 [【MacOS】一键迁移Flutter依赖.zsh](./【MacOS】一键迁移Flutter依赖.zsh/README.md) 和同目录 [FlutterDependencyMigration.dart](./FlutterDependencyMigration.dart) 承接，保留同目录 Pub 提取 / 导入引擎。`export-all-dependencies` / `import-all-dependencies` 在分发器的 SDK 绑定门禁前进入文件迁移；可复用项目 Dart 或本机已有原生 Dart，不下载 SDK、不改变工程绑定。按内容识别迁移目录或原始 Pub / Gradle 缓存，支持目录改名与父目录组合；导入先预检，精确 `YES` 后才写入，冲突停止。提取默认私库，非空才全提取，ZIP 和删除默认值见入口自述；完整材料范围见[一键迁移与底稿](../../README.md#one-click-migration)。
 
+一键入口保留已通过工具导入且实体有效的本地包覆盖，显示当前版本和快照版本，只新增未覆盖的包及缺失缓存；全部本地包可保留时不会生成空 vendor 导入目录或重写配置。普通 Pub 导入入口仅在工具记录有效且完整源码逐文件相同时允许重新定位覆盖，原覆盖文件精确备份、旧源码保留；自定义路径和真实内容冲突继续拒绝。
+
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、入口与执行顺序 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./SetupFlutterProject.zsh) 承接。先选择工程已有目标及 Flutter 来源；Android / OpenHarmony 再选择 Java，其它目标跳过 JDK。准备 SDK、平台工具链及平台资源，下载所需 Gradle，解析 Pub，再选择启动配置、准备目标依赖并实际构建，最后选择设备进行运行验证。Apple 配置生成也共用选定入口、flavor、模式和 defines。macOS 处理 Android、iOS、macOS、Web、OpenHarmony 已有目标，不自动生成平台源码；鸿蒙须使用适配 Flutter，DevEco / SDK 许可保留官方流程。

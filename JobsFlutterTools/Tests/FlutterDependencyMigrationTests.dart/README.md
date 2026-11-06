@@ -10,4 +10,6 @@ dart ./FlutterDependencyMigrationTests.dart
 
 覆盖改名缓存内容识别、原始缓存父目录、预览零写入、重复融合、凭据与执行配置排除、冲突整批拒绝、私库／全量过滤、Pods／SPM／OHPM／Web、包内链接物化、原生锁文件兼容、SHA-256 损坏拒绝，以及确认期间来源变更。测试默认在结束后清理自己的临时目录。
 
+重复导入还验证保留工具管理的现有版本与源码，只补未覆盖的包和缺失缓存；全部本地包已具备时不改配置、不增长 vendor 目录，自定义覆盖仍整批拒绝。`JOBS_TEST_TOOLS_DIR` 可指向 Windows 侧 `JobsFlutterTools/Scripts`，对同源引擎运行同一套夹具。
+
 可设置 `JOBS_KEEP_FIXTURE=1` 保留隔离夹具供排查；测试打印 `FIXTURE=` 路径。测试不代表真实 Finder／Explorer 菜单、Windows 原生运行或完整 Flutter 离线构建已验收。

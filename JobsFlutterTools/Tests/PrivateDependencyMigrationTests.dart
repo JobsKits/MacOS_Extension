@@ -220,6 +220,17 @@ Future<void> main() async {
           .contains('# unrelated stays'),
       '保留已有无关配置',
     );
+    final repeated = await run('ImportFlutterDependencies.dart', args);
+    expect(
+      repeated.exitCode == 0,
+      '私库快照内容一致的旧 vendor 也可重新导入：${repeated.stdout}\n${repeated.stderr}',
+    );
+    expect(
+      File('$dest/pubspec_overrides.yaml')
+          .readAsStringSync()
+          .contains('# unrelated stays'),
+      '重复导入私库仍保留无关覆盖',
+    );
     // Pub 独立校验：保留真实 Git / 旧 path 引用，移除 Flutter SDK；公共包用本地模拟缓存。
     write(
       '$dest/pubspec.yaml',

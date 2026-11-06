@@ -65,6 +65,98 @@ class ImportPackage {
   final List<SourceFile> files;
 }
 
+// 仅识别本工具已完成的导入；历史绝对路径只作记录，允许整个工程搬迁。
+class ManagedOverride {
+  ManagedOverride(this.name, this.version, this.incomingVersion, this.relative,
+      this.project, this.run, this.root, this.files);
+  final String name, version, incomingVersion, relative, project, run, root;
+  final List<SourceFile>? files;
+
+  void verify() {
+    var current = project;
+    for (final part in relative.split('/')) {
+      current = join(current, part);
+      requireDirectory(current);
+    }
+    if (type(join(run, '.incomplete')) != FileSystemEntityType.notFound) {
+      fail('既有导入未完成：$name');
+    }
+    if (files != null) {
+      final actual = inventory(root).map((file) => file.relative).toSet();
+      if (actual.length != files!.length ||
+          files!.any((file) => !actual.contains(file.relative))) {
+        fail('既有导入文件集合发生变化：$name');
+      }
+      for (final file in files!) {
+        file.verify();
+      }
+    }
+  }
+}
+
+// 自定义路径不接管；完整清单和包实体共同证明已有覆盖归本工具管理。
+ManagedOverride? managedOverride(
+  String project,
+  String declaration,
+  ImportPackage package,
+  extraction.Snapshot Function(String) take,
+  bool keep,
+) {
+  if (!declaration.trim().startsWith('{')) return null;
+  final fields = extraction.flowMapping(declaration);
+  if (fields.length != 1 || !fields.containsKey('path')) return null;
+  final relative = extraction.scalar(fields['path']!);
+  final parts = relative.split('/');
+  if (parts.length != 5 || parts[0] != 'vendor' ||
+      parts[1] != 'flutter_dependencies' ||
+      !RegExp(r'^import-[a-zA-Z0-9-]+$').hasMatch(parts[2]) ||
+      parts[3] != 'packages' || parts[4] != package.name) return null;
+  var current = project;
+  for (final part in parts) {
+    current = join(current, part);
+    requireDirectory(current);
+  }
+  final run = join(project, parts.take(3).join('/'));
+  if (type(join(run, '.incomplete')) != FileSystemEntityType.notFound) {
+    fail('既有导入未完成：${package.name}');
+  }
+  final receipt = jsonDecode(take(join(run, 'import.json')).text);
+  final manifest = jsonDecode(take(join(run, 'source-manifest.json')).text);
+  if (receipt is! Map || receipt['formatVersion'] != 1 ||
+      receipt['packages'] is! Map || receipt['packages'][package.name] != relative ||
+      manifest is! Map || manifest['formatVersion'] != 1 ||
+      manifest['status'] != 'complete' || manifest['packages'] is! List) {
+    fail('既有导入记录不完整或与覆盖路径不符：${package.name}');
+  }
+  final records = (manifest['packages'] as List).whereType<Map>()
+      .where((record) => record['name'] == package.name).toList();
+  final spec = take(join(current, 'pubspec.yaml'));
+  requireSingleYamlDocument(spec.text);
+  final version = extraction.topScalar(spec.text, 'version');
+  final normalizedVersion = version.isEmpty ? '0.0.0' : version;
+  if (records.length != 1 || records.single['copiedPath'] != 'packages/${package.name}' ||
+      (!keep && records.single['version'] != normalizedVersion) ||
+      extraction.topScalar(spec.text, 'name') != package.name) {
+    fail('既有导入的包名或版本与记录不符：${package.name}');
+  }
+  List<SourceFile>? files;
+  if (!keep) {
+    files = inventory(current);
+    final source = {for (final file in package.files) file.relative: file};
+    if (normalizedVersion != package.version || files.length != source.length) return null;
+    for (final file in files) {
+      final incoming = source[file.relative];
+      if (incoming == null) return null;
+      final digest = extraction.fileDigest(File(file.path));
+      incoming.digest ??= extraction.fileDigest(File(incoming.path));
+      if (digest != incoming.digest) return null;
+      file.digest = digest;
+    }
+  }
+  return ManagedOverride(package.name, normalizedVersion, package.version,
+      relative, project, run, current, files);
+}
+
 // 只读盘点全部文件；额外包、设备、链接和未完成副本均拒绝。
 List<SourceFile> inventory(String root) {
   final result = <SourceFile>[];
@@ -189,6 +281,8 @@ class ImportPlan {
     this.existingOverrides,
     this.restoredPubspecOverrides,
     this.replacedOverrides,
+    this.managedOverrides,
+    this.keptOverrides,
   );
   final String project, source;
   final List<ImportPackage> packages;
@@ -198,8 +292,12 @@ class ImportPlan {
   final Map<String, String> existingOverrides;
   final List<String> restoredPubspecOverrides;
   final Set<String> replacedOverrides;
+  final List<ManagedOverride> managedOverrides, keptOverrides;
 
   void verify() {
+    for (final override in managedOverrides) {
+      override.verify();
+    }
     for (final item in snapshots) {
       if (type(item.file.path) != FileSystemEntityType.file) {
         fail('校验后元数据类型变化：${item.file.path}');
@@ -219,7 +317,7 @@ class ImportPlan {
   }
 }
 
-ImportPlan validate(String projectInput, String sourceInput, {bool privateOnly = false}) {
+ImportPlan validate(String projectInput, String sourceInput, {bool privateOnly = false, bool keepManagedOverrides = false}) {
   requireDirectory(projectInput);
   requireDirectory(sourceInput);
   final project = Directory(projectInput).resolveSymbolicLinksSync();
@@ -236,8 +334,11 @@ ImportPlan validate(String projectInput, String sourceInput, {bool privateOnly =
     fail('所选目录是提取未完成的半成品。');
   }
   final snapshots = <extraction.Snapshot>[];
+  final taken = <String, extraction.Snapshot>{};
   extraction.Snapshot take(String path) {
+    if (taken.containsKey(path)) return taken[path]!;
     final snapshot = readMetadata(path);
+    taken[path] = snapshot;
     snapshots.add(snapshot);
     return snapshot;
   }
@@ -447,9 +548,18 @@ ImportPlan validate(String projectInput, String sourceInput, {bool privateOnly =
   final targetOverrideEvidence = rawOverrideEvidence(targetText);
   final restoredPubspecOverrides = <String>[];
   final replacedOverrides = <String>{};
+  final managedOverrides = <ManagedOverride>[];
+  final keptOverrides = <ManagedOverride>[];
   for (final name in byName.keys) {
     if (existing.containsKey(name)) {
-      if (!privateOnly || sourceOverrides == null ||
+      final managed = managedOverride(project, existing[name]!, byName[name]!, take, keepManagedOverrides);
+      if (managed != null) {
+        managedOverrides.add(managed);
+        if (keepManagedOverrides) {
+          keptOverrides.add(managed);
+          continue;
+        }
+      } else if (!privateOnly || sourceOverrides == null ||
           extraction.dependencyEvidence(overrideText, 'dependency_overrides', name) != extraction.dependencyEvidence(sourceOverrides.text, 'dependency_overrides', name)) {
         fail('目标已为 $name 配置不同的 dependency_overrides，未覆盖；请先人工解决冲突。');
       }
@@ -474,13 +584,15 @@ ImportPlan validate(String projectInput, String sourceInput, {bool privateOnly =
   final plan = ImportPlan(
     project,
     source,
-    byName.values.toList(),
+    byName.values.where((package) => !keptOverrides.any((kept) => kept.name == package.name)).toList(),
     snapshots,
     projectManifest,
     originalOverrides,
     existing,
     restoredPubspecOverrides,
     replacedOverrides,
+    managedOverrides,
+    keptOverrides,
   );
   // 在预检阶段检查合并结果，避免确认后才发现配置格式不可合并。
   checkedOverrides(plan, {
@@ -669,13 +781,24 @@ void showPlan(ImportPlan plan) {
     );
     stdout.writeln('原 pubspec.yaml 保持不变；移除本次新增的 path 覆盖后，原声明重新生效。');
   }
-  if (plan.replacedOverrides.isNotEmpty) stdout.writeln('将备份并替换与来源完全相同的 ${plan.replacedOverrides.length} 个覆盖声明。');
+  if (plan.replacedOverrides.isNotEmpty) stdout.writeln('将备份并重定位 ${plan.replacedOverrides.length} 个同源声明或源码完全一致的既有覆盖。');
+  if (plan.keptOverrides.isNotEmpty) {
+    stdout.writeln('✔ 保留 ${plan.keptOverrides.length} 个已完成导入的本地包及其现有覆盖；不升级、不替换旧源码。');
+    for (final package in plan.keptOverrides) {
+      stdout.writeln('  保留 ${package.name} ${package.version}（快照 ${package.incomingVersion}）→ ${package.relative}');
+    }
+  }
   if (manifest['snapshotKind'] == 'flutter-private-dependencies') stdout.writeln('🔐 私库模式：仅恢复 Git、path、自建 Pub 源；公共 Pub 包仍按原声明获取。');
   stdout.writeln('导入位置：vendor/flutter_dependencies/<独立运行目录>/packages/');
   for (final package in plan.packages) {
     stdout.writeln(
       '  ${package.name} ${package.version} [${package.source}]，${package.files.length} 个文件',
     );
+  }
+  stdout.writeln('待新增本地源码包：${plan.packages.length}');
+  if (plan.packages.isEmpty) {
+    stdout.writeln('已有本地包覆盖完整，不创建新的 vendor 目录或改写覆盖配置。');
+    return;
   }
   stdout.writeln(
     plan.originalOverrides == null
@@ -687,6 +810,10 @@ void showPlan(ImportPlan plan) {
 
 void execute(ImportPlan plan) {
   plan.verify();
+  if (plan.packages.isEmpty) {
+    stdout.writeln('✔ 已保留 ${plan.keptOverrides.length} 个既有本地包；Pub 覆盖配置无需修改。');
+    return;
+  }
   final parent = Directory(join(plan.project, 'vendor/flutter_dependencies'));
   parent.createSync(recursive: true);
   final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(

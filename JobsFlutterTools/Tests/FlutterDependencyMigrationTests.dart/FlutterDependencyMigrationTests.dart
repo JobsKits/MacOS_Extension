@@ -14,9 +14,14 @@ Future<void> main() async {
         .createTempSync('JobsMigration 测试 ')
         .resolveSymbolicLinksSync(),
   );
-  final tool = File.fromUri(Platform.script).parent.parent.parent.uri
-      .resolve('Scripts/Tools/FlutterDependencyMigration.dart')
-      .toFilePath();
+  final toolsDirectory = Platform.environment['JOBS_TEST_TOOLS_DIR'];
+  final tool = toolsDirectory == null
+      ? File.fromUri(Platform.script).parent.parent.parent.uri
+            .resolve('Scripts/Tools/FlutterDependencyMigration.dart')
+            .toFilePath()
+      : Directory(toolsDirectory).absolute.uri
+            .resolve('FlutterDependencyMigration.dart')
+            .toFilePath();
   final project = '${root.path}/source';
   final target = '${root.path}/target';
   final destination = '${root.path}/output';
@@ -409,6 +414,220 @@ dependencies:
       Directory('$allBundle/${allManifest['pubSnapshot']}/packages/beta')
           .existsSync(),
       'all export missing public Pub package',
+    );
+    // 真实导入记录来自旧版本；一键导入只补缺失包，已有生效版本不被快照替换。
+    final retainedSource = '${root.path}/保留版本 来源';
+    final retainedTarget = '${root.path}/保留版本 目标';
+    final retainedPackages = '${root.path}/保留版本 包';
+    final retainedDonor = '${root.path}/保留版本 依赖';
+    final retainedGradle = '$home/retained-gradle';
+    final retainedPub = '$home/retained-pub';
+    final retainedEnvironment = {
+      'GRADLE_USER_HOME': retainedGradle,
+      'PUB_CACHE': retainedPub,
+    };
+    write('$retainedSource/pubspec.yaml', spec);
+    write('$retainedTarget/pubspec.yaml', spec);
+    write('$retainedPackages/alpha/lib/alpha.dart', '// current alpha');
+    write('$retainedPackages/beta/lib/beta.dart', '// missing beta');
+    write('$retainedPackages/flutter/pubspec.yaml', 'name: flutter\n');
+    void resolveRetained(String alphaVersion) {
+      write(
+        '$retainedPackages/alpha/pubspec.yaml',
+        'name: alpha\nversion: $alphaVersion\n',
+      );
+      write(
+        '$retainedPackages/beta/pubspec.yaml',
+        'name: beta\nversion: 1.0.0\n',
+      );
+      write('$retainedSource/pubspec.lock', '''packages:
+  alpha:
+    source: git
+    version: "$alphaVersion"
+  beta:
+    source: hosted
+    version: "1.0.0"
+  flutter:
+    source: sdk
+    version: "0.0.0"
+''');
+      write(
+        '$retainedSource/.dart_tool/package_config.json',
+        jsonEncode({
+          'configVersion': 2,
+          'packages': [
+            {
+              'name': 'migration_fixture',
+              'rootUri': Directory(retainedSource).uri.toString(),
+            },
+            for (final name in ['alpha', 'beta', 'flutter'])
+              {
+                'name': name,
+                'rootUri': Directory('$retainedPackages/$name').uri.toString(),
+              },
+          ],
+        }),
+      );
+    }
+
+    Future<String> exportRetained(String output) async {
+      final result = await Process.run(Platform.resolvedExecutable, [
+        File(tool).parent.uri
+            .resolve('ExtractFlutterDependencies.dart')
+            .toFilePath(),
+        '--project',
+        retainedSource,
+        '--destination',
+        output,
+      ], environment: environment);
+      expect(result.exitCode == 0, 'retained fixture export: ${result.stderr}');
+      return Directory(output).listSync().whereType<Directory>().single.path;
+    }
+
+    Map<String, String> retainedState(String path) => {
+      for (final file in Directory(
+        path,
+      ).listSync(recursive: true, followLinks: false).whereType<File>())
+        file.path: base64Encode(file.readAsBytesSync()),
+    };
+    resolveRetained('0.9.0');
+    final oldRetainedSnapshot = await exportRetained('${root.path}/保留版本 旧快照');
+    final seeded = await run([
+      'import',
+      '--project',
+      retainedTarget,
+      '--source',
+      oldRetainedSnapshot,
+      '--apply',
+    ], retainedEnvironment);
+    expect(seeded.exitCode == 0, 'seed managed version: ${seeded.stderr}');
+    final oldRun = Directory('$retainedTarget/vendor/flutter_dependencies')
+        .listSync()
+        .whereType<Directory>()
+        .single;
+    final oldReceipt = jsonDecode(
+      File('${oldRun.path}/import.json').readAsStringSync(),
+    ) as Map;
+    final retainedAlpha = (oldReceipt['packages'] as Map)['alpha'] as String;
+    final retainedOverride =
+        '# 保留工程现有版本\ndependency_overrides:\n  alpha:\n    path: ${jsonEncode(retainedAlpha)}\n  untouched: ^7.0.0\n';
+    write('$retainedTarget/pubspec_overrides.yaml', retainedOverride);
+    resolveRetained('2.0.0');
+    write('$retainedPackages/alpha/lib/alpha.dart', '// incoming alpha');
+    await exportRetained(retainedDonor);
+    const retainedJar = 'caches/modules-2/files-2.1/company/a/1/hash/a.jar';
+    write('$retainedDonor/改名 Gradle/$retainedJar', 'missing cache artifact');
+    final retainedArgs = [
+      'import',
+      '--project',
+      retainedTarget,
+      '--source',
+      retainedDonor,
+    ];
+    final beforeRetained = retainedState(retainedTarget);
+    final retainedPreview = await run(retainedArgs, retainedEnvironment);
+    expect(
+      retainedPreview.exitCode == 0 &&
+          '${retainedPreview.stdout}'.contains('0.9.0') &&
+          '${retainedPreview.stdout}'.contains('2.0.0'),
+      'preview must show retained and snapshot versions: ${retainedPreview.stdout}\n${retainedPreview.stderr}',
+    );
+    expect(
+      jsonEncode(beforeRetained) == jsonEncode(retainedState(retainedTarget)) &&
+          !Directory(retainedGradle).existsSync() &&
+          !Directory(retainedPub).existsSync(),
+      'retained-version preview wrote project or caches',
+    );
+    final retainedImport = await run([
+      ...retainedArgs,
+      '--apply',
+    ], retainedEnvironment);
+    expect(
+      retainedImport.exitCode == 0,
+      'retained-version import failed: ${retainedImport.stdout}\n${retainedImport.stderr}',
+    );
+    final retainedText = File('$retainedTarget/pubspec_overrides.yaml')
+        .readAsStringSync();
+    expect(
+      retainedText.contains('path: ${jsonEncode(retainedAlpha)}') &&
+          File('$retainedTarget/$retainedAlpha/pubspec.yaml')
+              .readAsStringSync()
+              .contains('version: 0.9.0') &&
+          File('$retainedTarget/$retainedAlpha/lib/alpha.dart')
+                  .readAsStringSync() ==
+              '// current alpha' &&
+          retainedText.contains('# 保留工程现有版本') &&
+          retainedText.contains('untouched: ^7.0.0'),
+      'existing effective version, path or unrelated configuration changed',
+    );
+    final retainedRuns = Directory(
+      '$retainedTarget/vendor/flutter_dependencies',
+    ).listSync().whereType<Directory>().toList();
+    expect(
+      retainedRuns.length == 2,
+      'missing package must have independent run',
+    );
+    final newRetainedRun = retainedRuns.singleWhere(
+      (d) => d.path != oldRun.path,
+    );
+    expect(
+      Directory('${newRetainedRun.path}/packages/beta').existsSync() &&
+          !Directory('${newRetainedRun.path}/packages/alpha').existsSync() &&
+          File('${newRetainedRun.path}/pubspec_overrides.yaml.before-import')
+                  .readAsStringSync() ==
+              retainedOverride &&
+          File('$retainedGradle/$retainedJar').readAsStringSync() ==
+              'missing cache artifact',
+      'must import only missing beta/cache and back up exact configuration',
+    );
+    final completedRetained = retainedState(retainedTarget);
+    final repeatedRetained = await run([
+      ...retainedArgs,
+      '--apply',
+    ], retainedEnvironment);
+    expect(
+      repeatedRetained.exitCode == 0 &&
+          jsonEncode(completedRetained) ==
+              jsonEncode(retainedState(retainedTarget)) &&
+          Directory('$retainedTarget/vendor/flutter_dependencies')
+                  .listSync()
+                  .whereType<Directory>()
+                  .length ==
+              2,
+      'repeat import must reuse effective dependencies without new vendor runs: ${repeatedRetained.stderr}',
+    );
+    final unknownTarget = '${root.path}/未知自定义 目标';
+    write('$unknownTarget/pubspec.yaml', spec);
+    write(
+      '$unknownTarget/pubspec_overrides.yaml',
+      'dependency_overrides:\n  alpha:\n    path: custom-alpha\n',
+    );
+    write(
+      '$unknownTarget/custom-alpha/pubspec.yaml',
+      'name: alpha\nversion: 0.9.0\n',
+    );
+    final unknownBefore = retainedState(unknownTarget);
+    final unknownImport = await run(
+      [
+        'import',
+        '--project',
+        unknownTarget,
+        '--source',
+        retainedDonor,
+        '--apply',
+      ],
+      {
+        'GRADLE_USER_HOME': '$home/unknown-gradle',
+        'PUB_CACHE': '$home/unknown-pub',
+      },
+    );
+    expect(
+      unknownImport.exitCode != 0 &&
+          jsonEncode(unknownBefore) ==
+              jsonEncode(retainedState(unknownTarget)) &&
+          !Directory('$home/unknown-gradle').existsSync() &&
+          !Directory('$home/unknown-pub').existsSync(),
+      'unknown custom overrides must reject without any dependency/cache writes',
     );
     final consentEnv = {
       ...environment,

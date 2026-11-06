@@ -910,6 +910,11 @@ String migrationPlanDigest(MigrationPlan plan) {
       'files': plan.files.map((file) => file.toJson()).toList(),
       'writes': plan.writes.map((file) => file.toJson()).toList(),
       'reused': plan.reused,
+      'keptPubPackages': [
+        for (final package in plan.pubPlan?.keptOverrides ?? <restoring.ManagedOverride>[])
+          {'name': package.name, 'path': package.relative,
+           'currentVersion': package.version, 'incomingVersion': package.incomingVersion},
+      ],
       'stamps': {for (final entry in nativeStamps) entry.key: entry.value},
       'pubSnapshots': plan.pubPlan == null
           ? null
@@ -1118,7 +1123,7 @@ restoring.ImportPlan _restorePlan(String project, String source) {
   final privateOnly =
       manifest is Map &&
       manifest['snapshotKind'] == 'flutter-private-dependencies';
-  return restoring.validate(project, source, privateOnly: privateOnly);
+  return restoring.validate(project, source, privateOnly: privateOnly, keepManagedOverrides: true);
 }
 
 MigrationPlan planMigrationImport(String projectInput, String sourceInput) {
@@ -1379,7 +1384,7 @@ void executeMigrationImport(MigrationPlan plan, {bool revalidate = true}) {
     rethrow;
   }
   stdout.writeln(
-    '✔ 一键导入完成：新增 ${fresh.writes.length} 个缓存／平台文件，复用 ${fresh.reused} 个文件${fresh.pubPlan == null ? '' : '；Pub 源码已按清单配置本地覆盖'}。',
+    '✔ 一键导入完成：新增 ${fresh.writes.length} 个缓存／平台文件，复用 ${fresh.reused} 个文件${fresh.pubPlan == null ? '' : '；新增 ${fresh.pubPlan!.packages.length} 个 Pub 包，保留 ${fresh.pubPlan!.keptOverrides.length} 个既有本地包'}。',
   );
   stdout.writeln('未安装或切换 SDK/JDK，未联网；请用项目对应工具验证依赖解析与构建。');
 }

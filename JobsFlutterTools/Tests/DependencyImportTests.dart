@@ -22,7 +22,9 @@ Uri toolFile(String name) {
 class Fixture {
   Fixture(this.root);
   final Directory root;
-  Directory get target => Directory('${root.path}/目标 Flutter 项目');
+  Directory? movedTarget;
+  Directory get target =>
+      movedTarget ?? Directory('${root.path}/目标 Flutter 项目');
   Directory get source => Directory('${root.path}/导出源工程');
   late Directory snapshot;
   File get manifest => File('${snapshot.path}/manifest.json');
@@ -150,10 +152,26 @@ dependencies:
 
   Future<void> reject() async {
     final before = targetState();
+    final vendorExisted = Directory('${target.path}/vendor').existsSync();
     final result = await run();
     expect(result.exitCode != 0, '异常快照必须失败：${result.stdout}');
     expect(jsonEncode(before) == jsonEncode(targetState()), '拒绝后目标文件被修改');
-    expect(!Directory('${target.path}/vendor').existsSync(), '拒绝后创建了 vendor');
+    expect(
+      Directory('${target.path}/vendor').existsSync() == vendorExisted,
+      '拒绝后改变了 vendor 目录存在状态',
+    );
+  }
+
+  // 读取真实导入产物，后续场景从当前生效配置定位旧包而不猜测运行目录名。
+  String importedPackage(String name) {
+    final declaration = extraction.section(
+      overrides.readAsStringSync(),
+      'dependency_overrides',
+    )[name]!;
+    final path = extraction.scalar(
+      extraction.flowMapping(declaration)['path']!,
+    );
+    return '${target.path}/$path';
   }
 }
 
@@ -579,13 +597,177 @@ Future<void> main() async {
         expect(result.exitCode != 0, 'vendor 链接绕过了校验');
         expect(!f.overrides.existsSync(), '拒绝后改写配置');
       },
-    '再次导入拒绝覆盖已有结果': (f) async {
+    '完整快照再次导入可重定位内容一致的本工具副本并精确备份': (f) async {
       final first = await f.run();
       expect(first.exitCode == 0, '${first.stderr}');
+      final oldAlpha = f.importedPackage('alpha');
+      f.overrides.writeAsStringSync(
+        '${f.overrides.readAsStringSync()}# 保留这次本地配置\nresolution: null\n',
+      );
+      final originalOverrides = f.overrides.readAsBytesSync();
       final before = f.targetState();
+      final preflight = await f.run(validateOnly: true);
+      expect(
+        preflight.exitCode == 0,
+        '同工具同内容副本应允许预检：${preflight.stdout}\n${preflight.stderr}',
+      );
+      expect(jsonEncode(before) == jsonEncode(f.targetState()), '重复导入预检发生写入');
       final second = await f.run();
-      expect(second.exitCode != 0, '重复导入不应覆盖已有配置');
-      expect(jsonEncode(before) == jsonEncode(f.targetState()), '重复导入改写了文件');
+      expect(
+        second.exitCode == 0,
+        '同工具同内容副本应能重定位：${second.stdout}\n${second.stderr}',
+      );
+      final newAlpha = f.importedPackage('alpha');
+      expect(newAlpha != oldAlpha, '没有使用独立导入目录');
+      expect(
+        File('$newAlpha/lib/alpha.dart').readAsStringSync() ==
+            '// alpha 原始源码\n',
+        '重定位后的副本内容错误',
+      );
+      final newRun = Directory(newAlpha).parent.parent;
+      expect(
+        base64Encode(
+              File('${newRun.path}/pubspec_overrides.yaml.before-import')
+                  .readAsBytesSync(),
+            ) ==
+            base64Encode(originalOverrides),
+        '重定位没有精确备份原生效配置',
+      );
+      expect(
+        f.overrides.readAsStringSync().contains('# 保留这次本地配置\n') &&
+            f.overrides.readAsStringSync().endsWith('resolution: null\n'),
+        '重定位丢失其它配置或注释',
+      );
+      final after = f.targetState();
+      for (final entry in before.entries) {
+        if (entry.key == f.overrides.path) continue;
+        expect(after[entry.key] == entry.value, '重定位覆盖了既有工程或 vendor 文件');
+      }
+    },
+    '整个工程复制改名后旧导入记录仍可按相对路径重定位': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      final oldPath = f.target.resolveSymbolicLinksSync();
+      f.movedTarget = f.target.renameSync('${f.root.path}/跨机复制后 新工程');
+      final receipt = File(
+        '${Directory(f.importedPackage('alpha')).parent.parent.path}/import.json',
+      );
+      expect(
+        (jsonDecode(receipt.readAsStringSync()) as Map)['project'] == oldPath,
+        '夹具未保留旧电脑工程路径',
+      );
+      final result = await f.run();
+      expect(
+        result.exitCode == 0,
+        '已复制改名工程不能依赖receipt旧绝对路径：${result.stdout}\n${result.stderr}',
+      );
+      expect(
+        File('${f.importedPackage('alpha')}/pubspec.yaml').existsSync(),
+        '跨机复制后的生效路径无效',
+      );
+    },
+    '完整快照已有副本仅一个包内容不同也整批拒绝且保留配置': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      File('${f.importedPackage('beta')}/lib/beta.dart')
+          .writeAsStringSync('// beta 已有本地修改\n');
+      await f.reject();
+    },
+    '同名同版本的新快照内容改变不能替换旧副本': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      File('${f.snapshot.path}/packages/alpha/lib/alpha.dart')
+          .writeAsStringSync('// alpha 新内容\n');
+      await f.reject();
+    },
+    '旧副本额外文件不能按同内容自动重定位': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      File('${f.importedPackage('alpha')}/local-patch.txt')
+          .writeAsStringSync('保留人工添加的文件\n');
+      await f.reject();
+    },
+    '内容相同但工程自定义目录不作为本工具副本接管': (f) async {
+      final package = Directory('${f.target.path}/custom-alpha')..createSync();
+      for (final name in ['pubspec.yaml', 'LICENSE']) {
+        File('${f.snapshot.path}/packages/alpha/$name')
+            .copySync('${package.path}/$name');
+      }
+      Directory('${package.path}/lib').createSync();
+      File('${f.snapshot.path}/packages/alpha/lib/alpha.dart')
+          .copySync('${package.path}/lib/alpha.dart');
+      f.overrides.writeAsStringSync(
+        'dependency_overrides:\n  alpha:\n    path: custom-alpha\n',
+      );
+      await f.reject();
+    },
+    '旧副本缺少本工具导入记录不能接管': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      final run = Directory(f.importedPackage('alpha')).parent.parent;
+      File('${run.path}/import.json').deleteSync();
+      await f.reject();
+    },
+    '旧副本导入记录的包映射不符不能接管': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      final run = Directory(f.importedPackage('alpha')).parent.parent;
+      final receipt = File('${run.path}/import.json');
+      final data = jsonDecode(receipt.readAsStringSync()) as Map;
+      (data['packages'] as Map)['alpha'] = 'vendor/another/packages/alpha';
+      receipt.writeAsStringSync(jsonEncode(data));
+      await f.reject();
+    },
+    if (!Platform.isWindows)
+      '旧副本包目录链接不能作为本工具副本接管': (f) async {
+        final first = await f.run();
+        expect(first.exitCode == 0, '${first.stderr}');
+        final path = f.importedPackage('alpha');
+        final outside = Directory(path).renameSync('${f.root.path}/外部 alpha');
+        Link(path).createSync(outside.path);
+        await f.reject();
+      },
+    for (final mutation in ['新增源码', '未完成标记'])
+      '内容一致预检后出现$mutation必须阻止配置发布': (f) async {
+        final first = await f.run();
+        expect(first.exitCode == 0, '${first.stderr}');
+        final plan = importing.validate(f.target.path, f.snapshot.path);
+        final package = Directory(f.importedPackage('alpha'));
+        final added = mutation == '新增源码'
+            ? File('${package.path}/lib/new.dart')
+            : File('${package.parent.parent.path}/.incomplete');
+        added.writeAsStringSync('预检后的并发变化\n');
+        final before = f.targetState();
+        var rejected = false;
+        try {
+          importing.execute(plan);
+        } catch (_) {
+          rejected = true;
+        }
+        expect(rejected, '没有拦截预检后$mutation');
+        expect(
+          jsonEncode(before) == jsonEncode(f.targetState()),
+          '复检失败后配置或 vendor 发生变化',
+        );
+      },
+    '内容一致预检后旧副本变化必须阻止配置发布': (f) async {
+      final first = await f.run();
+      expect(first.exitCode == 0, '${first.stderr}');
+      final plan = importing.validate(f.target.path, f.snapshot.path);
+      File('${f.importedPackage('alpha')}/lib/alpha.dart')
+          .writeAsStringSync('// alpha 预检后的并发修改\n');
+      final before = f.targetState();
+      var rejected = false;
+      try {
+        importing.execute(plan);
+      } catch (_) {
+        rejected = true;
+      }
+      expect(rejected, '没有拦截预检后旧副本的并发修改');
+      expect(
+        jsonEncode(before) == jsonEncode(f.targetState()),
+        '复检失败后配置或 vendor 发生变化',
+      );
     },
   };
   var passed = 0;
