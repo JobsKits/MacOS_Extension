@@ -21,6 +21,8 @@
 		01B000000000000000000034 /* FlutterProjectValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* FlutterProjectValidator.swift */; };
 		01B000000000000000000035 /* FlutterRunRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* FlutterRunRequest.swift */; };
 		01B000000000000000000028 /* FlutterRunner.jxa in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000028 /* FlutterRunner.jxa */; };
+		01B000000000000000000029 /* SimulatorCreators in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000029 /* SimulatorCreators */; };
+		01B000000000000000000030 /* 【MacOS】Flutter运行前体检.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000030 /* 【MacOS】Flutter运行前体检.zsh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +66,8 @@
 		01A000000000000000000025 /* FlutterRunRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FlutterRunRequest/FlutterRunRequest.swift"; sourceTree = "<group>"; };
 		01A000000000000000000026 /* RunFlutterProject.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "RunFlutterProject.zsh"; sourceTree = "<group>"; };
 		01A000000000000000000028 /* FlutterRunner.jxa */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = FlutterRunner.jxa; sourceTree = "<group>"; };
+		01A000000000000000000029 /* SimulatorCreators */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SimulatorCreators; sourceTree = "<group>"; };
+		01A000000000000000000030 /* 【MacOS】Flutter运行前体检.zsh */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "【MacOS】Flutter运行前体检.zsh"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -150,7 +154,7 @@
         };
         01G000000000000000000016 /* Scripts */ = {
             isa = PBXGroup;
-            children = (01A000000000000000000026 /* RunFlutterProject.zsh */, 01A000000000000000000028 /* FlutterRunner.jxa */,);
+            children = (01A000000000000000000026 /* RunFlutterProject.zsh */, 01A000000000000000000028 /* FlutterRunner.jxa */, 01A000000000000000000029 /* SimulatorCreators */, 01A000000000000000000030 /* 【MacOS】Flutter运行前体检.zsh */,);
             path = Scripts;
             sourceTree = "<group>";
         };
@@ -259,7 +263,7 @@
         01D000000000000000000012 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (01B000000000000000000026 /* RunFlutterProject.zsh in Resources */, 01B000000000000000000028 /* FlutterRunner.jxa in Resources */,);
+            files = (01B000000000000000000026 /* RunFlutterProject.zsh in Resources */, 01B000000000000000000028 /* FlutterRunner.jxa in Resources */, 01B000000000000000000029 /* SimulatorCreators in Resources */, 01B000000000000000000030 /* 【MacOS】Flutter运行前体检.zsh in Resources */,);
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */

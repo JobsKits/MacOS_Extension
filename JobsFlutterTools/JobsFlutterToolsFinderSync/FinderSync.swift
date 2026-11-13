@@ -22,7 +22,8 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer else {
+        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer
+                || menuKind == .contextualMenuForSidebar else {
             recordMenuDiagnostic(menuKind, reason: "unsupported-kind")
             return nil
         }
@@ -286,7 +287,12 @@ final class FinderSync: FIFinderSync {
         }
         let item = NSMenuItem(title: action.title, action: selector, keyEquivalent: "")
         item.target = self
+        item.tag = kind == .contextualMenuForSidebar ? 1 : 0
         return item
+    }
+
+    private func targetedMenuKind(for sender: NSMenuItem) -> FIMenuKind {
+        return sender.tag == 1 ? .contextualMenuForSidebar : .contextualMenuForContainer
     }
 
     private func candidateURL(for menuKind: FIMenuKind) -> URL? {
@@ -296,6 +302,17 @@ final class FinderSync: FIFinderSync {
                 return nil
             }
             return items.first
+        }
+        if menuKind == .contextualMenuForSidebar {
+            guard let targetURL = controller.targetedURL(), targetURL.isFileURL,
+                  (targetURL.host == nil || targetURL.host == "" || targetURL.host?.lowercased() == "localhost"),
+                  (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return targetURL.standardizedFileURL
+        }
+        guard menuKind == .contextualMenuForContainer else {
+            return nil
         }
         guard let targetURL = controller.targetedURL(), targetURL.isFileURL,
               !FinderDesktopMenuPolicy.isDesktopContainer(targetURL) else {
@@ -309,7 +326,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func cleanBuildArtifactsContainer(_ sender: NSMenuItem) {
-        perform(.cleanBuildArtifacts, for: .contextualMenuForContainer)
+        perform(.cleanBuildArtifacts, for: targetedMenuKind(for: sender))
     }
 
     @objc private func maintenanceSelected(_ sender: NSMenuItem) {
@@ -317,7 +334,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func maintenanceContainer(_ sender: NSMenuItem) {
-        perform(.maintenance, for: .contextualMenuForContainer)
+        perform(.maintenance, for: targetedMenuKind(for: sender))
     }
 
     @objc private func repairNamespaceSelected(_ sender: NSMenuItem) {
@@ -325,7 +342,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func repairNamespaceContainer(_ sender: NSMenuItem) {
-        perform(.repairNamespace, for: .contextualMenuForContainer)
+        perform(.repairNamespace, for: targetedMenuKind(for: sender))
     }
 
     @objc private func projectSetupSelected(_ sender: NSMenuItem) {
@@ -333,7 +350,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func projectSetupContainer(_ sender: NSMenuItem) {
-        perform(.projectSetup, for: .contextualMenuForContainer)
+        perform(.projectSetup, for: targetedMenuKind(for: sender))
     }
 
     @objc private func gradleDownloadSelected(_ sender: NSMenuItem) {
@@ -341,7 +358,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func gradleDownloadContainer(_ sender: NSMenuItem) {
-        perform(.gradleDownload, for: .contextualMenuForContainer)
+        perform(.gradleDownload, for: targetedMenuKind(for: sender))
     }
 
     @objc private func runSelected(_ sender: NSMenuItem) {
@@ -349,7 +366,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func runContainer(_ sender: NSMenuItem) {
-        perform(.run, for: .contextualMenuForContainer)
+        perform(.run, for: targetedMenuKind(for: sender))
     }
 
     @objc private func pubGetSelected(_ sender: NSMenuItem) {
@@ -357,7 +374,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func pubGetContainer(_ sender: NSMenuItem) {
-        perform(.pubGet, for: .contextualMenuForContainer)
+        perform(.pubGet, for: targetedMenuKind(for: sender))
     }
 
     @objc private func androidDependenciesSelected(_ sender: NSMenuItem) {
@@ -365,7 +382,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func androidDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.androidDependencies, for: .contextualMenuForContainer)
+        perform(.androidDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func podsDependenciesSelected(_ sender: NSMenuItem) {
@@ -373,7 +390,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func podsDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.podsDependencies, for: .contextualMenuForContainer)
+        perform(.podsDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func spmDependenciesSelected(_ sender: NSMenuItem) {
@@ -381,7 +398,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func spmDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.spmDependencies, for: .contextualMenuForContainer)
+        perform(.spmDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func ohosDependenciesSelected(_ sender: NSMenuItem) {
@@ -389,7 +406,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func ohosDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.ohosDependencies, for: .contextualMenuForContainer)
+        perform(.ohosDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func nativeDependenciesSelected(_ sender: NSMenuItem) {
@@ -397,7 +414,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func nativeDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.nativeDependencies, for: .contextualMenuForContainer)
+        perform(.nativeDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func flutterPrecacheSelected(_ sender: NSMenuItem) {
@@ -405,7 +422,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func flutterPrecacheContainer(_ sender: NSMenuItem) {
-        perform(.flutterPrecache, for: .contextualMenuForContainer)
+        perform(.flutterPrecache, for: targetedMenuKind(for: sender))
     }
 
     @objc private func webDependenciesSelected(_ sender: NSMenuItem) {
@@ -413,7 +430,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func webDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.webDependencies, for: .contextualMenuForContainer)
+        perform(.webDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportAllDependenciesSelected(_ sender: NSMenuItem) {
@@ -421,7 +438,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportAllDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportAllDependencies, for: .contextualMenuForContainer)
+        perform(.exportAllDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importAllDependenciesSelected(_ sender: NSMenuItem) {
@@ -429,7 +446,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importAllDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importAllDependencies, for: .contextualMenuForContainer)
+        perform(.importAllDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportPrivateDependenciesSelected(_ sender: NSMenuItem) {
@@ -437,7 +454,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportPrivateDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportPrivateDependencies, for: .contextualMenuForContainer)
+        perform(.exportPrivateDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importPrivateDependenciesSelected(_ sender: NSMenuItem) {
@@ -445,7 +462,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importPrivateDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importPrivateDependencies, for: .contextualMenuForContainer)
+        perform(.importPrivateDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func extractSelected(_ sender: NSMenuItem) {
@@ -453,7 +470,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func extractContainer(_ sender: NSMenuItem) {
-        perform(.extract, for: .contextualMenuForContainer)
+        perform(.extract, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importDependenciesSelected(_ sender: NSMenuItem) {
@@ -461,7 +478,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importDependencies, for: .contextualMenuForContainer)
+        perform(.importDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportGradleDependenciesSelected(_ sender: NSMenuItem) {
@@ -469,7 +486,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportGradleDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportGradleDependencies, for: .contextualMenuForContainer)
+        perform(.exportGradleDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importGradleDependenciesSelected(_ sender: NSMenuItem) {
@@ -477,7 +494,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importGradleDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importGradleDependencies, for: .contextualMenuForContainer)
+        perform(.importGradleDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportPodsDependenciesSelected(_ sender: NSMenuItem) {
@@ -485,7 +502,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportPodsDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportPodsDependencies, for: .contextualMenuForContainer)
+        perform(.exportPodsDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importPodsDependenciesSelected(_ sender: NSMenuItem) {
@@ -493,7 +510,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importPodsDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importPodsDependencies, for: .contextualMenuForContainer)
+        perform(.importPodsDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportSpmDependenciesSelected(_ sender: NSMenuItem) {
@@ -501,7 +518,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportSpmDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportSpmDependencies, for: .contextualMenuForContainer)
+        perform(.exportSpmDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importSpmDependenciesSelected(_ sender: NSMenuItem) {
@@ -509,7 +526,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importSpmDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importSpmDependencies, for: .contextualMenuForContainer)
+        perform(.importSpmDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportOhosDependenciesSelected(_ sender: NSMenuItem) {
@@ -517,7 +534,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportOhosDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportOhosDependencies, for: .contextualMenuForContainer)
+        perform(.exportOhosDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importOhosDependenciesSelected(_ sender: NSMenuItem) {
@@ -525,7 +542,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importOhosDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importOhosDependencies, for: .contextualMenuForContainer)
+        perform(.importOhosDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportNativeDependenciesSelected(_ sender: NSMenuItem) {
@@ -533,7 +550,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportNativeDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportNativeDependencies, for: .contextualMenuForContainer)
+        perform(.exportNativeDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importNativeDependenciesSelected(_ sender: NSMenuItem) {
@@ -541,7 +558,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importNativeDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importNativeDependencies, for: .contextualMenuForContainer)
+        perform(.importNativeDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportPrecacheDependenciesSelected(_ sender: NSMenuItem) {
@@ -549,7 +566,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportPrecacheDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportPrecacheDependencies, for: .contextualMenuForContainer)
+        perform(.exportPrecacheDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importPrecacheDependenciesSelected(_ sender: NSMenuItem) {
@@ -557,7 +574,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importPrecacheDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importPrecacheDependencies, for: .contextualMenuForContainer)
+        perform(.importPrecacheDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func exportWebDependenciesSelected(_ sender: NSMenuItem) {
@@ -565,7 +582,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func exportWebDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.exportWebDependencies, for: .contextualMenuForContainer)
+        perform(.exportWebDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func importWebDependenciesSelected(_ sender: NSMenuItem) {
@@ -573,7 +590,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func importWebDependenciesContainer(_ sender: NSMenuItem) {
-        perform(.importWebDependencies, for: .contextualMenuForContainer)
+        perform(.importWebDependencies, for: targetedMenuKind(for: sender))
     }
 
     @objc private func sdkVersionSelected(_ sender: NSMenuItem) {
@@ -581,7 +598,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func sdkVersionContainer(_ sender: NSMenuItem) {
-        perform(.sdkVersion, for: .contextualMenuForContainer)
+        perform(.sdkVersion, for: targetedMenuKind(for: sender))
     }
 
     @objc private func sdkManageSelected(_ sender: NSMenuItem) {
@@ -589,7 +606,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func sdkManageContainer(_ sender: NSMenuItem) {
-        perform(.sdkManage, for: .contextualMenuForContainer)
+        perform(.sdkManage, for: targetedMenuKind(for: sender))
     }
 
     @objc private func harmonySdkManageSelected(_ sender: NSMenuItem) {
@@ -597,7 +614,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func harmonySdkManageContainer(_ sender: NSMenuItem) {
-        perform(.harmonySdkManage, for: .contextualMenuForContainer)
+        perform(.harmonySdkManage, for: targetedMenuKind(for: sender))
     }
 
     @objc private func javaManageSelected(_ sender: NSMenuItem) {
@@ -605,7 +622,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func javaManageContainer(_ sender: NSMenuItem) {
-        perform(.javaManage, for: .contextualMenuForContainer)
+        perform(.javaManage, for: targetedMenuKind(for: sender))
     }
 
     @objc private func packageSelected(_ sender: NSMenuItem) {
@@ -613,7 +630,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func packageContainer(_ sender: NSMenuItem) {
-        perform(.package, for: .contextualMenuForContainer)
+        perform(.package, for: targetedMenuKind(for: sender))
     }
 
     @objc private func packageIOSSelected(_ sender: NSMenuItem) {
@@ -621,7 +638,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func packageIOSContainer(_ sender: NSMenuItem) {
-        perform(.packageIOS, for: .contextualMenuForContainer)
+        perform(.packageIOS, for: targetedMenuKind(for: sender))
     }
 
     @objc private func packageAndroidSelected(_ sender: NSMenuItem) {
@@ -629,7 +646,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func packageAndroidContainer(_ sender: NSMenuItem) {
-        perform(.packageAndroid, for: .contextualMenuForContainer)
+        perform(.packageAndroid, for: targetedMenuKind(for: sender))
     }
 
     @objc private func packageHarmonySelected(_ sender: NSMenuItem) {
@@ -637,7 +654,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func packageHarmonyContainer(_ sender: NSMenuItem) {
-        perform(.packageHarmony, for: .contextualMenuForContainer)
+        perform(.packageHarmony, for: targetedMenuKind(for: sender))
     }
 
     @objc private func codegenSelected(_ sender: NSMenuItem) {
@@ -645,7 +662,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func codegenContainer(_ sender: NSMenuItem) {
-        perform(.codegen, for: .contextualMenuForContainer)
+        perform(.codegen, for: targetedMenuKind(for: sender))
     }
 
     @objc private func nativeDoctorSelected(_ sender: NSMenuItem) {
@@ -653,7 +670,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func nativeDoctorContainer(_ sender: NSMenuItem) {
-        perform(.nativeDoctor, for: .contextualMenuForContainer)
+        perform(.nativeDoctor, for: targetedMenuKind(for: sender))
     }
 
     @objc private func harmonyDoctorSelected(_ sender: NSMenuItem) {
@@ -661,7 +678,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func harmonyDoctorContainer(_ sender: NSMenuItem) {
-        perform(.harmonyDoctor, for: .contextualMenuForContainer)
+        perform(.harmonyDoctor, for: targetedMenuKind(for: sender))
     }
 
     @objc private func repairAndroidSelected(_ sender: NSMenuItem) {
@@ -669,7 +686,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func repairAndroidContainer(_ sender: NSMenuItem) {
-        perform(.repairAndroid, for: .contextualMenuForContainer)
+        perform(.repairAndroid, for: targetedMenuKind(for: sender))
     }
 
     @objc private func repairImportsSelected(_ sender: NSMenuItem) {
@@ -677,7 +694,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func repairImportsContainer(_ sender: NSMenuItem) {
-        perform(.repairImports, for: .contextualMenuForContainer)
+        perform(.repairImports, for: targetedMenuKind(for: sender))
     }
 
     @objc private func repairPackageImportsSelected(_ sender: NSMenuItem) {
@@ -685,7 +702,7 @@ final class FinderSync: FIFinderSync {
     }
 
     @objc private func repairPackageImportsContainer(_ sender: NSMenuItem) {
-        perform(.repairPackageImports, for: .contextualMenuForContainer)
+        perform(.repairPackageImports, for: targetedMenuKind(for: sender))
     }
 
     private func perform(_ action: FlutterToolsAction, for menuKind: FIMenuKind) {

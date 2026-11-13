@@ -311,9 +311,76 @@ jobs_deployment_unregister_app() {
   fi
   jobs_deployment_unregister_host_path "$selected_app"
 }
-# 宿主注销只处理精确路径，和扩展注销分开保留错误码。
+# 宿主无登记仅在系统明确返回-10814且只读复核精确路径缺失时视为已注销。
 jobs_deployment_unregister_host_path() {
+  local selected_app="$1" output="" result=0 line="" paths="" candidate="" missing=0 unexpected=0
+  [[ "$selected_app" == /* && "$selected_app" != *$'\n'* && "$selected_app" != *$'\r'* ]] || return 2
+  output="$(jobs_deployment_unregister_host_command "$selected_app" 2>&1)" || result=$?
+  if (( ! result )); then
+    [[ -z "$output" ]] || print -u2 -r -- "$output"
+    return 0
+  fi
+  while IFS= read -r line; do
+    case "$line" in
+      "failed to scan $selected_app: -10814") missing=1 ;;
+      ' from spotlight'|'from spotlight'|'') ;;
+      *) unexpected=1 ;;
+    esac
+  done <<< "$output"
+  if (( ! missing || unexpected )); then
+    [[ -z "$output" ]] || print -u2 -r -- "$output"
+    jobs_deployment_error "宿主注销失败（退出码 $result），保留所选 App：$selected_app"
+    return "$result"
+  fi
+  paths="$(jobs_deployment_registered_host_paths)" || {
+    print -u2 -r -- "$output"
+    jobs_deployment_error "宿主注销后无法可靠复核登记，保留所选 App：$selected_app"
+    return "$result"
+  }
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    if [[ "$candidate" == "$selected_app" || "${candidate:A}" == "${selected_app:A}" ]]; then
+      print -u2 -r -- "$output"
+      jobs_deployment_error "宿主注销失败且精确路径仍登记，保留所选 App：$selected_app"
+      return "$result"
+    fi
+  done <<< "$paths"
+  print -u2 -r -- "ℹ 宿主精确路径已无登记（系统返回 -10814），继续清理所选副本：$selected_app"
+  return 0
+}
+# 系统写操作单独封装，隔离验证不调用真实注销。
+jobs_deployment_unregister_host_command() {
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$1"
+}
+# 只读取Bundle表，避免登记、重建索引或扫描并注册其它App。
+jobs_deployment_dump_host_registrations() {
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -dump Bundle
+}
+# 完整记录才输出精确路径；空响应或格式变化不能被误判成已无登记。
+jobs_deployment_registered_host_paths() {
+  local metadata=""
+  metadata="$(jobs_deployment_dump_host_registrations)" || return $?
+  print -r -- "$metadata" | /usr/bin/awk '
+    function finish() {
+      if (!record) return
+      if (path_count != 1 || value !~ /^\//) invalid=1
+      else print value
+    }
+    /^-+$/ { finish(); record=0; path_count=0; value=""; next }
+    /^bundle id:/ {
+      if (record) invalid=1
+      record=1; records++; next
+    }
+    /^path:/ {
+      if (!record) invalid=1
+      path_count++
+      value=$0
+      sub(/^path:[[:space:]]*/, "", value)
+      sub(/[[:space:]]+\(0x[0-9A-Fa-f]+\)$/, "", value)
+      if (value ~ /\r/) invalid=1
+    }
+    END { finish(); if (!records || invalid) exit 2 }
+  '
 }
 # 单独封装系统注销，隔离测试可模拟“已被系统先行移除”的真实分支。
 jobs_deployment_remove_extension_path() {
@@ -592,13 +659,45 @@ jobs_deployment_uninstall() {
   lock_dir="$applications_dir/.JobsFinderDeployment.Jobs自定义右键菜单.lock"
   /bin/mkdir -- "$lock_dir" || return $?
   jobs_deployment_unregister_app "$selected_app" "$extension_name" || result=$?
-  (( result )) || /bin/rm -r -- "$selected_app" || result=$?
+  (( result )) || jobs_deployment_remove_app_files "$selected_app" || result=$?
+  if (( ! result )) && [[ -e "$selected_app" || -L "$selected_app" ]]; then
+    jobs_deployment_error "删除命令返回成功但所选 App 仍存在，卸载未完成：$selected_app"
+    result=1
+  fi
   (( result )) || jobs_deployment_remove_empty_container || result=$?
   if (( ! result )) && [[ -d "$container_app" ]]; then
     jobs_deployment_sign_container "$container_app" || result=$?
   fi
   /bin/rmdir -- "$lock_dir" || result=1
   return "$result"
+}
+# 只删除已通过身份及路径核验的所选宿主；调用者保留失败码并复核结果。
+jobs_deployment_remove_app_files() {
+  local selected_app="$1" output="" result=0 line="" blocked=0
+  output="$(jobs_deployment_remove_app_command "$selected_app" 2>&1)" || result=$?
+  [[ -z "$output" ]] || print -u2 -r -- "$output"
+  (( result )) || return 0
+  while IFS= read -r line; do
+    if [[ "$line" == "rm: $selected_app: Operation not permitted" ||
+          "$line" == "rm: $selected_app/"*': Operation not permitted' ||
+          "$line" == "rm: $selected_app: Permission denied" ||
+          "$line" == "rm: $selected_app/"*': Permission denied' ]]; then
+      blocked=1
+    fi
+  done <<< "$output"
+  if (( blocked )); then
+    jobs_deployment_mark_app_management_blocked || true
+    print -u2 -r -- $'JOBS_MANAGER_BLOCKED\tapp-management\t77'
+    print -u2 -r -- "⚠ 系统拒绝删除所选应用：$selected_app；负责面板：${JOBS_FINDER_RESPONSIBLE_APP:-当前启动管理面板的应用}。"
+    print -u2 -r -- '请检查面板的“隐私与安全性 → App 管理”授权及目标目录权限；当前输出不能单独判定为 TCC，未自动提权或修改授权。'
+    return 77
+  fi
+  jobs_deployment_error "删除所选 App 失败（退出码 $result），卸载未完成：$selected_app"
+  return "$result"
+}
+# 单独封装实际删除，隔离测试可返回权限或磁盘错误而不碰用户App。
+jobs_deployment_remove_app_command() {
+  /bin/rm -r -- "$1"
 }
 # 查询所有登记来源，清理不能仅凭某个副本已启用就忽略仍引用构建目录的记录。
 jobs_deployment_registered_extension_paths() {

@@ -3,6 +3,182 @@
 # - 只供source：组合平台工具链、原生依赖、设备、启动配置和实际Flutter启动验收。
 # - 使用父流程已选择的SDK；不自动同意许可、不绕过签名、不执行配置中的Shell任务。
 
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+jobs_prompt_color_ready() {
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" '
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0) connector segment(right, 31)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31) "或" segment(substr(value, splitAt + length("或")), 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!kind || !color) return value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original) {
+      original = value
+      gsub(esc "\\[[0-9;]*m", "", value)
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return original
+      output = ""
+      inherited = 0
+      depth = 0
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited) boundary
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return output segment(value, inherited)
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1 }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
 typeset -g SR_TARGET="" SR_POD="" SR_DEVICE="" SR_CONFIG="" SR_XCODE="" SR_GEMFILE="" SR_STARTED=0 SR_POD_VERSION="" SR_BUNDLER_VERSION=""
 typeset -g SR_ACTIVE_EVENT="" SR_ACTIVE_PARENT="" SR_ACTIVE_TITLE=""
 typeset -g SR_RUBY="" SR_GEM="" SR_RUBY_REQUIREMENT="" SR_BUNDLER_MIN_RUBY=2.6
@@ -85,7 +261,7 @@ sr_prepare_cocoapods() {
     if [[ -z "$SR_POD" ]]; then
         pj_find_brew || return $?
         pe_log '📥 来源：https://formulae.brew.sh/formula/cocoapods；缺少CocoaPods将安装到当前Homebrew前缀，健康工具不升级。'
-        IFS= read -r 'answer?回车安装CocoaPods；其它输入取消：' || return 130
+        IFS= read -r "answer?$(jobs_prompt_render '回车安装CocoaPods；其它输入取消：')" || return 130
         [[ -z "$answer" ]] || return 130
         result=0
         SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic cocoapods-install /usr/bin/env HOMEBREW_NO_AUTO_UPDATE=1 "$PJ_BREW" install cocoapods || result=$?
@@ -209,7 +385,7 @@ sr_prepare_web() {
             install)
                 pj_find_brew || return $?
                 pe_log '📥 来源：https://formulae.brew.sh/cask/google-chrome；安装到本机Homebrew应用目录。'
-                IFS= read -r 'answer?按回车安装Chrome；其它输入取消：' || return 130
+                IFS= read -r "answer?$(jobs_prompt_render '按回车安装Chrome；其它输入取消：')" || return 130
                 [[ -z "$answer" ]] || return 130
                 SF_COMMAND_TIMEOUT=1800 sf_run_diagnostic chrome-install /usr/bin/env HOMEBREW_NO_AUTO_UPDATE=1 "$PJ_BREW" install --cask google-chrome || return $?
                 candidate='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -303,15 +479,15 @@ sr_choose_configuration() {
 # 自由文本全部作为单个参数加入数组，回车默认入口和debug，空define结束。
 sr_manual_configuration() {
     local target="" flavor="" mode="" define=""
-    IFS= read -r 'target?Dart入口（相对工程目录；回车lib/main.dart）：' || return 130
+    IFS= read -r "target?$(jobs_prompt_render 'Dart入口（相对工程目录；回车lib/main.dart）：')" || return 130
     [[ -n "$target" ]] || target=lib/main.dart
-    IFS= read -r 'flavor?flavor（回车不指定）：' || return 130
+    IFS= read -r "flavor?$(jobs_prompt_render 'flavor（回车不指定）：')" || return 130
     pe_select '运行模式' $'debug\tdebug（推荐）\nprofile\tprofile\nrelease\trelease' || return $?
     mode="$PE_SELECTION"
     SR_ARGS=("--$mode" --target "$target")
     [[ -z "$flavor" ]] || SR_ARGS+=(--flavor "$flavor")
     while true; do
-        IFS= read -r 'define?dart-define，格式KEY=VALUE（一行一个，回车结束；不会写入项目文件）：' || return 130
+        IFS= read -r "define?$(jobs_prompt_render 'dart-define，格式KEY=VALUE（一行一个，回车结束；不会写入项目文件）：')" || return 130
         [[ -n "$define" ]] || break
         [[ "$define" =~ '^[A-Za-z_][A-Za-z0-9_]*=' ]] || { pe_log '✖ dart-define需要KEY=VALUE。'; return 2; }
         SR_ARGS+=(--dart-define "$define")
@@ -361,16 +537,55 @@ sr_machine_events() {
         emit_line($buffer) if length($buffer) && !$discard;
     '
 }
+# 在子进程复用只读体检，避免覆盖配置流程原有的日志与诊断函数。
+sr_run_preflight() (
+    local module="$PE_TOOLS_DIR/【MacOS】Flutter运行前体检.zsh/【MacOS】Flutter运行前体检.zsh"
+    [[ -f "$module" && ! -L "$module" ]] || { pe_log '✖ 缺少运行前环境体检模块，请更新完整工具包。'; return 1; }
+    PROJECT_PATH="$SF_PROJECT"
+    FLUTTER_BIN="$SF_FLUTTER"
+    LOG_FILE="$PE_RUN_DIR/run"
+    if [[ -n "$SF_JAVA_HOME" ]]; then
+        export JAVA_HOME="$SF_JAVA_HOME" PATH="$SF_JAVA_HOME/bin:$PATH"
+    fi
+    log() {
+        pe_log "$@"
+    }
+    run_bounded() {
+        local seconds="$1" output="$2" name="run-preflight-${2:t}" result=0
+        shift 2
+        : > "$output" || return 1
+        SF_COMMAND_TIMEOUT="$seconds" sf_run_diagnostic "$name" "$@" || result=$?
+        if [[ -f "$PE_RUN_DIR/$name.log" ]]; then
+            /bin/cp "$PE_RUN_DIR/$name.log" "$output" || return 1
+        fi
+        return "$result"
+    }
+    source "$module" || return $?
+    (( ${+functions[jobs_flutter_preflight_overview]} && ${+functions[jobs_flutter_preflight_require]} )) || {
+        pe_log '✖ 运行前环境体检模块不完整，已停止。'
+        return 1
+    }
+    jobs_flutter_preflight_overview || return $?
+    jobs_flutter_preflight_require "$SR_TARGET" "$SR_DEVICE"
+)
+
 # 真正运行Flutter并等待app.started，收到后发送detach使应用保留在设备上。
 sr_verify_run() {
     local answer="" pid=0 timer=0 result=0 app="" seconds="${JOBS_FLUTTER_RUN_TIMEOUT:-1800}" fifo="$PE_RUN_DIR/flutter-run.fifo" tick=0
     [[ "$seconds" == <-> && "$seconds" -ge 30 && "$seconds" -le 7200 ]] || return 2
     pe_log "➤ 即将使用选定SDK在设备${SR_DEVICE}执行Flutter run；会构建、签名及安装到该设备，成功启动后detach保留App运行。"
     pe_log '➤ 真机安装可能覆盖相同包名已有App；不自动修改Team/Bundle ID，不绕过设备资格、描述文件或供应商架构限制。'
-    IFS= read -r 'answer?按回车开始实际启动验证；其它输入取消：' || return 130
+    IFS= read -r "answer?$(jobs_prompt_render '按回车开始实际启动验证；其它输入取消：')" || return 130
     [[ -z "$answer" ]] || return 130
     sr_validate_arguments || return $?
     pe_validate_project "$SF_PROJECT" || { pe_log '✖ 等待期间项目身份发生变化，未启动。'; return 1; }
+    sr_event readiness.preflight readiness '运行前环境健康体检' running "目标：$SR_TARGET"
+    sr_run_preflight || {
+        result=$?
+        sr_event readiness.preflight readiness '运行前环境健康体检' failed "环境检查未通过（$result），未构建或启动App"
+        return "$result"
+    }
+    sr_event readiness.preflight readiness '运行前环境健康体检' succeeded "本次 $SR_TARGET 平台检查通过"
     sr_event readiness.run readiness '实际构建、安装与启动' running "设备：$SR_DEVICE"
     /usr/bin/mkfifo "$fifo" || return 1
     exec {SR_CONTROL_FD}<>"$fifo" || return 1

@@ -16,16 +16,25 @@ struct FlutterRunTerminalLauncher {
         let carrierURL: URL
         let businessURL: URL
         let helperURL: URL
+        let simulatorCreatorsURL: URL
+        let preflightResourcesURL: URL
     }
 
     private let validator = FlutterProjectValidator()
 
     func launch(projectURL: URL) throws {
         guard let scriptURL = Bundle.main.url(forResource: "RunFlutterProject", withExtension: "zsh"),
-              let helperURL = Bundle.main.url(forResource: "FlutterRunner", withExtension: "jxa") else {
-            throw failure("App 缺少 RunFlutterProject.zsh 或 FlutterRunner.jxa 资源，请重新构建完整工程。")
+              let helperURL = Bundle.main.url(forResource: "FlutterRunner", withExtension: "jxa"),
+              let resourcesURL = Bundle.main.resourceURL else {
+            throw failure("App 缺少 Flutter 运行资源，请重新构建完整工程。")
         }
-        let request = try prepare(projectURL: projectURL, businessScriptURL: scriptURL, helperScriptURL: helperURL)
+        let request = try prepare(
+            projectURL: projectURL,
+            businessScriptURL: scriptURL,
+            helperScriptURL: helperURL,
+            simulatorCreatorsURL: resourcesURL.appendingPathComponent("SimulatorCreators", isDirectory: true),
+            preflightResourcesURL: resourcesURL.appendingPathComponent("【MacOS】Flutter运行前体检.zsh", isDirectory: true)
+        )
         do {
             try dispatch(commandLine: request.commandLine)
         } catch {
@@ -34,7 +43,11 @@ struct FlutterRunTerminalLauncher {
         }
     }
 
-    func prepare(projectURL: URL, businessScriptURL: URL, helperScriptURL: URL) throws -> PreparedRequest {
+    func prepare(projectURL: URL,
+                 businessScriptURL: URL,
+                 helperScriptURL: URL,
+                 simulatorCreatorsURL: URL? = nil,
+                 preflightResourcesURL: URL? = nil) throws -> PreparedRequest {
         guard validator.isFlutterProject(at: projectURL) else {
             throw failure("请选择真实普通 Flutter 项目文件夹；根 pubspec.yaml 必须声明 dependencies.flutter.sdk: flutter。")
         }
@@ -42,6 +55,20 @@ struct FlutterRunTerminalLauncher {
         let helperData = try Data(contentsOf: helperScriptURL)
         guard !scriptData.isEmpty, !helperData.isEmpty else {
             throw failure("Flutter 运行资源脚本为空，已停止。")
+        }
+        if let simulatorCreatorsURL {
+            for name in ["CreateIOSSimulator.zsh", "CreateAndroidSimulator.zsh", "CreateHarmonySimulator.zsh"] {
+                let creatorURL = simulatorCreatorsURL.appendingPathComponent(name).appendingPathComponent(name)
+                guard let data = try? Data(contentsOf: creatorURL), !data.isEmpty else {
+                    throw failure("App 缺少模拟器创建脚本：\(name)，请重新构建完整工程。")
+                }
+            }
+        }
+        if let preflightResourcesURL {
+            let preflightScriptURL = preflightResourcesURL.appendingPathComponent("【MacOS】Flutter运行前体检.zsh")
+            guard let data = try? Data(contentsOf: preflightScriptURL), !data.isEmpty else {
+                throw failure("App 缺少运行前环境体检脚本，请重新构建完整工程。")
+            }
         }
         var template = Array(FileManager.default.temporaryDirectory.appendingPathComponent("JobsFlutterRunner-XXXXXX", isDirectory: true).path.utf8CString)
         guard let createdPath = mkdtemp(&template) else {
@@ -56,7 +83,9 @@ struct FlutterRunTerminalLauncher {
             directoryURL: directoryURL,
             carrierURL: carrierURL,
             businessURL: businessURL,
-            helperURL: helperURL
+            helperURL: helperURL,
+            simulatorCreatorsURL: directoryURL.appendingPathComponent("SimulatorCreators", isDirectory: true),
+            preflightResourcesURL: directoryURL.appendingPathComponent("【MacOS】Flutter运行前体检.zsh", isDirectory: true)
         )
         do {
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
@@ -69,6 +98,15 @@ struct FlutterRunTerminalLauncher {
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: carrierURL.path)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: businessURL.path)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: helperURL.path)
+            if let simulatorCreatorsURL {
+                try FileManager.default.copyItem(at: simulatorCreatorsURL, to: request.simulatorCreatorsURL)
+            }
+            if let preflightResourcesURL {
+                try FileManager.default.copyItem(at: preflightResourcesURL, to: request.preflightResourcesURL)
+                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: request.preflightResourcesURL.path)
+                let preflightScriptURL = request.preflightResourcesURL.appendingPathComponent("【MacOS】Flutter运行前体检.zsh")
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: preflightScriptURL.path)
+            }
         } catch {
             cleanup(request)
             throw error
@@ -80,6 +118,8 @@ struct FlutterRunTerminalLauncher {
         _ = unlink(request.carrierURL.path)
         _ = unlink(request.businessURL.path)
         _ = unlink(request.helperURL.path)
+        try? FileManager.default.removeItem(at: request.simulatorCreatorsURL)
+        try? FileManager.default.removeItem(at: request.preflightResourcesURL)
         _ = rmdir(request.directoryURL.path)
     }
 
@@ -118,6 +158,12 @@ struct FlutterRunTerminalLauncher {
         jobs_cleanup_request() {
           local result=$?
           /bin/rm -f -- "$JOBS_CARRIER" "$JOBS_RUNTIME/RunFlutterProject.zsh" "$JOBS_RUNTIME/FlutterRunner.jxa"
+          if [[ -d "$JOBS_RUNTIME/SimulatorCreators" && ! -L "$JOBS_RUNTIME/SimulatorCreators" ]]; then
+            /bin/rm -r -- "$JOBS_RUNTIME/SimulatorCreators"
+          fi
+          if [[ -d "$JOBS_RUNTIME/【MacOS】Flutter运行前体检.zsh" && ! -L "$JOBS_RUNTIME/【MacOS】Flutter运行前体检.zsh" ]]; then
+            /bin/rm -r -- "$JOBS_RUNTIME/【MacOS】Flutter运行前体检.zsh"
+          fi
           /bin/rmdir -- "$JOBS_RUNTIME" 2>/dev/null
           return "$result"
         }

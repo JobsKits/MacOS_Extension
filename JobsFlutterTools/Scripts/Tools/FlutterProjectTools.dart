@@ -18,8 +18,49 @@ Map<String, dynamic> object(String path) {
   if (value is! Map<String, dynamic>) fail('需要 JSON 对象：$path');
   return value;
 }
+// 只格式化用户提示；保留原文字和读取决策，重定向与日志保持纯文本。
+String formatPromptChoice(String message, bool color) {
+  final plain = message.replaceAll(RegExp(r'\x1b\[[0-9;]*m'), '');
+  if (!color) return plain;
+  final red = RegExp(r'(?:输入)?(?:任意|任何)(?:非空)?(?:字符|内容|输入|键)|非空(?:输入|内容|字符)?|其它输入|其他输入');
+  final green = RegExp(r'(?:直接|仅|只需|只|按下|按)?\s*(?:回车|回車)|\b(?:[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])\b');
+  String segment(String value) {
+    final r = red.firstMatch(value);
+    Match? g = green.firstMatch(value);
+    if (g != null && RegExp(r'(?:输入|键入|type|enter)\s*(?:YES|REPAIR|CLEAN|CONTINUE)\b[^；;，,]*$', caseSensitive: false).hasMatch(value.substring(0, g.start))) g = null;
+    if (r != null && g != null && g.start < r.start) {
+      final left = value.substring(0, r.start);
+      final connector = RegExp(r'(?:或者|或)\s*$').firstMatch(left);
+      final split = connector?.start ?? left.length;
+      return '${segment(left.substring(0, split))}${left.substring(split)}\x1b[1;31m${value.substring(r.start)}\x1b[0m';
+    }
+    final match = r ?? g;
+    if (match == null) return value;
+    return '${value.substring(0, match.start)}\x1b[1;${r == null ? 32 : 31}m${value.substring(match.start)}\x1b[0m';
+  }
+  final output = StringBuffer();
+  var cursor = 0;
+  for (final split in RegExp(r'[；;，,/|？?（）()\[\]【】]').allMatches(plain)) {
+    output.write(segment(plain.substring(cursor, split.start)));
+    output.write(split.group(0));
+    cursor = split.end;
+  }
+  output.write(segment(plain.substring(cursor)));
+  return output.toString();
+}
+
+String inputChoicePrompt(String message) {
+  final env = Platform.environment;
+  final term = env['TERM'] ?? '';
+  final color = stdin.hasTerminal && stdout.hasTerminal && stdout.supportsAnsiEscapes &&
+      !env.containsKey('NO_COLOR') && env['PLAIN_OUTPUT'] != '1' &&
+      env['IS_SOURCETREE_RUNTIME'] != '1' && term != 'dumb' &&
+      (Platform.isWindows || term.isNotEmpty);
+  return formatPromptChoice(message, color);
+}
+
 bool confirm(String message, {String word = ''}) {
-  stdout.writeln(message);
+  stdout.writeln(inputChoicePrompt(message));
   if (!stdin.hasTerminal) fail('请在交互终端执行；预览可用 --dry-run。');
   final answer = stdin.readLineSync();
   return answer != null && answer == word;
@@ -320,7 +361,7 @@ Future<void> diagnose(Project p, bool harmony) async {
         final yaml = read(spec);
         if (RegExp(r'^\s+plugin\s*:', multiLine: true).hasMatch(yaml) && !RegExp(r'^\s+ohos\s*:', multiLine: true).hasMatch(yaml)) unsupported.add(entry.key);
       }
-      if (unsupported.isNotEmpty) fail('以下原生插件未声明 ohos 支持，请逐项核对替代/联邦实现：${unsupported.join(', ')}');
+      if (unsupported.isNotEmpty) fail('以下原生插件未声明 ohos 支持，请逐项核对替代/联邦实现：\n  - ${unsupported.join('\n  - ')}');
     });
   }
   if (checks.failed != 0) fail('${checks.failed} 项未通过；环境不健康。');
@@ -486,7 +527,7 @@ Future<void> maintenance(Project p) async {
   final options = ['刷新依赖（pub get）', '项目清理（clean 后 pub get，保留锁文件）', '升级项目依赖（pub upgrade --major-versions）', '修复 Pub 共享缓存', '清理 Pub 共享下载缓存（保留 FVM 可执行文件）', '清理 Gradle 共享 caches（保留配置与凭据）', '清理当前 FVM SDK 的 bin/cache（影响共用此版本的项目）', if (!Platform.isWindows) '清理本项目 iOS 生成缓存（保留 Podfile.lock / pubspec.lock / ios/Flutter 源文件）'];
   for (var i = 0; i < options.length; i++) stdout.writeln('${i + 1}、${options[i]}');
   if (!stdin.hasTerminal) fail('维护需在交互终端选择；没有执行清理。');
-  stdout.write('输入编号，回车 / q 取消：');
+  stdout.write(inputChoicePrompt('输入编号，回车 / q 取消：'));
   final choice = int.tryParse(stdin.readLineSync() ?? '');
   if (choice == null) return;
   if (choice < 1 || choice > options.length) fail('无效编号。');

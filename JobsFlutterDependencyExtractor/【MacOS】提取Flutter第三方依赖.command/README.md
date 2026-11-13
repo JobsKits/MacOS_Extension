@@ -98,4 +98,6 @@ Pub 的解析与缓存机制见 [Dart pub get](https://dart.dev/tools/pub/cmd/pu
 
 引擎与交互均经过临时项目验证，交互回归入口为完整工程的 `Tests/ExtractionShellTests.rb`。该三件套可独立运行，不注册右键菜单；需要 Finder 菜单时，另用完整 `JobsFlutterDependencyExtractor` 工程的独立安装入口。
 
+**终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
+
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

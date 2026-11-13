@@ -24,9 +24,10 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        let urls = candidateURLs()
+        let isSidebar = menuKind == .contextualMenuForSidebar
+        let urls = isSidebar ? sidebarCandidateURLs() : candidateURLs()
         writeLog("menu kind=\(menuKind.rawValue), candidates=\(urls.map(\.path).joined(separator: " | "))")
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer else {
+        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer || isSidebar else {
             return nil
         }
         let isContainer = menuKind == .contextualMenuForContainer
@@ -48,7 +49,8 @@ final class FinderSync: FIFinderSync {
 
         let menu = NSMenu(title: "")
         if !isContainer, enabledFeatures.contains(.open) {
-            let openItem = NSMenuItem(title: "💻 用终端打开", action: #selector(openInTerminal(_:)), keyEquivalent: "")
+            let action = isSidebar ? #selector(openSidebarInTerminal(_:)) : #selector(openInTerminal(_:))
+            let openItem = NSMenuItem(title: "💻 用终端打开", action: action, keyEquivalent: "")
             openItem.target = self
             openItem.isEnabled = true
             menu.addItem(openItem)
@@ -71,7 +73,12 @@ final class FinderSync: FIFinderSync {
         // Flutter 根目录的此入口只清 Android / OpenHarmony，完整清理仍由 Flutter 子菜单负责。
         if enabledFeatures.contains(.cleanBuildArtifacts),
            dependencyProjectValidator.isAndroidOpenHarmonyBuildArtifactTargetFolder(at: directoryURL) {
-            let action = isContainer ? #selector(cleanBuildArtifactsInContainer(_:)) : #selector(cleanBuildArtifacts(_:))
+            let action: Selector
+            if isSidebar {
+                action = #selector(cleanBuildArtifactsInSidebar(_:))
+            } else {
+                action = isContainer ? #selector(cleanBuildArtifactsInContainer(_:)) : #selector(cleanBuildArtifacts(_:))
+            }
             let cleanItem = NSMenuItem(title: "🧯 清理 Android / OpenHarmony 构建产物", action: action, keyEquivalent: "")
             cleanItem.target = self
             menu.addItem(cleanItem)
@@ -79,7 +86,8 @@ final class FinderSync: FIFinderSync {
 
         if !isContainer, enabledFeatures.contains(.codeGraphBootstrap),
            dependencyProjectValidator.isCodeGraphTargetFolder(at: directoryURL) {
-            let codeGraphItem = NSMenuItem(title: "🗺️ 更新代码地图（.codegraph）", action: #selector(updateCodeGraph(_:)), keyEquivalent: "")
+            let action = isSidebar ? #selector(updateSidebarCodeGraph(_:)) : #selector(updateCodeGraph(_:))
+            let codeGraphItem = NSMenuItem(title: "🗺️ 更新代码地图（.codegraph）", action: action, keyEquivalent: "")
             codeGraphItem.target = self
             codeGraphItem.isEnabled = true
             menu.addItem(codeGraphItem)
@@ -102,6 +110,10 @@ private extension FinderSync {
 
     @objc func openInTerminal(_ sender: Any?) {
         performTerminalAction(.open)
+    }
+
+    @objc func openSidebarInTerminal(_ sender: Any?) {
+        performTerminalAction(.open, urls: sidebarCandidateURLs())
     }
 
     @objc func viewFileContent(_ sender: Any?) {
@@ -150,8 +162,16 @@ private extension FinderSync {
         performTerminalAction(.cleanBuildArtifacts, urls: urls)
     }
 
+    @objc func cleanBuildArtifactsInSidebar(_ sender: Any?) {
+        performTerminalAction(.cleanBuildArtifacts, urls: sidebarCandidateURLs())
+    }
+
     @objc func updateCodeGraph(_ sender: Any?) {
         performTerminalAction(.codeGraphBootstrap)
+    }
+
+    @objc func updateSidebarCodeGraph(_ sender: Any?) {
+        performTerminalAction(.codeGraphBootstrap, urls: sidebarCandidateURLs())
     }
 
     @objc func pushEmptyCommitInTerminal(_ sender: Any?) {
@@ -213,6 +233,16 @@ private extension FinderSync {
         guard let requestURL = components.url else {
             throw FinderSyncOpenError.invalidRequestURL
         };return requestURL
+    }
+
+    func sidebarCandidateURLs() -> [URL] {
+        guard let targetURL = FIFinderSyncController.default().targetedURL(),
+              targetURL.isFileURL,
+              targetURL.host.map({ $0.isEmpty || $0.lowercased() == "localhost" }) ?? true,
+              (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+            return []
+        }
+        return [targetURL.standardizedFileURL]
     }
 
     func candidateURLs() -> [URL] {

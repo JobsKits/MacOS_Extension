@@ -1,4 +1,243 @@
 # Created by Jobs on 2026年10月20日，星期二.
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
 require 'minitest/autorun'
 require 'tmpdir'
 require 'fileutils'
@@ -38,27 +277,208 @@ class FlutterRunnerShellTests < Minitest::Test
     refute Dir.exist?(File.join(@tmp, 'Library'))
   end
 
-  def test_simulator_cancel_returns_to_device_selection
-    out, err, result = shell(<<~'ZSH', input: "2\n1\n")
-      setopt NO_NOMATCH
-      refresh_devices() { ROWS=($'android-42\tPhone — android'); }
-      select_ios_simulator() { return 1; }
+  def test_simulator_failure_stops_without_selecting_another_phone
+    out, err, result = shell(<<~'ZSH', input: "3\n1\n")
+      refresh_devices() { print UNEXPECTED_PHONE_QUERY; ROWS=($'android-42\tPhone'); }
+      load_simulator_start_environment() { return 0; }
+      jobs_flutter_prepare_simulator_environment() { return 0; }
+      select_ios_simulator() { return 7; }
       choose_device
-      print -r -- "CHOSEN=$DEVICE_ID"
+      print -r -- "RESULT=$? DEVICE=$DEVICE_ID"
     ZSH
     assert result.success?, err
-    assert_includes out, 'CHOSEN=android-42'
+    assert_includes out, 'RESULT=7 DEVICE='
+    refute_includes out, 'UNEXPECTED_PHONE_QUERY'
   end
 
   def test_device_refresh_option_and_selection
-    out, err, result = shell(<<~'ZSH', input: "4\n1\n")
+    out, err, result = shell(<<~'ZSH', input: "4\n2\n1\n")
       refresh_devices() { ROWS=($'android-42\tPhone — android'); }
       choose_device
       print -r -- "CHOSEN=$DEVICE_ID"
     ZSH
     assert result.success?, err
     assert_includes out, 'CHOSEN=android-42'
-    assert_equal 2, out.scan('选择 Flutter 运行设备').length
+    assert_equal 2, out.scan('目前已有的设备：').length
+  end
+
+  def test_new_device_continues_directly_without_a_second_device_selection
+    out, err, result = shell(<<~'ZSH', input: "2\n2\n")
+      refresh_devices() { print UNEXPECTED_REFRESH; ROWS=($'phone-42\tPhone'); }
+      run_simulator_creator() { print -r -- "CREATE=$1"; DEVICE_ID=emulator-5556; return 0; }
+      choose_device
+      print -r -- "CHOSEN=$DEVICE_ID"
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'CREATE=android'
+    assert_includes out, 'CHOSEN=emulator-5556'
+    refute_includes out, 'UNEXPECTED_REFRESH'
+    refute_includes out, '目前已有的设备：'
+    assert_equal 1, out.scan('CHOSEN=').length
+  end
+
+  def creator_fixture(contents)
+    creator = File.join(@tmp, "Creator 中文 ' $(touch NEVER).zsh")
+    File.write(creator, "#!/bin/zsh\n#{contents}\n")
+    "simulator_creator_path() { REPLY=#{creator.shellescape}; }\n"
+  end
+
+  def test_creation_receipt_waits_for_exact_avd_before_running_once
+    setup = creator_fixture("print -r -- $'android\\tTarget_AVD' > \"$JOBS_FLUTTER_CREATED_DEVICE_FILE\"")
+    out, err, result = shell(setup + <<~'ZSH', input: "2\n2\n")
+      resolve_android_tools() { print SDK_RESOLVED; }
+      wait_for_android_avd() { print -r -- "WAIT=$1"; DEVICE_ID=emulator-5556; }
+      choose_existing_device() { print UNEXPECTED_MENU; return 130; }
+      choose_device
+      print -r -- "RUN=$DEVICE_ID"
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, 'WAIT=Target_AVD'
+    assert_includes out, 'RUN=emulator-5556'
+    assert_equal 1, out.scan('RUN=').length
+    refute_includes out, 'UNEXPECTED_MENU'
+    refute File.exist?(File.join(@tmp, 'NEVER'))
+    assert_empty Dir.glob(File.join(@tmp, 'test.log.created.*'))
+  end
+
+  def test_cancelled_creator_without_receipt_never_runs_an_existing_phone
+    out, err, result = shell(creator_fixture('exit 0') + <<~'ZSH', input: "2\n2\n5\n")
+      choose_existing_device() { print UNEXPECTED_MENU; DEVICE_ID=phone-42; }
+      choose_device
+      print UNEXPECTED_RUN
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, '未回传'
+    refute_includes out, 'UNEXPECTED_MENU'
+    refute_includes out, 'UNEXPECTED_RUN'
+    assert_empty Dir.glob(File.join(@tmp, 'test.log.created.*'))
+  end
+
+  def test_malformed_creation_receipt_does_not_wait_or_run
+    ["ios\\tOTHER", "android\\tTarget\\tOTHER", "android\\tTarget\\nandroid\\tOTHER"].each do |receipt|
+      out, err, result = shell(creator_fixture("print -r -- $'#{receipt}' > \"$JOBS_FLUTTER_CREATED_DEVICE_FILE\"") + <<~'ZSH')
+        wait_for_android_avd() { print UNEXPECTED_WAIT; }
+        run_simulator_creator android || print STOPPED
+      ZSH
+      assert result.success?, out + err
+      assert_includes out, '回执无效'
+      assert_includes out, 'STOPPED'
+      refute_includes out, 'UNEXPECTED_WAIT'
+    end
+  end
+
+  def test_creation_for_an_unsupported_project_platform_preserves_device_without_running
+    setup = creator_fixture("print -r -- $'harmony\\t127.0.0.1:12345' > \"$JOBS_FLUTTER_CREATED_DEVICE_FILE\"")
+    out, err, result = shell(setup + <<~'ZSH', input: "2\n3\n5\n")
+      wait_for_simulator_recognition() { print UNEXPECTED_WAIT; }
+      choose_device
+      print UNEXPECTED_RUN
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, '没有 ohos 平台'
+    refute_includes out, 'UNEXPECTED_WAIT'
+    refute_includes out, 'UNEXPECTED_RUN'
+  end
+
+  def test_wait_failure_never_enters_flutter_run
+    setup = creator_fixture("print -r -- $'android\\tTarget_AVD' > \"$JOBS_FLUTTER_CREATED_DEVICE_FILE\"")
+    out, err, result = shell(setup + <<~'ZSH', input: "2\n2\n5\n")
+      resolve_android_tools() { return 0; }
+      wait_for_android_avd() { print BOOT_FAILED; return 1; }
+      choose_device
+      print UNEXPECTED_RUN
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, 'BOOT_FAILED'
+    refute_includes out, 'UNEXPECTED_RUN'
+  end
+
+  def test_return_from_new_group_then_existing_does_not_create
+    out, err, result = shell(<<~'ZSH', input: "2\n4\n1\n1\n")
+      refresh_devices() { ROWS=($'phone-42\tPhone'); }
+      run_simulator_creator() { print UNEXPECTED_CREATE; }
+      choose_device
+      print -r -- "CHOSEN=$DEVICE_ID"
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'CHOSEN=phone-42'
+    refute_includes out, 'UNEXPECTED_CREATE'
+  end
+
+  def test_creator_failure_returns_to_groups_without_running_or_refreshing
+    out, err, result = shell(<<~'ZSH', input: "2\n3\n5\n")
+      refresh_devices() { print UNEXPECTED_REFRESH; ROWS=($'phone-42\tPhone'); }
+      run_simulator_creator() { print CREATE_FAILED; return 7; }
+      choose_device
+      print UNEXPECTED_RUN
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'CREATE_FAILED'
+    refute_includes out, 'UNEXPECTED_REFRESH'
+    refute_includes out, 'UNEXPECTED_RUN'
+  end
+
+  def test_group_cancel_does_not_query_or_create_devices
+    ["5\n", "1\n\n", "2\n5\n", "3\n5\n"].each do |input|
+      out, err, result = shell(<<~'ZSH', input: input)
+        refresh_devices() { ROWS=(); }
+        run_simulator_creator() { print UNEXPECTED_CREATE; }
+        choose_device
+        print UNEXPECTED_RUN
+      ZSH
+      assert result.success?, err
+      refute_includes out, 'UNEXPECTED_CREATE'
+      refute_includes out, 'UNEXPECTED_RUN'
+    end
+  end
+
+  def test_existing_ios_empty_inventory_does_not_create
+    out, err, result = shell(<<~'ZSH')
+      read_simulator_inventory() { return 0; }
+      json_helper() { return 0; }
+      create_simulator() { print UNEXPECTED_CREATE; }
+      select_ios_simulator existing || print EMPTY
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'EMPTY'
+    refute_includes out, 'UNEXPECTED_CREATE'
+  end
+
+  def test_existing_android_empty_inventory_does_not_create
+    out, err, result = shell(<<~'ZSH')
+      resolve_android_tools() { return 0; }
+      read_android_avds() { ROWS=(); }
+      create_android_emulator() { print UNEXPECTED_CREATE; }
+      start_android_emulator existing || print EMPTY
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'EMPTY'
+    refute_includes out, 'UNEXPECTED_CREATE'
+  end
+
+  def test_packaged_creator_runs_literal_path_and_preserves_failure
+    assets = File.join(@tmp, "Tools 中文 ' $(touch NEVER)")
+    %w[ios android harmony].each do |platform|
+      standalone_name = { 'ios' => 'CreateIOSSimulator.zsh', 'android' => 'CreateAndroidSimulator.zsh', 'harmony' => 'CreateHarmonySimulator.zsh' }.fetch(platform)
+      relative = if SCRIPT.include?('Scripts/Tools/')
+                   platform == 'harmony' ? 'SetupCreateHarmonySimulator.zsh/SetupCreateHarmonySimulator.zsh' : "Setup#{standalone_name}"
+                 else
+                   "SimulatorCreators/#{standalone_name}/#{standalone_name}"
+                 end
+      creator = File.join(assets, relative)
+      FileUtils.mkdir_p(File.dirname(creator))
+      File.write(creator, "#!/bin/zsh\nprint -r -- \"ARGS=$*\"\nexit 7\n")
+      out, err, result = shell(<<~ZSH)
+        SCRIPT_DIR=#{assets.shellescape}
+        result=0
+        run_simulator_creator #{platform} || result=$?
+        print -r -- "RESULT=$result"
+      ZSH
+      assert result.success?, err
+      assert_includes out, "ARGS=#{platform == 'ios' ? '' : '--create'}"
+      assert_includes out, 'RESULT=7'
+      refute File.exist?(File.join(@tmp, 'NEVER'))
+    end
   end
 
   def test_invalid_number_can_retry_and_cancel
@@ -77,6 +497,9 @@ class FlutterRunnerShellTests < Minitest::Test
     fake = File.join(@tmp, 'fakefzf')
     File.write(fake, <<~'ZSH')
       #!/bin/zsh
+      [[ "$1" != --version ]] || { print 0.68.0; exit 0; }
+      [[ "$*" != *--filter=* ]] || { print probe; exit 0; }
+      [[ "$1" != --help ]] || { print -- '--bind --expect --with-nth --no-height'; exit 0; }
       lines=()
       while IFS= read -r line; do
         [[ -n "$FZF_CAPTURE" ]] && print -r -- "$line" >> "$FZF_CAPTURE"
@@ -101,6 +524,9 @@ class FlutterRunnerShellTests < Minitest::Test
     fake = File.join(@tmp, 'strictfzf')
     File.write(fake, <<~'ZSH')
       #!/bin/zsh
+      [[ "$1" != --version ]] || { print 0.68.0; exit 0; }
+      [[ "$*" != *--filter=* ]] || { print probe; exit 0; }
+      [[ "$1" != --help ]] || { print -- '--bind --expect --with-nth --no-height'; exit 0; }
       if [[ -n "${FZF_DEFAULT_OPTS+x}" || -n "${FZF_DEFAULT_OPTS_FILE+x}" ]]; then
         print -ru2 -- 'unexpected inherited fzf default options'
         exit 41
@@ -125,7 +551,7 @@ class FlutterRunnerShellTests < Minitest::Test
 
   def test_fzf_cancel_is_treated_as_cancellation
     fake = File.join(@tmp, 'fakefzf-cancel')
-    File.write(fake, "#!/bin/zsh\ncat >/dev/null\nexit 130\n")
+    File.write(fake, "#!/bin/zsh\n[[ \"$1\" != --version ]] || { print 0.68.0; exit 0; }\n[[ \"$*\" != *--filter=* ]] || { print probe; exit 0; }\n[[ \"$1\" != --help ]] || { print -- '--bind --expect --with-nth --no-height'; exit 0; }\ncat >/dev/null\nexit 130\n")
     FileUtils.chmod(0o700, fake)
     out, err, result = shell(<<~ZSH, env: { 'JOBS_FLUTTER_RUNNER_FZF' => 'always' })
       FZF_BIN=#{fake.shellescape}
@@ -138,7 +564,7 @@ class FlutterRunnerShellTests < Minitest::Test
   end
 
   # 真实 fzf 的备用屏幕与清理协议不能由假 fzf 的参数断言代替。
-  def real_fzf_terminal
+  def real_fzf_terminal(setup: '', invocation: "select_row 'Choose device: '", ready: ['Alpha device', 'Beta device'])
     fzf = ['/opt/homebrew/bin/fzf', '/usr/local/bin/fzf'].find { |path| File.executable?(path) }
     skip '需要已安装的 fzf 执行真实 PTY 回归' unless fzf
     carrier = File.join(@tmp, 'menu-tty.zsh')
@@ -147,7 +573,8 @@ class FlutterRunnerShellTests < Minitest::Test
       LOG_FILE=#{File.join(@tmp, 'tty.log').shellescape}
       FZF_BIN=#{fzf.shellescape}
       ROWS=($'alpha\\tAlpha device' $'beta\\tBeta device')
-      if select_row 'Choose device: '; then
+      #{setup}
+      if #{invocation}; then
         print -r -- "PICK=$REPLY"
       else
         print 'CANCELLED'
@@ -167,7 +594,7 @@ class FlutterRunnerShellTests < Minitest::Test
       end
       begin
         Timeout.timeout(8) do
-          read_until.call { |text| text.include?('Alpha device') && text.include?('Beta device') }
+          read_until.call { |text| ready.all? { |label| text.include?(label.b) } }
           yield writer, read_until, transcript
           loop { transcript << reader.readpartial(65_536) }
         end
@@ -226,6 +653,39 @@ class FlutterRunnerShellTests < Minitest::Test
     assert_includes transcript, "\e[?1049l"
     assert_includes transcript, 'CANCELLED'
     refute_includes transcript, 'PICK='
+  end
+
+  def test_real_fzf_group_navigation_with_left_and_enter
+    setup = <<~ZSH
+      PROJECT_PATH=#{@tmp.shellescape}
+      refresh_devices() { ROWS=($'phone-fixture\\tPhone fixture'); }
+      run_simulator_creator() { print UNEXPECTED_CREATE; return 7; }
+    ZSH
+    transcript = real_fzf_terminal(setup: setup, invocation: 'choose_device', ready: ['目前已有的设备', '新建设备']) do |writer, read_until, text|
+      writer.write("\e[B\r")
+      read_until.call { |text| text.include?('新建 Harmony'.b) }
+      previous = text.scan('目前已有的设备（'.b).length
+      writer.write("\e[D")
+      read_until.call { |text| text.scan('目前已有的设备（'.b).length > previous }
+      writer.write("\r")
+      read_until.call { |text| text.include?('Phone fixture'.b) }
+      writer.write("\r")
+    end
+    assert transcript.include?('PICK=phone-fixture'), '真实 fzf 分组往返后应选中原始设备 ID'
+    refute_includes transcript, 'UNEXPECTED_CREATE'
+  end
+
+  def test_cancel_existing_simulator_picker_cancels_run
+    out, err, result = shell(<<~'ZSH', input: "3\n1\n")
+      refresh_devices() { ROWS=($'phone-42\tPhone'); }
+      load_simulator_start_environment() { return 0; }
+      jobs_flutter_prepare_simulator_environment() { return 0; }
+      select_ios_simulator() { return 130; }
+      choose_device
+      print UNEXPECTED_RUN
+    ZSH
+    assert result.success?, err
+    refute_includes out, 'UNEXPECTED_RUN'
   end
 
   def test_fvm_project_never_falls_back_to_global_flutter
@@ -364,6 +824,9 @@ class FlutterRunnerShellTests < Minitest::Test
     File.write(File.join(project, '.fvmrc'), %({"flutter":"#{version}"}))
     File.write(fake, <<~'ZSH')
       #!/bin/zsh
+      [[ "$1" != --version ]] || { print 0.68.0; exit 0; }
+      [[ "$*" != *--filter=* ]] || { print probe; exit 0; }
+      [[ "$1" != --help ]] || { print -- '--bind --expect --with-nth --no-height'; exit 0; }
       case "$1" in
         install)
           printf 'DOWNLOAD 25%%\rDOWNLOAD 100%%\n'
@@ -915,6 +1378,246 @@ class FlutterRunnerShellTests < Minitest::Test
     assert_includes out, 'RESULT=1'
   end
 
+  def test_connected_harmony_diagnostic_prepares_and_returns_only_the_original_real_target
+    out, err, result = shell(<<~'ZSH')
+      local picks=0 prepared=0
+      refresh_devices() { ROWS=($'ios-phone\tiPhone — ios'); }
+      jobs_flutter_harmony_discovery_rows() { print -r -- $'__harmony_usb__:fixture\t鸿蒙 USB 设备 — 已连接，环境未就绪'; }
+      select_row() {
+        (( picks++ ))
+        print -rl -- "${ROWS[@]}"
+        REPLY=__harmony_usb__:fixture
+      }
+      prepare_harmony_run_target() { [[ -z "$DEVICE_ID" && "$1" == __harmony_usb__:fixture ]] || return 71; (( prepared++ )); DEVICE_ID=original-harmony-phone; return 0; }
+      choose_existing_device || exit $?
+      print -r -- "CHOSEN=$DEVICE_ID PREPARED=$prepared PICKS=$picks"
+    ZSH
+    assert result.success?, err
+    assert_includes out, '鸿蒙 USB 设备 — 已连接'
+    assert_includes out, 'CHOSEN=original-harmony-phone PREPARED=1 PICKS=1'
+    refute_includes out, 'CHOSEN=__harmony'
+  end
+
+  def test_harmony_usb_diagnostic_survives_flutter_device_query_failure
+    out, err, result = shell(<<~'ZSH')
+      refresh_devices() { ROWS=(); return 1; }
+      jobs_flutter_harmony_discovery_rows() { print -r -- $'__harmony_usb__:fixture\t鸿蒙 USB 设备 — 已连接，环境未就绪'; }
+      select_row() { print -rl -- "${ROWS[@]}"; REPLY=__cancel__; }
+      choose_existing_device
+    ZSH
+    assert_equal 130, result.exitstatus, err
+    assert_includes out, '__harmony_usb__:fixture'
+  end
+
+  def test_cancel_from_harmony_diagnostic_does_not_start_background
+    out, _err, result = preflight_main(<<~'ZSH')
+      refresh_devices() { ROWS=(); }
+      jobs_flutter_harmony_discovery_rows() { print -r -- $'__harmony_hdc__:fixture\t鸿蒙 HDC 设备 — 已连接，环境未就绪'; }
+      select_row() { REPLY=__harmony_hdc__:fixture; }
+      prepare_harmony_run_target() { HARMONY_PREPARATION_FAILED=1; return 130; }
+      choose_device() { choose_existing_device; }
+    ZSH
+    assert_equal 130, result.exitstatus
+    refute_includes out, 'TARGET_READY'
+    refute_includes out, 'START_BACKGROUND'
+  end
+
+  def test_failed_native_harmony_query_does_not_inject_output_into_device_rows
+    out, err, result = shell(<<~'ZSH')
+      refresh_devices() { ROWS=($'ios-phone\tiPhone — ios'); }
+      jobs_flutter_harmony_discovery_rows() { print INVALID_DEVICE_ROW; return 1; }
+      select_row() { print -rl -- "${ROWS[@]}"; REPLY=ios-phone; }
+      choose_existing_device || exit $?
+      print -r -- "CHOSEN=$DEVICE_ID"
+    ZSH
+    assert result.success?, err
+    assert_includes out, 'CHOSEN=ios-phone'
+    refute_includes out, 'INVALID_DEVICE_ROW'
+    assert_includes out, '鸿蒙连接状态读取失败'
+  end
+
+  def preflight_main(body)
+    shell(<<~ZSH)
+      functions[choose_device_before_stub]="$functions[choose_device]"
+      functions[require_environment_before_stub]="$functions[require_selected_device_environment]"
+      show_script_intro_and_wait() { return 0; }
+      initialize_runtime() { return 0; }
+      leave_terminal() { return 0; }
+      read_project() { return 0; }
+      find_flutter() { print SDK_READY; }
+      load_run_preflight() { return 0; }
+      jobs_flutter_preflight_overview() { print HEALTH_REPORT; }
+      choose_device() { print SELECT_DEVICE; DEVICE_ID=phone; }
+      require_selected_device_environment() { print TARGET_READY; }
+      prepare_target_sdk_resources() { print TARGET_RESOURCES; }
+      prepare_session() { print START_BACKGROUND; }
+      watch_session() { print WATCH_LOG; }
+      #{body}
+      main --project "$PROJECT_PATH"
+    ZSH
+  end
+
+  def harmony_preparation_fixture
+    directory = File.join(@tmp, 'runner-assets')
+    preflight = File.join(directory, '【MacOS】Flutter运行前体检.zsh')
+    preparation = File.join(preflight, '【MacOS】鸿蒙运行环境准备.zsh')
+    FileUtils.mkdir_p(preparation)
+    FileUtils.cp(File.join(File.dirname(SCRIPT), '【MacOS】Flutter运行前体检.zsh/Flutter运行前体检.jxa'), preflight)
+    File.write(File.join(preparation, '【MacOS】鸿蒙运行环境准备.zsh'), <<~'ZSH')
+      jobs_flutter_prepare_harmony_for_run() {
+        (( PREP_CALLS++ ))
+        FLUTTER_BIN=/fixture/new-harmony-sdk/bin/flutter
+        HARMONY_PARENT_ENV=prepared
+        export HARMONY_PARENT_ENV
+        REPLY="$1"
+        print PREPARED_ORIGINAL_TARGET
+        return "${PREP_RESULT:-0}"
+      }
+    ZSH
+    <<~ZSH
+      SCRIPT_DIR=#{directory.shellescape}
+      HELPER=#{File.join(File.dirname(SCRIPT), 'FlutterRunner.jxa').shellescape}
+      typeset -gA JOBS_PREFLIGHT_STATE JOBS_PREFLIGHT_DETAIL
+      JOBS_PREFLIGHT_STATE[ohos]=failed
+      PREP_CALLS=0
+      refresh_devices() {
+        if (( PREP_CALLS == 0 )); then
+          ROWS=()
+          print '[]' > "$LOG_FILE.devices.json"
+        else
+          ROWS=($'ORIGINAL123\tHarmony — ohos-arm64')
+          print '[{"id":"ORIGINAL123","isSupported":true,"targetPlatform":"ohos-arm64"},{"id":"OTHER456","isSupported":true,"targetPlatform":"ohos-arm64"}]' > "$LOG_FILE.devices.json"
+        fi
+      }
+      jobs_flutter_harmony_discovery_rows() { (( PREP_CALLS != 0 )) || print -r -- $'__harmony_hdc__:ORIGINAL123\t鸿蒙HDC设备'; }
+      jobs_flutter_preflight_overview() { if (( PREP_CALLS > 0 )); then JOBS_PREFLIGHT_STATE[ohos]=passed; fi; print HEALTH_REPORT; }
+      find_flutter() { print SDK_READY; }
+    ZSH
+  end
+
+  def test_harmony_preparation_success_continues_same_main_and_runs_once
+    out, err, result = preflight_main(harmony_preparation_fixture + <<~'ZSH')
+      choose_device() { choose_device_before_stub; }
+      require_selected_device_environment() { require_environment_before_stub; }
+      select_row() { if [[ "${ROWS[1]%%$'\t'*}" == __existing__ ]]; then REPLY=__existing__; else REPLY=__harmony_hdc__:ORIGINAL123; fi; }
+      jobs_flutter_preflight_require() { [[ "$1" == ohos && "$2" == ORIGINAL123 && "$HARMONY_PARENT_ENV" == prepared && "$FLUTTER_BIN" == /fixture/new-harmony-sdk/bin/flutter ]] || return 74; print TARGET_READY; }
+      prepare_session() { [[ "$DEVICE_ID" == ORIGINAL123 && "$PREP_CALLS" == 1 ]] || return 75; print START_BACKGROUND; }
+    ZSH
+    assert result.success?, err
+    assert_equal 1, out.scan('PREPARED_ORIGINAL_TARGET').length, out
+    assert_equal 2, out.scan('SDK_READY').length, out
+    assert_equal 2, out.scan('HEALTH_REPORT').length, out
+    assert_equal 1, out.scan('START_BACKGROUND').length, out
+    refute_includes out, 'OTHER456'
+  end
+
+  def test_harmony_preparation_failure_and_cancel_stop_main_without_reselecting
+    [7, 130].each do |code|
+      out, err, result = preflight_main(harmony_preparation_fixture + <<~ZSH)
+        PREP_RESULT=#{code}
+        choose_device() { choose_device_before_stub; }
+        select_row() { if [[ "${ROWS[1]%%$'\t'*}" == __existing__ ]]; then REPLY=__existing__; else REPLY=__harmony_hdc__:ORIGINAL123; fi; }
+      ZSH
+      assert_equal code, result.exitstatus, err
+      assert_equal 1, out.scan('PREPARED_ORIGINAL_TARGET').length, out
+      refute_includes out, 'TARGET_RESOURCES'
+      refute_includes out, 'START_BACKGROUND'
+    end
+  end
+
+  def test_original_harmony_target_wait_is_bounded_without_repeating_preparation
+    out, err, result = preflight_main(harmony_preparation_fixture + <<~'ZSH')
+      JOBS_HARMONY_DEVICE_WAIT_ATTEMPTS=2
+      QUERY_CALLS=0
+      choose_device() { choose_device_before_stub; }
+      select_row() { if [[ "${ROWS[1]%%$'\t'*}" == __existing__ ]]; then REPLY=__existing__; else REPLY=__harmony_hdc__:ORIGINAL123; fi; }
+      refresh_devices() { (( QUERY_CALLS++ )); ROWS=(); print '[]' > "$LOG_FILE.devices.json"; print QUERY_CALL; }
+    ZSH
+    assert_equal 1, result.exitstatus, err
+    assert_equal 1, out.scan('PREPARED_ORIGINAL_TARGET').length, out
+    assert_equal 3, out.scan('QUERY_CALL').length, out
+    refute_includes out, 'START_BACKGROUND'
+  end
+
+  def test_supported_harmony_device_with_unhealthy_environment_is_prepared_in_same_main
+    out, err, result = preflight_main(harmony_preparation_fixture + <<~'ZSH')
+      require_selected_device_environment() { require_environment_before_stub; }
+      choose_device() { DEVICE_ID=ORIGINAL123; print '[{"id":"ORIGINAL123","isSupported":true,"targetPlatform":"ohos-arm64"}]' > "$LOG_FILE.devices.json"; }
+      jobs_flutter_preflight_require() { [[ "$1" == ohos && "$2" == ORIGINAL123 && "$PREP_CALLS" == 1 ]] || return 73; print TARGET_READY; }
+    ZSH
+    assert result.success?, err
+    assert_equal 1, out.scan('PREPARED_ORIGINAL_TARGET').length, out
+    assert_equal 1, out.scan('START_BACKGROUND').length, out
+    assert_includes out, 'TARGET_READY'
+  end
+
+  def test_main_reports_health_before_device_selection_and_gates_background_run
+    out, err, result = preflight_main('')
+    assert result.success?, err
+    assert_equal %w[SDK_READY HEALTH_REPORT SELECT_DEVICE TARGET_READY TARGET_RESOURCES START_BACKGROUND WATCH_LOG], out.lines.map(&:strip)
+    assert_equal 1, out.scan('START_BACKGROUND').length
+  end
+
+  def test_main_stops_before_devices_if_preflight_report_fails
+    out, _err, result = preflight_main('jobs_flutter_preflight_overview() { print HEALTH_FAILED; return 124; }')
+    assert_equal 124, result.exitstatus
+    refute_includes out, 'SELECT_DEVICE'
+    refute_includes out, 'START_BACKGROUND'
+  end
+
+  def test_main_stops_before_precache_and_background_if_selected_platform_fails
+    out, _err, result = preflight_main('require_selected_device_environment() { print TARGET_FAILED; return 1; }')
+    refute result.success?
+    assert_includes out, 'HEALTH_REPORT'
+    refute_includes out, 'TARGET_RESOURCES'
+    refute_includes out, 'START_BACKGROUND'
+  end
+
+  def test_main_device_cancellation_never_checks_target_or_starts_background
+    out, _err, result = preflight_main('choose_device() { return 130; }')
+    assert_equal 130, result.exitstatus
+    refute_includes out, 'TARGET_READY'
+    refute_includes out, 'START_BACKGROUND'
+  end
+
+  def test_missing_preflight_resource_blocks_run
+    out, err, result = shell(<<~'ZSH')
+      SCRIPT_DIR="$PROJECT_PATH/missing-resources"
+      load_run_preflight
+    ZSH
+    refute result.success?, err
+    assert_includes out, '缺少运行前环境体检模块'
+  end
+
+  def test_selected_device_platform_is_resolved_each_time
+    out, err, result = shell(<<~'ZSH')
+      DEVICE_ID=phone
+      typeset -gA JOBS_PREFLIGHT_STATE
+      JOBS_PREFLIGHT_STATE[ohos]=passed
+      local calls=0
+      json_helper() { [[ "$1" == precache-platform && "$3" == phone ]] || return 1; print -r -- "$PLATFORM"; }
+      jobs_flutter_preflight_require() { print -r -- "CHECK=$1:$2"; [[ "$1" == ios ]]; }
+      PLATFORM=ios
+      require_selected_device_environment || exit 71
+      PLATFORM=ohos
+      require_selected_device_environment
+    ZSH
+    refute result.success?, err
+    assert_equal %w[CHECK=ios:phone CHECK=ohos:phone], out.lines.map(&:strip)
+  end
+
+  def test_unparseable_selected_device_does_not_reuse_old_health
+    out, err, result = shell(<<~'ZSH')
+      DEVICE_ID=phone
+      json_helper() { return 1; }
+      jobs_flutter_preflight_require() { print UNEXPECTED_PASS; }
+      require_selected_device_environment
+    ZSH
+    refute result.success?, err
+    refute_includes out, 'UNEXPECTED_PASS'
+    assert_includes out, '无法确认所选设备的平台'
+  end
+
   def test_ios_incompatible_combination_does_not_claim_success
     out, err, result = shell(<<~'ZSH', input: "1\n1\n\n")
       json_helper() { [[ "$1" != unique-name ]] || print -r -- "$3"; [[ "$1" == unique-name ]] || print -r -- $'fixture-id\tfixture'; }
@@ -926,4 +1629,112 @@ class FlutterRunnerShellTests < Minitest::Test
     assert_includes out, '创建失败'
     assert_includes out, 'RESULT=1'
   end
+  def test_virtual_group_prepares_selected_platform_before_inventory_and_runs_only_original_target
+    out, err, result = shell(<<~'ZSH', input: "3\n2\n")
+      refresh_devices() { print UNEXPECTED_PHONE_QUERY; }
+      run_simulator_creator() { print UNEXPECTED_CREATE; }
+      load_simulator_start_environment() { print LOAD; }
+      jobs_flutter_prepare_simulator_environment() { print -r -- "PREPARE=$1"; }
+      jobs_flutter_preflight_overview() { print REFRESH_HEALTH; }
+      start_android_emulator() { print -r -- "LIST_AND_START=$1"; DEVICE_ID=emulator-original; }
+      choose_device
+      print -r -- "RUN=$DEVICE_ID"
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, 'PREPARE=android'
+    assert_includes out, 'LIST_AND_START=existing'
+    assert_operator out.index('PREPARE=android'), :<, out.index('REFRESH_HEALTH')
+    assert_operator out.index('REFRESH_HEALTH'), :<, out.index('LIST_AND_START=existing')
+    assert_includes out, 'RUN=emulator-original'
+    refute_includes out, 'UNEXPECTED_PHONE_QUERY'
+    refute_includes out, 'UNEXPECTED_CREATE'
+  end
+
+  def test_virtual_group_back_and_cancel_do_not_prepare_or_launch
+    ["3\nb\n5\n", "3\n5\n"].each do |input|
+      out, err, result = shell(<<~'ZSH', input: input)
+        load_simulator_start_environment() { print UNEXPECTED_LOAD; }
+        jobs_flutter_prepare_simulator_environment() { print UNEXPECTED_PREPARE; }
+        choose_device
+        print UNEXPECTED_RUN
+      ZSH
+      assert result.success?, out + err
+      refute_includes out, 'UNEXPECTED_LOAD'
+      refute_includes out, 'UNEXPECTED_PREPARE'
+      refute_includes out, 'UNEXPECTED_RUN'
+    end
+  end
+
+  def test_real_fzf_virtual_platform_navigation_returns_to_exact_parent
+    setup = <<~'ZSH'
+      load_simulator_start_environment() { print UNEXPECTED_LOAD; }
+      refresh_devices() { ROWS=($'phone-fixture\tPhone fixture'); }
+    ZSH
+    transcript = real_fzf_terminal(setup: setup, invocation: 'choose_device', ready: ['启动虚拟设备']) do |writer, read_until, text|
+      writer.write("\e[B\e[B\r")
+      read_until.call { |text| text.include?('启动鸿蒙模拟器'.b) }
+      previous = text.scan('目前已有的设备（'.b).length
+      writer.write("zz-no-matches")
+      read_until.call { |text| text.include?('0/5'.b) }
+      writer.write("\e[D")
+      read_until.call { |text| text.scan('目前已有的设备（'.b).length > previous }
+      writer.write("\r")
+      read_until.call { |text| text.include?('Phone fixture'.b) }
+      writer.write("\r")
+    end
+    assert_includes transcript, 'PICK=phone-fixture'
+    refute_includes transcript, 'UNEXPECTED_LOAD'
+  end
+
+  def test_fzf_runtime_error_is_not_reported_as_cancel_or_text_fallback
+    fake = File.join(@tmp, 'brokenfzf')
+    File.write(fake, "#!/bin/zsh\nexit 2\n")
+    FileUtils.chmod(0o700, fake)
+    out, err, result = shell(<<~ZSH, env: { 'JOBS_FLUTTER_RUNNER_FZF'=>'always' })
+      FZF_BIN=#{fake.shellescape}
+      FZF_VALIDATED_BIN="$FZF_BIN"
+      ROWS=($'id\\tDevice')
+      select_row 'Child' 1
+      print -r -- "RESULT=$?"
+    ZSH
+    assert result.success?, out + err
+    assert_includes out, 'RESULT=2'
+    assert_includes out, 'fzf选择器运行失败'
+    refute_includes out, '输入编号'
+  end
+
+  def test_return_from_instance_list_reuses_prepared_environment_without_replaying_acquisition
+    out,err,status=shell(<<~'ZSH',input:"3\n2\n2\n")
+      integer lists=0
+      load_simulator_start_environment() { print LOAD; }
+      jobs_flutter_prepare_simulator_environment() { print PREPARE; }
+      start_android_emulator() { (( lists++ )); (( lists > 1 )) || return 10; DEVICE_ID=original; }
+      choose_device
+      print DEVICE=$DEVICE_ID
+    ZSH
+    assert status.success?,out+err
+    assert_equal 1,out.lines.count { |line| line.strip=='PREPARE' }
+    assert_equal 1,out.lines.count { |line| line.strip=='LOAD' }
+    assert_includes out,'DEVICE=original'
+  end
+  def test_replaced_avd_after_selection_stops_before_version_start_or_wait
+    out,err,status=shell(<<~'ZSH')
+      integer checks=0
+      resolve_android_tools() { return 0; }
+      read_android_avds() { ROWS=($'TARGET\tOriginal AVD'); }
+      jobs_sim_android_avd_identity() { print -r -- "$IDENTITY"; }
+      IDENTITY=original
+      select_row() { REPLY=TARGET; IDENTITY=replaced; }
+      run_bounded() { print UNEXPECTED_HOST; }
+      wait_for_android_avd() { print UNEXPECTED_WAIT; }
+      start_android_emulator existing
+      print RESULT=$?
+    ZSH
+    assert status.success?,out+err
+    assert_includes out,'RESULT=1'
+    assert_includes out,'原 AVD 已被替换'
+    refute_includes out,'UNEXPECTED_HOST'
+    refute_includes out,'UNEXPECTED_WAIT'
+  end
+
 end

@@ -33,12 +33,12 @@ struct RunAuthorizationLauncher {
     }
 
     func prepare(fileURL: URL, businessScriptURL: URL) throws -> PreparedRequest {
-        guard validator.isExecutableFormat(at: fileURL) else {
-            throw failure("请选择单个普通文件；文件夹、应用包和符号链接不支持运行授权。")
+        guard validator.isRegularFile(at: fileURL) else {
+            throw failure("请选择单个普通文件；文件夹、应用包和符号链接不支持授予执行权限。")
         }
         let scriptData = try Data(contentsOf: businessScriptURL)
         guard !scriptData.isEmpty else {
-            throw failure("运行授权资源脚本为空，已停止。")
+            throw failure("授予执行权限资源脚本为空，已停止。")
         }
         var template = Array(FileManager.default.temporaryDirectory.appendingPathComponent("JobsRunAuthorizer-XXXXXX", isDirectory: true).path.utf8CString)
         guard let createdPath = mkdtemp(&template) else {

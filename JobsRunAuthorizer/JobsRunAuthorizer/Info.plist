@@ -42,6 +42,6 @@
 		</dict>
 	</array>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>将单个文件的运行授权交给 Terminal，供你核对路径并确认增加执行权限。</string>
+	<string>将单个文件的授予执行权限交给 Terminal，供你核对路径并确认增加执行权限。</string>
 </dict>
 </plist>

@@ -1,0 +1,230 @@
+// Created by Jobs on 2026年11月10日，星期二.
+// 内部只读助手：核对当前 SDK 的依赖解析及鸿蒙原生插件声明。
+ObjC.import('Foundation');
+
+function read(path) {
+    var info = $.NSFileManager.defaultManager.attributesOfItemAtPathError($(path), null);
+    if (!info || Number(info.NSFileSize) > 16 * 1024 * 1024) throw new Error('清单不存在或超过读取上限：' + path);
+    var content = $.NSString.stringWithContentsOfFileEncodingError($(path), $.NSUTF8StringEncoding, null);
+    if (!content) throw new Error('清单不是有效 UTF-8：' + path);
+    return ObjC.unwrap(content);
+}
+
+function canonical(path) {
+    return ObjC.unwrap($(path).stringByStandardizingPath.stringByResolvingSymlinksInPath).replace(/\/+$/, '');
+}
+
+function exists(path) { return !!$.NSFileManager.defaultManager.fileExistsAtPath($(path)); }
+
+function sdkBinding(project, sdk) {
+    var modern = project + '/.fvmrc', legacy = project + '/.fvm/fvm_config.json';
+    if (!exists(modern) && !exists(legacy)) return;
+    var record = JSON.parse(read(exists(modern) ? modern : legacy));
+    var pin = record.flutter || record.flutterSdkVersion;
+    if (typeof pin !== 'string' || !pin || /[\u0000-\u001f]/.test(pin)) throw new Error('工程 FVM 版本声明无效。');
+    if (canonical(project + '/.fvm/flutter_sdk') !== sdk) throw new Error('工程 FVM 绑定已变化或未指向本轮 SDK。');
+    var version = JSON.parse(read(sdk + '/bin/cache/flutter.version.json'));
+    var actual = version.frameworkVersion || version.flutterVersion;
+    if (typeof actual !== 'string' || !actual) throw new Error('SDK 版本元数据无法确认。');
+    if (/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9._+-]+)?$/.test(pin)) {
+        if (pin !== actual) throw new Error('FVM 声明 ' + pin + '，实际 SDK ' + actual + '，请修复版本绑定。');
+    } else if (/^(stable|beta|dev|master|main)$/.test(pin)) {
+        if (version.channel !== pin) throw new Error('FVM 声明渠道与当前 SDK 不一致。');
+    } else if (/^custom_jobs_ohos_[0-9a-f]{40}$/.test(pin)) {
+        var source = JSON.parse(read(sdk + '/.jobs-harmony-source.json'));
+        var commit = pin.replace(/^custom_jobs_ohos_/, '');
+        if (source.commit !== commit || version.frameworkRevision !== commit) throw new Error('鸿蒙 SDK 固定提交与版本元数据不一致。');
+    } else {
+        throw new Error('无法只读确认自定义 FVM 版本声明：' + pin + '，请先核验绑定与来源记录。');
+    }
+}
+
+function yamlPlatformBlock(text, platform) {
+    var lines = text.replace(/\r\n?/g, '\n').split('\n');
+    var flutter = -1, plugin = -1, platforms = -1;
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (/^\s*(?:#.*)?$/.test(line)) continue;
+        var indent = line.match(/^ */)[0].length;
+        if (flutter >= 0 && indent <= flutter) { flutter = -1; plugin = -1; platforms = -1; }
+        if (/^flutter\s*:\s*(?:#.*)?$/.test(line)) { flutter = indent; continue; }
+        if (flutter < 0) continue;
+        if (plugin >= 0 && indent <= plugin) { plugin = -1; platforms = -1; }
+        if (/^\s+plugin\s*:\s*(?:#.*)?$/.test(line)) { plugin = indent; continue; }
+        if (plugin < 0) continue;
+        if (platforms >= 0 && indent <= platforms) platforms = -1;
+        if (/^\s+platforms\s*:\s*(?:#.*)?$/.test(line)) { platforms = indent; continue; }
+        if (platforms >= 0 && new RegExp('^\\s+' + platform + '\\s*:').test(line)) {
+            var selected = [line];
+            for (var j = i + 1; j < lines.length; j++) {
+                if (/^\s*(?:#.*)?$/.test(lines[j])) continue;
+                if (lines[j].match(/^ */)[0].length <= indent) break;
+                selected.push(lines[j]);
+            }
+            return selected.join('\n');
+        }
+    }
+    return '';
+}
+
+function yamlPlatform(text, platform) { return yamlPlatformBlock(text, platform) !== ''; }
+
+function dependencies(text) {
+    var lines = text.replace(/\r\n?/g, '\n').split('\n'), active = false, indent = -1, result = [];
+    lines.forEach(function (line) {
+        if (/^\s*(?:#.*)?$/.test(line)) return;
+        if (/^dependencies\s*:\s*[^\s#]/.test(line) && !/^dependencies\s*:\s*\{\s*\}\s*(?:#.*)?$/.test(line)) throw new Error('依赖 YAML 格式无法确认，请使用标准块式依赖声明。');
+        if (/^dependencies\s*:\s*(?:#.*)?$/.test(line)) { active = true; return; }
+        if (/^\S/.test(line)) { active = false; return; }
+        if (!active) return;
+        var space = line.match(/^ */)[0].length;
+        if (indent < 0) indent = space;
+        if (space !== indent) return;
+        var match = line.match(/^\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:/);
+        if (!match) throw new Error('依赖 YAML 格式无法确认，请使用标准块式依赖声明。');
+        result.push(match[1]);
+    });
+    return result;
+}
+
+// USB 连接只代表调试传输硬件存在，绝不能生成可运行的 Flutter/HDC 设备 ID。
+function harmonyUSB(plistPath, visiblePath, targetsPath) {
+    var xml = read(plistPath);
+    var plist = $.NSPropertyListSerialization.propertyListWithDataOptionsFormatError(
+        $(xml).dataUsingEncoding($.NSUTF8StringEncoding), 0, null, null);
+    if (!plist) throw new Error('USB 设备响应不是有效 plist。');
+    var roots = ObjC.deepUnwrap(plist);
+    if (!roots || typeof roots !== 'object') throw new Error('USB 设备树格式无效。');
+    if (!Array.isArray(roots)) roots = [roots];
+    var candidates = [], identities = Object.create(null), serialCounts = Object.create(null), count = 0;
+    function number(value, maximum) {
+        return typeof value === 'number' && isFinite(value) && Math.floor(value) === value && value >= 0 && value <= maximum ? value : null;
+    }
+    function text(value) { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim() : ''; }
+    function visit(node, depth) {
+        if (!node || typeof node !== 'object' || Array.isArray(node) || depth > 48 || ++count > 10000) throw new Error('USB 设备树结构无效或超过读取上限。');
+        var product = text(node['USB Product Name'] || node.kUSBProductString || node.IORegistryEntryName);
+        var vendor = number(node.idVendor, 65535), productId = number(node.idProduct, 65535);
+        if (/(?:^|[\s_-])HDC(?:[\s_-]+Device)?(?:$|[\s_-])/i.test(product) && vendor !== null && vendor > 0 && productId !== null) {
+            var serial = text(node['USB Serial Number'] || node.kUSBSerialNumberString);
+            if (serial.length > 128 || /\s/.test(serial)) serial = '';
+            var location = number(node.locationID, 4294967295);
+            var registry = number(node.IORegistryEntryID, 9007199254740991);
+            // location 区分物理端口；同号但不同位置的设备不因 serial 相同而合并。
+            var physical = location !== null ? 'l' + location.toString(16) : registry !== null ? 'r' + registry.toString(16) : '';
+            if (physical) {
+                var identity = vendor.toString(16) + '-' + productId.toString(16) + '-' + physical + '-' + encodeURIComponent(serial);
+                if (!identities[identity]) {
+                    identities[identity] = true;
+                    candidates.push({id: identity, serial: serial, product: product.slice(0, 96)});
+                    if (serial) serialCounts[serial] = (serialCounts[serial] || 0) + 1;
+                }
+            }
+        }
+        if (node.IORegistryEntryChildren !== undefined) {
+            if (!Array.isArray(node.IORegistryEntryChildren)) throw new Error('USB 子设备列表格式无效。');
+            node.IORegistryEntryChildren.forEach(function (child) { visit(child, depth + 1); });
+        }
+    }
+    roots.forEach(function (node) { visit(node, 0); });
+    var connected = Object.create(null), targetSeen = Object.create(null), targetRows = [];
+    if (visiblePath) {
+        read(visiblePath).split(/\r?\n/).forEach(function (id) {
+            if (!id) return;
+            if (id.length > 256 || /[\u0000-\u0020\u007f-\u009f]/.test(id)) throw new Error('已显示设备 ID 清单格式无效。');
+            connected[id] = true;
+        });
+    }
+    if (targetsPath) {
+        read(targetsPath).split(/\r?\n/).forEach(function (line) {
+            var id = line.trim();
+            if (!id || /^(?:\[?empty\]?|unauthori[sz]ed|offline|unknown|error|failed|null|none)$/i.test(id) ||
+                !/^[A-Za-z0-9_.:-]{4,256}$/.test(id) || targetSeen[id] || connected[id]) return;
+            targetSeen[id] = true;
+            if (serialCounts[id]) return;
+            targetRows.push('__harmony_hdc__:' + encodeURIComponent(id) + '\t鸿蒙 HDC 设备（' + id + '）— 已连接，环境未就绪');
+        });
+    }
+    var rows = candidates.filter(function (candidate) {
+        return !(candidate.serial && serialCounts[candidate.serial] === 1 && connected[candidate.serial]);
+    }).map(function (candidate) {
+        return '__harmony_usb__:' + candidate.id + '\t鸿蒙 USB 设备（' + candidate.product + '）— 已连接，环境未就绪';
+    });
+    return rows.concat(targetRows).join('\n');
+}
+
+function run(args) {
+    if (args[0] === 'usb-harmony') {
+        if (args.length < 2 || args.length > 4) throw new Error('USB 鸿蒙发现参数无效。');
+        return harmonyUSB(args[1], args[2], args[3]);
+    }
+    if (args[0] === 'doctor') {
+        if (args.length !== 2) throw new Error('本地环境体检参数无效。');
+        var report = JSON.parse(read(args[1]));
+        if (report.schemaVersion !== 1 || report.complete !== true || !Array.isArray(report.validators) ||
+            !report.base || typeof report.base.frameworkVersion !== 'string' || typeof report.base.dartSdkVersion !== 'string') {
+            throw new Error('本地环境体检未完整完成或报告格式无效。');
+        }
+        var seenTitles = Object.create(null);
+        var rows = ['[✓] Flutter (prepared SDK ' + report.base.frameworkVersion.replace(/[\u0000-\u001f]/g, ' ') + ')'];
+        report.validators.forEach(function (validator) {
+            if (!validator || typeof validator.title !== 'string' || !validator.title || seenTitles[validator.title] ||
+                !/^(success|partial|missing|notAvailable|crash)$/.test(validator.type) || !Array.isArray(validator.messages)) {
+                throw new Error('本地环境体检含无效或重复验证结果。');
+            }
+            seenTitles[validator.title] = true;
+            rows.push((validator.type === 'success' ? '[✓] ' : '[!] ') + validator.title.replace(/[\u0000-\u001f]/g, ' '));
+            validator.messages.forEach(function (message) {
+                if (!message || typeof message.message !== 'string' || !/^(error|hint|information)$/.test(message.type)) throw new Error('验证器明细格式无效。');
+                rows.push('    • ' + message.message.replace(/\r?\n/g, '\n    '));
+            });
+        });
+        return rows.join('\n');
+    }
+    if (args.length !== 3 || !/^(packages|ohos)$/.test(args[0])) throw new Error('体检参数无效。');
+    var project = args[1], sdk = canonical(args[2]);
+    sdkBinding(project, sdk);
+    var configPath = project + '/.dart_tool/package_config.json';
+    var data = JSON.parse(read(configPath));
+    if (data.configVersion !== 2 || !Array.isArray(data.packages)) throw new Error('请先拉取第三方依赖，生成有效 package_config.json。');
+    var base = $.NSURL.fileURLWithPath($(configPath));
+    var packages = Object.create(null);
+    data.packages.forEach(function (item) {
+        if (!item || typeof item.name !== 'string' || typeof item.rootUri !== 'string' || packages[item.name]) throw new Error('依赖清单含无效或重复记录。');
+        var url = $.NSURL.URLWithStringRelativeToURL($(item.rootUri), base).absoluteURL;
+        if (!url || !url.isFileURL) throw new Error('依赖路径不是本地文件：' + item.name);
+        var path = canonical(ObjC.unwrap(url.path));
+        if (!$.NSFileManager.defaultManager.fileExistsAtPath($(path))) throw new Error('依赖路径不存在：' + item.name);
+        packages[item.name] = path;
+    });
+    if (packages.flutter !== canonical(sdk + '/packages/flutter')) throw new Error('依赖索引未指向当前工程 SDK，请先用当前版本拉取依赖。');
+    if (args[0] === 'packages') return '当前 SDK 依赖索引有效。';
+    var unsupported = [], seen = Object.create(null), yamlCache = Object.create(null);
+    function spec(name) {
+        if (!packages[name]) throw new Error('运行依赖未解析：' + name);
+        if (yamlCache[name] === undefined) yamlCache[name] = read(packages[name] + '/pubspec.yaml');
+        return yamlCache[name];
+    }
+    function visit(name, parent) {
+        if (name === 'flutter' || seen[name]) return;
+        var yaml = spec(name);
+        var implementation = yaml.match(/^\s+implements\s*:\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:#.*)?$/m);
+        // 联邦包的平台专属实现及其依赖不会进入鸿蒙依赖链；直接使用这些实现仍须报缺项。
+        if (parent && implementation && implementation[1] === parent && !yamlPlatform(yaml, 'ohos')) return;
+        seen[name] = true;
+        if ((yamlPlatform(yaml, 'android') || yamlPlatform(yaml, 'ios')) && !yamlPlatform(yaml, 'ohos')) {
+            unsupported.push(name);
+            return;
+        }
+        var defaultPackage = yamlPlatformBlock(yaml, 'ohos').match(/^\s+default_package\s*:\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:#.*)?$/m);
+        if (defaultPackage) {
+            var selected = spec(defaultPackage[1]);
+            if (!yamlPlatform(selected, 'ohos')) throw new Error('鸿蒙联邦实现没有声明 ohos 平台：' + defaultPackage[1]);
+            visit(defaultPackage[1], name);
+        }
+        dependencies(yaml).forEach(function (child) { visit(child, name); });
+    }
+    dependencies(read(project + '/pubspec.yaml')).forEach(function (name) { visit(name, null); });
+    if (unsupported.length) throw new Error('以下移动端原生插件未声明 ohos 支持，请核对替代或联邦实现：\n  - ' + unsupported.join('\n  - '));
+    return '移动端原生插件已声明 OpenHarmony 支持。';
+}

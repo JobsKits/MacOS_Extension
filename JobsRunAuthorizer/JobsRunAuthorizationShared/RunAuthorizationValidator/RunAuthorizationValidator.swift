@@ -118,7 +118,7 @@ struct RunAuthorizationValidator {
     func selectedFile(from urls: [URL]?) -> URL? {
         guard let urls, urls.count == 1,
               let url = urls.first,
-              isExecutableFormat(at: url) else {
+              isRegularFile(at: url) else {
             return nil
         }
         return url.standardizedFileURL

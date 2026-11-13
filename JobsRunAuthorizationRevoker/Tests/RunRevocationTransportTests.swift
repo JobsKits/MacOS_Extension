@@ -19,7 +19,7 @@ enum RunRevocationTransportTests {
         defer {
             try? manager.removeItem(at: root)
         }
-        let file = root.appendingPathComponent("中文 空格 ' \" $() `id` \\ \n\t\u{1B}\u{2028}.command")
+        let file = root.appendingPathComponent("中文 空格 ' \" $() `id` \\ \n\t\u{1B}\u{2028}.data")
         try Data("echo should-never-run".utf8).write(to: file)
         let directory = root.appendingPathComponent("Example.app", isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -39,7 +39,8 @@ enum RunRevocationTransportTests {
             let document = root.appendingPathComponent("document.\(suffix)")
             try Data("ordinary document".utf8).write(to: document)
             try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: document.path)
-            try check(!validator.isExecutableFormat(at: document), "普通文档即使 +x 也不显示权限菜单")
+            try check(validator.selectedFile(from: [document]) == document, "任意普通文件均可显示权限菜单")
+            try check(RunRevocationRequest.url(for: document) != nil, "普通文档可生成权限请求")
         }
         let noExtension = root.appendingPathComponent("script-without-extension")
         try Data("#!/bin/zsh\nexit 0\n".utf8).write(to: noExtension)

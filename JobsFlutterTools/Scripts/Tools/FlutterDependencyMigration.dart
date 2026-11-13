@@ -282,7 +282,10 @@ bool _ignore(String relative, {String kind = ''}) {
   return (parts.length > 2 &&
           parts.first == 'hosted' &&
           parts[2] == '.cache') ||
-      RegExp(r'^caches/modules-2/metadata-[^/]+/[^/]+$').hasMatch(relative) ||
+      // 只排除共享可变索引；不能把 descriptors 目录连同模块描述一起跳过。
+      RegExp(
+        r'^caches/modules-2/(gc\.properties|metadata-[^/]+/[^/]+\.bin)$',
+      ).hasMatch(relative) ||
       (relative.startsWith('caches/') && name.endsWith('.lock')) ||
       name.endsWith('.zip.lck') ||
       parts.any(_excluded.contains) ||
@@ -910,6 +913,12 @@ String migrationPlanDigest(MigrationPlan plan) {
       'files': plan.files.map((file) => file.toJson()).toList(),
       'writes': plan.writes.map((file) => file.toJson()).toList(),
       'reused': plan.reused,
+      'conflictPolicy': plan.conflictPolicy,
+      'backupDirectory': plan.backupDirectory,
+      'noBackup': plan.noBackup,
+      'targets': plan.targets,
+      'targetStates': plan.targetStates,
+      'conflicts': plan.conflicts.map((file) => file.toJson()).toList(),
       'keptPubPackages': [
         for (final package in plan.pubPlan?.keptOverrides ?? <restoring.ManagedOverride>[])
           {'name': package.name, 'path': package.relative,
@@ -1029,7 +1038,7 @@ String exportMigration(
     File(_join(staging.path, 'README.md')).writeAsStringSync('''# Flutter 依赖迁移快照
 
 范围：${all ? '全部已解析 Pub 包及已发现的平台依赖／共享缓存' : '私库候选'}。Pub 源码和平台缓存分别记录，逐文件 SHA-256 位于 migration.json。
-导入需先审阅计划，再明确确认；同名不同内容会阻止整个写入，不覆盖现有环境。
+导入需先审阅计划，再明确选择冲突时使用导入源或保留本机文件；未选择时拒绝执行。使用导入源需另选备份或明确不备份，备份完成核验后才覆盖；类型冲突和链接仍拒绝。
 SDK、JDK、平台工具链、凭据、签名与私库权限需要在目标电脑独立准备。架构相关包不保证跨系统／架构可用。
 Git/path/自建源只代表私库候选，无法证明访问权限；无法识别的来源和未找到的材料见下列告警。
 
@@ -1061,20 +1070,38 @@ class MigrationPlan {
     this.warnings,
     this.pubPlan,
     this.stamps,
+    this.conflictPolicy,
+    this.backupDirectory,
+    this.noBackup,
   );
   final String project, source;
   final List<MigrationFile> files;
   final List<String> warnings;
   final restoring.ImportPlan? pubPlan;
   final Map<String, String> stamps;
+  final String conflictPolicy;
+  final String? backupDirectory;
+  final bool noBackup;
+  final targets = <String, String>{};
+  final targetStates = <String, Map<String, Object>>{};
   final writes = <MigrationFile>[];
+  final conflicts = <MigrationFile>[];
   int reused = 0;
   void show() {
     stdout.writeln('来源：$source\n目标工程：$project');
     for (final kind in files.map((f) => f.kind).toSet()) {
-      stdout.writeln('➤ $kind → ${_target(project, kind)}');
+      stdout.writeln('➤ $kind → ${targets[kind]}');
     }
-    stdout.writeln('计划：新增 ${writes.length} 文件，复用 $reused 文件；原有不同内容冲突会阻止全部写入。');
+    stdout.writeln('计划：新增 ${writes.length} 文件，复用 $reused 文件，内容冲突 ${conflicts.length} 文件；策略：$conflictPolicy。');
+    for (final item in conflicts) {
+      stdout.writeln('⚠ 内容冲突：${item.kind}/${item.relative}');
+    }
+    if (conflicts.isNotEmpty && conflictPolicy == 'reject') {
+      stdout.writeln('需选择导入源（覆盖）或本机现有（跳过冲突）后重新预检；本次仅显示计划。');
+    }
+    if (conflictPolicy == 'source') {
+      stdout.writeln(noBackup ? '覆盖前不保留持久备份；失败时仍尝试撤回本轮写入。' : '覆盖前备份到独立本轮子目录，备份父目录：$backupDirectory');
+    }
     if (pubPlan != null) restoring.showPlan(pubPlan!);
     for (final warning in warnings.toSet()) stdout.writeln('⚠ $warning');
   }
@@ -1088,6 +1115,106 @@ void _validateParents(String absolute) {
         type != FileSystemEntityType.directory)
       _fail('目标父目录含链接或文件：$current');
     current = Directory(current).parent.path;
+  }
+}
+
+// 只把普通文件内容冲突交给用户选择，指纹同时绑定权限和目标根目录。
+Map<String, Object> _targetState(String path) {
+  if (_type(path) == FileSystemEntityType.notFound) return {'type': 'absent'};
+  if (!_file(path)) _fail('目标不是普通文件：$path');
+  final before = File(path).statSync();
+  final digest = _hash(path);
+  final after = File(path).statSync();
+  if (!_file(path) || before.size != after.size ||
+      before.modified != after.modified || before.changed != after.changed ||
+      before.mode != after.mode) {
+    _fail('读取期间目标发生变化：$path');
+  }
+  return {'type': 'file', 'size': after.size, 'sha256': digest,
+    'mode': after.mode & 0x1ff};
+}
+
+// 备份容器可以是桌面等共同祖先，但不能落入任何待处理目录内部。
+String _backupParent(String value) {
+  final absolute = Platform.isWindows
+      ? RegExp(r'^(?:[A-Za-z]:[\\/]|\\\\)').hasMatch(value)
+      : value.startsWith('/');
+  if (!absolute || value.length > 4096 || RegExp(r'[\x00-\x1f\x7f]').hasMatch(value)) {
+    _fail('--backup-directory 必须是用户选定的绝对目录。');
+  }
+  final normalized = Directory(value).absolute.uri.normalizePath()
+      .toFilePath(windows: Platform.isWindows);
+  _validateParents(_join(normalized, 'backup-entry'));
+  return _absolute(normalized, exists: false);
+}
+
+void _validateBackupPlacement(String path, MigrationPlan plan, {bool finalPath = false}) {
+  for (final protected in {plan.source, plan.project, ...plan.targets.values}) {
+    if (_inside(path, protected) || (finalPath && _inside(protected, path))) {
+      _fail('备份目录不能与导入源、工程或目标缓存嵌套：$path');
+    }
+  }
+}
+
+void _expectTarget(String path, Map<String, Object> expected) {
+  _validateParents(path);
+  if (jsonEncode(_targetState(path)) != jsonEncode(expected)) {
+    _fail('确认期间目标发生变化，未继续覆盖：$path');
+  }
+}
+
+void _validateTargets(MigrationPlan plan) {
+  for (final entry in plan.targetStates.entries) {
+    _expectTarget(entry.key, entry.value);
+  }
+}
+
+void _fileMode(String path, int mode) {
+  if (Platform.isWindows) return;
+  if ((File(path).statSync().mode & 0x1ff) == mode) return;
+  final result = Process.runSync('/bin/chmod', [mode.toRadixString(8), path]);
+  if (result.exitCode != 0) _fail('无法保留文件权限：$path');
+}
+
+// 备份与写入均校验复制前后源内容，失败不能把半份文件视为完成。
+void _copyVerified(String source, String target, int size, String digest, int mode) {
+  _validateParents(source);
+  _validateSourceFile(Directory(source).parent.path, _name(source), size, digest);
+  _validateParents(target);
+  File(target).parent.createSync(recursive: true);
+  final destination = File(target)..createSync(exclusive: true);
+  final input = File(source).openSync();
+  final output = destination.openSync(mode: FileMode.writeOnly);
+  try {
+    while (true) {
+      final bytes = input.readSync(1024 * 1024);
+      if (bytes.isEmpty) break;
+      output.writeFromSync(bytes);
+    }
+    output.flushSync();
+  } finally {
+    input.closeSync();
+    output.closeSync();
+  }
+  _fileMode(target, mode);
+  _validateSourceFile(Directory(target).parent.path, _name(target), size, digest);
+  _validateSourceFile(Directory(source).parent.path, _name(source), size, digest);
+}
+
+// 同目录临时文件完成校验后才替换，避免读到截断后的旧文件。
+void _installFile(String source, String target, int size, String digest, int mode,
+    Map<String, Object> expected) {
+  _validateParents(target);
+  File(target).parent.createSync(recursive: true);
+  final staging = File(target).parent.createTempSync('.JobsMigration-write-');
+  try {
+    final staged = _join(staging.path, 'content');
+    _copyVerified(source, staged, size, digest, mode);
+    _expectTarget(target, expected);
+    File(staged).renameSync(target);
+    _validateSourceFile(File(target).parent.path, _name(target), size, digest);
+  } finally {
+    if (_dir(staging.path)) staging.deleteSync(recursive: true);
   }
 }
 
@@ -1126,7 +1253,23 @@ restoring.ImportPlan _restorePlan(String project, String source) {
   return restoring.validate(project, source, privateOnly: privateOnly, keepManagedOverrides: true);
 }
 
-MigrationPlan planMigrationImport(String projectInput, String sourceInput) {
+MigrationPlan planMigrationImport(
+  String projectInput,
+  String sourceInput, {
+  String conflictPolicy = 'reject',
+  String? backupDirectory,
+  bool noBackup = false,
+}) {
+  if (!{'reject', 'source', 'existing'}.contains(conflictPolicy)) {
+    _fail('冲突策略只能是 source 或 existing；未选择时使用 reject。');
+  }
+  if (conflictPolicy == 'source') {
+    if ((backupDirectory == null) == !noBackup) {
+      _fail('使用导入源必须且只能选择 --backup-directory 或 --no-backup。');
+    }
+  } else if (backupDirectory != null || noBackup) {
+    _fail('仅 source 冲突策略允许备份参数。');
+  }
   final project = _absolute(projectInput);
   restoring.requireFlutter(_text(_join(project, 'pubspec.yaml')), '目标工程');
   final source = _absolute(sourceInput);
@@ -1259,11 +1402,14 @@ MigrationPlan planMigrationImport(String projectInput, String sourceInput) {
     inventory.warnings,
     pubPlan,
     stamps,
+    conflictPolicy,
+    backupDirectory == null ? null : _backupParent(backupDirectory),
+    noBackup,
   );
   final destinations = <String>{};
-  final conflicts = <String>[];
   for (final item in plan.files) {
     final root = _target(project, item.kind);
+    plan.targets[item.kind] = root;
     if (_inside(root, source) || _inside(source, root)) _fail('导入源与目标缓存相互包含。');
     final target = _join(root, item.relative);
     if (!destinations.add(target.toLowerCase())) _fail('多个来源写入同一目标。');
@@ -1271,6 +1417,11 @@ MigrationPlan planMigrationImport(String projectInput, String sourceInput) {
     if (_type(root) != FileSystemEntityType.notFound && !_dir(root))
       _fail('目标缓存不是普通目录。');
     final type = _type(target);
+    if (type != FileSystemEntityType.notFound &&
+        type != FileSystemEntityType.file) {
+      _fail('目标存在文件／目录类型冲突或链接，不属于可选择的内容冲突：${item.kind}/${item.relative}');
+    }
+    plan.targetStates[target] = _targetState(target);
     if (type == FileSystemEntityType.notFound) {
       plan.writes.add(item);
     } else if (type == FileSystemEntityType.file &&
@@ -1278,13 +1429,12 @@ MigrationPlan planMigrationImport(String projectInput, String sourceInput) {
         _hash(target) == item.sha256) {
       plan.reused++;
     } else {
-      conflicts.add('${item.kind}/${item.relative}');
+      plan.conflicts.add(item);
     }
   }
-  if (conflicts.isNotEmpty)
-    _fail(
-      '发现 ${conflicts.length} 个同名不同内容或类型冲突，整个导入未写入；请先处理冲突：\n${conflicts.take(20).join('\n')}',
-    );
+  if (plan.backupDirectory != null) {
+    _validateBackupPlacement(plan.backupDirectory!, plan);
+  }
   return plan;
 }
 
@@ -1320,48 +1470,93 @@ Set<String> _gitRootRelatives(List<MigrationFile> files) {
 }
 
 void executeMigrationImport(MigrationPlan plan, {bool revalidate = true}) {
-  // 写入前重新生成完整计划，防止确认期间环境和来源发生变化。
+  // 计划绑定源、目标旧内容、策略和备份选择；CLI 已在本次 apply 重建过计划。
   final fresh = revalidate
-      ? planMigrationImport(plan.project, plan.source)
+      ? planMigrationImport(plan.project, plan.source,
+          conflictPolicy: plan.conflictPolicy,
+          backupDirectory: plan.backupDirectory, noBackup: plan.noBackup)
       : plan;
-  String signature(MigrationPlan p) =>
-      jsonEncode(p.files.map((f) => f.toJson()).toList());
-  if (signature(fresh) != signature(plan) ||
-      jsonEncode(fresh.stamps) != jsonEncode(plan.stamps))
-    _fail('确认期间来源发生变化，请重新预检。');
-  final copied = <MigrationFile>[];
-  try {
-    for (final item in fresh.writes) {
-      _validateSourceFile(
-        Directory(item.source).parent.path,
-        _name(item.source),
-        item.size,
-        item.sha256,
+  if (migrationPlanDigest(fresh) != migrationPlanDigest(plan))
+    _fail('确认期间来源或目标发生变化，请重新预检。');
+  if (fresh.conflicts.isNotEmpty && fresh.conflictPolicy == 'reject') {
+    _fail('存在内容冲突但未选择 source 或 existing，整个导入未写入。');
+  }
+  _validateTargets(fresh);
+  final replacements = fresh.conflictPolicy == 'source'
+      ? fresh.conflicts : <MigrationFile>[];
+  final rollback = Directory(Directory.systemTemp
+      .createTempSync('JobsFlutterMigration-rollback-').resolveSymbolicLinksSync());
+  final originals = <String, String>{};
+  final changed = <MigrationFile>[];
+  String? backup;
+  var rollbackComplete = true;
+  final recoveryStates = <String, Map<String, Object>>{};
+  Map<String, Object?> recovery(String state) => {
+    'format': 'JobsFlutterDependencyBackup', 'version': 1, 'status': state,
+    'project': fresh.project, 'source': fresh.source,
+    'conflictPolicy': fresh.conflictPolicy, 'targets': fresh.targets,
+    'createdAt': DateTime.now().toUtc().toIso8601String(),
+    'files': [for (final item in replacements) {
+      'kind': item.kind, 'path': item.relative,
+      'target': _join(fresh.targets[item.kind]!, item.relative),
+      'storedPath': 'payload/${item.kind}/${item.relative}',
+      'original': fresh.targetStates[_join(fresh.targets[item.kind]!, item.relative)],
+      'importedSha256': item.sha256,
+    }],
+  };
+  void writeRecovery(String root, String state) {
+    final destination = _join(root, 'recovery.json');
+    final temporary = Directory(root).createTempSync('.recovery-');
+    try {
+      final staged = File(_join(temporary.path, 'recovery.json'));
+      staged.writeAsStringSync(
+        '${const JsonEncoder.withIndent('  ').convert(recovery(state))}\n',
+        flush: true,
       );
-      final target = _join(_target(plan.project, item.kind), item.relative);
-      _validateParents(target);
-      File(target).parent.createSync(recursive: true);
-      final destination = File(target)..createSync(exclusive: true);
-      copied.add(item);
-      final input = File(item.source).openSync();
-      final output = destination.openSync(mode: FileMode.writeOnly);
-      try {
-        while (true) {
-          final bytes = input.readSync(1024 * 1024);
-          if (bytes.isEmpty) break;
-          output.writeFromSync(bytes);
-        }
-        output.flushSync();
-      } finally {
-        input.closeSync();
-        output.closeSync();
+      _expectTarget(destination, recoveryStates[root] ?? {'type': 'absent'});
+      staged.renameSync(destination);
+      recoveryStates[root] = _targetState(destination);
+    } finally {
+      if (_dir(temporary.path)) temporary.deleteSync(recursive: true);
+    }
+  }
+  try {
+    writeRecovery(rollback.path, 'preparing');
+    // no-backup 只取消持久备份，事务失败仍需要旧内容撤回。
+    for (final item in replacements) {
+      final target = _join(fresh.targets[item.kind]!, item.relative);
+      final state = fresh.targetStates[target]!;
+      _expectTarget(target, state);
+      final original = _join(rollback.path, 'payload/${item.kind}/${item.relative}');
+      _copyVerified(target, original, state['size'] as int,
+          state['sha256'] as String, state['mode'] as int);
+      originals[target] = original;
+    }
+    writeRecovery(rollback.path, 'prepared');
+    if (replacements.isNotEmpty && fresh.backupDirectory != null) {
+      final parent = fresh.backupDirectory!;
+      _validateParents(_join(parent, 'backup-entry'));
+      _validateBackupPlacement(parent, fresh);
+      Directory(parent).createSync(recursive: true);
+      backup = Directory(parent).createTempSync('JobsFlutterDependencyBackup-').path;
+      _validateBackupPlacement(backup!, fresh, finalPath: true);
+      stdout.writeln('JOBS_MIGRATION_BACKUP=$backup');
+      writeRecovery(backup!, 'preparing');
+      for (final item in replacements) {
+        final target = _join(fresh.targets[item.kind]!, item.relative);
+        final state = fresh.targetStates[target]!;
+        _copyVerified(originals[target]!, _join(backup!, 'payload/${item.kind}/${item.relative}'),
+            state['size'] as int, state['sha256'] as String, state['mode'] as int);
       }
-      if (item.executable && !Platform.isWindows) {
-        final mode = Process.runSync('/bin/chmod', ['700', target]);
-        if (mode.exitCode != 0) _fail('无法恢复执行权限：${item.kind}/${item.relative}');
-      }
-      if (_hash(target) != item.sha256 || _hash(item.source) != item.sha256)
-        _fail('复制期间来源变化：${item.kind}/${item.relative}');
+      writeRecovery(backup!, 'prepared');
+    }
+    // 全部备份校验成功后，再检查确认期间是否有人改了本机文件。
+    _validateTargets(fresh);
+    for (final item in [...replacements, ...fresh.writes]) {
+      final target = _join(fresh.targets[item.kind]!, item.relative);
+      changed.add(item);
+      _installFile(item.source, target, item.size, item.sha256,
+          item.executable ? 0x1c0 : 0x180, fresh.targetStates[target]!);
     }
     // Packed refs repositories still require these empty directories to be recognized by Git.
     for (final gitRoot in _gitRootRelatives(fresh.files)) {
@@ -1375,16 +1570,47 @@ void executeMigrationImport(MigrationPlan plan, {bool revalidate = true}) {
     }
     if (fresh.pubPlan != null) restoring.execute(fresh.pubPlan!);
   } catch (_) {
-    // 只撤回本进程新增且内容仍未被其它程序修改的缓存文件。
-    for (final item in copied.reversed) {
-      final target = _join(_target(plan.project, item.kind), item.relative);
-      if (_file(target) && _hash(target) == item.sha256)
-        File(target).deleteSync();
+    // 只撤回仍为本轮写入的内容；并发修改保留，旧文件留在恢复目录。
+    for (final item in changed.reversed) {
+      final target = _join(fresh.targets[item.kind]!, item.relative);
+      final original = fresh.targetStates[target]!;
+      try {
+        _validateParents(target);
+        final current = _targetState(target);
+        if (jsonEncode(current) == jsonEncode(original)) continue;
+        final ours = current['type'] == 'file' &&
+            current['sha256'] == item.sha256 && current['size'] == item.size &&
+            (Platform.isWindows || current['mode'] == (item.executable ? 0x1c0 : 0x180));
+        if ((original['type'] == 'file' && current['type'] == 'absent') ||
+            (current['type'] != 'absent' && !ours)) {
+          _fail('目标已被其它进程修改，不覆盖并发内容：$target');
+        }
+        if (original['type'] == 'absent') {
+          if (ours) File(target).deleteSync();
+        } else {
+          _installFile(originals[target]!, target, original['size'] as int,
+              original['sha256'] as String, original['mode'] as int, current);
+        }
+      } catch (error) {
+        rollbackComplete = false;
+        stderr.writeln('✖ 撤回未完成：$error');
+      }
     }
+    if (!rollbackComplete) stderr.writeln('✖ 保留临时恢复资料：${rollback.path}');
+    if (backup != null) stderr.writeln('ℹ 本轮持久备份／恢复清单保留在：$backup');
     rethrow;
+  } finally {
+    if (rollbackComplete && _dir(rollback.path)) rollback.deleteSync(recursive: true);
+  }
+  if (backup != null) {
+    try {
+      writeRecovery(backup!, 'complete');
+    } catch (error) {
+      stderr.writeln('⚠ 数据导入已完成，备份完成状态未能更新：$error；保留目录 $backup，请核对 recovery.json / payload。未撤回已提交数据。');
+    }
   }
   stdout.writeln(
-    '✔ 一键导入完成：新增 ${fresh.writes.length} 个缓存／平台文件，复用 ${fresh.reused} 个文件${fresh.pubPlan == null ? '' : '；新增 ${fresh.pubPlan!.packages.length} 个 Pub 包，保留 ${fresh.pubPlan!.keptOverrides.length} 个既有本地包'}。',
+    '✔ 一键导入完成：新增 ${fresh.writes.length} 个缓存／平台文件，覆盖 ${replacements.length} 个文件，跳过 ${fresh.conflictPolicy == 'existing' ? fresh.conflicts.length : 0} 个冲突，复用 ${fresh.reused} 个文件${fresh.pubPlan == null ? '' : '；新增 ${fresh.pubPlan!.packages.length} 个 Pub 包，保留 ${fresh.pubPlan!.keptOverrides.length} 个既有本地包'}。',
   );
   stdout.writeln('未安装或切换 SDK/JDK，未联网；请用项目对应工具验证依赖解析与构建。');
 }
@@ -1393,20 +1619,22 @@ void main(List<String> arguments) {
   try {
     if (arguments.isEmpty || !{'export', 'import'}.contains(arguments.first))
       _fail(
-        '用法：FlutterDependencyMigration.dart export --project P --destination D [--all] | import --project P --source S [--apply --expected-plan SHA256]',
+        '用法：FlutterDependencyMigration.dart export --project P --destination D [--all] | import --project P --source S [--conflict-policy source|existing] [--backup-directory P|--no-backup] [--apply --expected-plan SHA256]',
       );
     final operation = arguments.first;
     final values = <String, String>{};
     final flags = <String>{};
     for (var index = 1; index < arguments.length; index++) {
       final arg = arguments[index];
-      if ({'--all', '--apply'}.contains(arg)) {
+      if ({'--all', '--apply', '--no-backup'}.contains(arg)) {
         if (!flags.add(arg)) _fail('参数重复。');
       } else if ({
             '--project',
             '--destination',
             '--source',
             '--expected-plan',
+            '--conflict-policy',
+            '--backup-directory',
           }.contains(arg) &&
           index + 1 < arguments.length &&
           !values.containsKey(arg)) {
@@ -1421,6 +1649,9 @@ void main(List<String> arguments) {
       if (values['--destination'] == null ||
           values.containsKey('--source') ||
           flags.contains('--apply') ||
+          flags.contains('--no-backup') ||
+          values.containsKey('--conflict-policy') ||
+          values.containsKey('--backup-directory') ||
           values.containsKey('--expected-plan'))
         _fail('提取参数不合法。');
       exportMigration(
@@ -1433,7 +1664,10 @@ void main(List<String> arguments) {
           values.containsKey('--destination') ||
           flags.contains('--all'))
         _fail('导入参数不合法。');
-      final plan = planMigrationImport(project, values['--source']!);
+      final plan = planMigrationImport(project, values['--source']!,
+          conflictPolicy: values['--conflict-policy'] ?? 'reject',
+          backupDirectory: values['--backup-directory'],
+          noBackup: flags.contains('--no-backup'));
       final digest = migrationPlanDigest(plan);
       if (flags.contains('--apply')) {
         if (values['--expected-plan'] != digest)
@@ -1441,6 +1675,7 @@ void main(List<String> arguments) {
         executeMigrationImport(plan, revalidate: false);
       } else {
         plan.show();
+        stdout.writeln('JOBS_MIGRATION_CONFLICTS=${plan.conflicts.length}');
         stdout.writeln('JOBS_MIGRATION_PLAN=$digest');
       }
     }

@@ -3,6 +3,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'ConflictCases.dart';
+
 void write(String path, String text) {
   final file = File(path)..parent.createSync(recursive: true);
   file.writeAsStringSync(text);
@@ -97,6 +99,7 @@ dependencies:
       '$gradle/caches/modules-2/metadata-2.100/module-artifact.bin',
       'mutable index',
     );
+    write('$gradle/caches/modules-2/gc.properties', 'mutable cleanup state');
     write(
       '$gradle/caches/modules-2/metadata-2.100/descriptors/private.group/a/1/repo/descriptor.bin',
       'private descriptor',
@@ -229,6 +232,12 @@ dependencies:
       'Gradle artifact not merged',
     );
     expect(
+      File('$targetGradle/caches/modules-2/metadata-2.100/descriptors/private.group/a/1/repo/descriptor.bin')
+              .readAsStringSync() ==
+          'private descriptor',
+      'raw Gradle import skipped module descriptors',
+    );
+    expect(
       File('$targetPub/hosted/pub.dev/beta-1.0.0/lib/beta.dart').existsSync(),
       'Pub renamed cache not merged',
     );
@@ -241,6 +250,7 @@ dependencies:
     expect(
       !File('$targetGradle/caches/modules-2/metadata-2.100/module-artifact.bin')
               .existsSync() &&
+          !File('$targetGradle/caches/modules-2/gc.properties').existsSync() &&
           !Directory('$targetPub/hosted/pub.dev/.cache').existsSync(),
       'mutable shared index imported',
     );
@@ -263,6 +273,14 @@ dependencies:
     write(
       '$targetGradle/caches/modules-2/files-2.1/private.group/a/1/hash/a.jar',
       'existing independent value',
+    );
+    final conflictPreview = await run([
+      'import', '--project', target, '--source', donor,
+    ]);
+    expect(
+      conflictPreview.exitCode == 0 &&
+          '${conflictPreview.stdout}'.contains('JOBS_MIGRATION_CONFLICTS=1'),
+      'content conflicts must remain reviewable before choosing a policy',
     );
     final conflict = await run([
       'import',
@@ -409,6 +427,20 @@ dependencies:
         (row) => '${row['path']}'.contains('public.group'),
       ),
       'all export missing public cache',
+    );
+    expect(
+      (allManifest['files'] as List).any(
+        (row) => row['path'] ==
+            'caches/modules-2/metadata-2.100/descriptors/private.group/a/1/repo/descriptor.bin',
+      ),
+      'all export skipped module descriptors',
+    );
+    expect(
+      !(allManifest['files'] as List).any(
+        (row) => row['path'] == 'caches/modules-2/gc.properties' ||
+            row['path'] == 'caches/modules-2/metadata-2.100/module-artifact.bin',
+      ),
+      'all export included mutable Gradle state',
     );
     expect(
       Directory('$allBundle/${allManifest['pubSnapshot']}/packages/beta')
@@ -739,6 +771,7 @@ dependencies:
       offline.exitCode == 0,
       'imported raw Git cache did not resolve offline: ${offline.stdout}\n${offline.stderr}',
     );
+    assertions += await runConflictCases(tool, root);
     stdout.writeln(
       'PASS $assertions assertions; isolated temporary HOME, no downloads or real environment writes.',
     );

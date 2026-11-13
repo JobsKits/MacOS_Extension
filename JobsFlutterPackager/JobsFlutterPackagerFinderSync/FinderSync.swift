@@ -21,7 +21,15 @@ final class FinderSync: FIFinderSync {
               validator.isFlutterProject(at: projectURL) else {
             return nil
         }
-        let action = menuKind == .contextualMenuForItems ? #selector(packageSelectedProject(_:)) : #selector(packageContainerProject(_:))
+        let action: Selector
+        switch menuKind {
+        case .contextualMenuForItems:
+            action = #selector(packageSelectedProject(_:))
+        case .contextualMenuForSidebar:
+            action = #selector(packageSidebarProject(_:))
+        default:
+            action = #selector(packageContainerProject(_:))
+        }
         let item = NSMenuItem.make(title: "📦 Flutter打包", action: action, keyEquivalent: "") {
             $0.byTarget(self)
         }
@@ -30,6 +38,15 @@ final class FinderSync: FIFinderSync {
 
     private func candidateURL(for menuKind: FIMenuKind) -> URL? {
         let controller = FIFinderSyncController.default()
+        if menuKind == .contextualMenuForSidebar {
+            // 侧边栏目标独立于主区域的选中项，也不套用桌面空白处的过滤规则。
+            guard let targetURL = controller.targetedURL(), targetURL.isFileURL,
+                  targetURL.host == nil || targetURL.host == "" || targetURL.host == "localhost",
+                  (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return targetURL.standardizedFileURL
+        }
         return FlutterPackagingMenuContext.candidateURL(
             isItems: menuKind == .contextualMenuForItems,
             isContainer: menuKind == .contextualMenuForContainer,
@@ -44,6 +61,10 @@ final class FinderSync: FIFinderSync {
 
     @objc private func packageContainerProject(_ sender: NSMenuItem) {
         packageFlutter(for: .contextualMenuForContainer)
+    }
+
+    @objc private func packageSidebarProject(_ sender: NSMenuItem) {
+        packageFlutter(for: .contextualMenuForSidebar)
     }
 
     private func packageFlutter(for menuKind: FIMenuKind) {

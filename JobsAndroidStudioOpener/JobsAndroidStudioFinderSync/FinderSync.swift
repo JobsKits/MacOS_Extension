@@ -17,13 +17,23 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer,
+        guard menuKind == .contextualMenuForItems
+                || menuKind == .contextualMenuForContainer
+                || menuKind == .contextualMenuForSidebar,
               let selectedURL = candidateURL(for: menuKind), opener.canOpen(selectedURL) else {
             return nil
         }
 
         let menu = NSMenu(title: "")
-        let action = menuKind == .contextualMenuForItems ? #selector(openSelectedProject(_:)) : #selector(openContainerProject(_:))
+        let action: Selector
+        switch menuKind {
+        case .contextualMenuForItems:
+            action = #selector(openSelectedProject(_:))
+        case .contextualMenuForSidebar:
+            action = #selector(openSidebarProject(_:))
+        default:
+            action = #selector(openContainerProject(_:))
+        }
         let item = NSMenuItem(title: "🧭 用 Android Studio 打开项目", action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
@@ -34,6 +44,15 @@ final class FinderSync: FIFinderSync {
 private extension FinderSync {
     func candidateURL(for menuKind: FIMenuKind) -> URL? {
         let controller = FIFinderSyncController.default()
+        if menuKind == .contextualMenuForSidebar {
+            // 侧边栏目标独立于主区域的选中项，也不套用桌面空白处的过滤规则。
+            guard let targetURL = controller.targetedURL(), targetURL.isFileURL,
+                  targetURL.host == nil || targetURL.host == "" || targetURL.host == "localhost",
+                  (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return targetURL.standardizedFileURL
+        }
         if menuKind == .contextualMenuForItems {
             guard let selectedURLs = controller.selectedItemURLs(), selectedURLs.count == 1,
                   let selectedURL = selectedURLs.first, selectedURL.isFileURL else {
@@ -55,6 +74,10 @@ private extension FinderSync {
 
     @objc func openContainerProject(_ sender: NSMenuItem) {
         openProject(for: .contextualMenuForContainer)
+    }
+
+    @objc func openSidebarProject(_ sender: NSMenuItem) {
+        openProject(for: .contextualMenuForSidebar)
     }
 
     func openProject(for menuKind: FIMenuKind) {

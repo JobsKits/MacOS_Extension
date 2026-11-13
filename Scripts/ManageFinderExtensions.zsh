@@ -6,6 +6,332 @@
 # - 影响范围：安装构建并登记所选扩展；卸载只关闭所选叶子，最后一项移除后卸载该扩展；刷新 Finder。
 # - 运行提示：直接打开原生管理面板，后台执行；同名 .app 入口不启动 Terminal。
 
+# >>> Jobs terminal style protection v1 >>>
+# 临时保护当前终端配色，业务进程自行管理原有退出清理。
+jobs_terminal_style_run() {
+    # 无法可靠保存原色时，沿用脚本已有的纯文本约定。
+    jobs_terminal_style_plain() {
+        PLAIN_OUTPUT=1
+        NO_COLOR=1
+        FORCE_COLOR=0
+        CLICOLOR=0
+        ANSI_COLORS_DISABLED=1
+        npm_config_color=false
+        export PLAIN_OUTPUT NO_COLOR FORCE_COLOR CLICOLOR ANSI_COLORS_DISABLED npm_config_color
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    }
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    fi
+    if [ -n "${TMUX:-}${STY:-}" ]; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_tty=$(tty 2>/dev/null) || jobs_terminal_style_plain "$@"
+    if ! ps -o pgid= -o tpgid= -p "$$" 2>/dev/null |
+         LC_ALL=C awk 'NF == 2 && $1 == $2 && $1 > 0 { foreground = 1 } END { exit !foreground }'; then
+        jobs_terminal_style_plain "$@"
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$jobs_style_tty" ] &&
+               kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null; then
+                if "$@"; then
+                    jobs_style_exit_status=0
+                else
+                    jobs_style_exit_status=$?
+                fi
+                exit "$jobs_style_exit_status"
+            fi
+            ;;
+    esac
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
+    jobs_style_saved=''
+    jobs_style_saved_rows=''
+    jobs_style_applied_rows=''
+    jobs_style_changed=0
+    jobs_style_applied_complete=0
+    jobs_style_query_active=0
+    jobs_style_recovery=''
+    jobs_style_exit_status=0
+    jobs_style_esc=$(printf '\033')
+    jobs_style_bel=$(printf '\007')
+    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    jobs_terminal_style_query() {
+        jobs_style_query_key=$1
+        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
+        jobs_style_reply=''
+        for jobs_style_attempt in 1 2 3; do
+            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
+            jobs_style_reply=$jobs_style_reply$jobs_style_piece
+            case $jobs_style_reply in
+                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
+                '') ;;
+                "$jobs_style_esc"*) ;;
+                *) break ;;
+            esac
+        done
+        case $jobs_style_reply in
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
+                ;;
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
+                ;;
+            *) return 1 ;;
+        esac
+        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
+            NF != 3 { exit 1 }
+            {
+                for (i = 1; i <= 3; i++) {
+                    h = tolower($i)
+                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
+                    n = 0
+                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                }
+                printf "%d/%d/%d", value[1], value[2], value[3]
+            }
+        ') || return 1
+        [ -n "$jobs_style_normalized" ]
+    }
+    # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
+    jobs_terminal_style_accepts_target() {
+        jobs_style_requested_hex=''
+        case $1 in
+            10|12) jobs_style_requested_hex=ffffff ;;
+            11) jobs_style_requested_hex=000000 ;;
+            '4;'*)
+                jobs_style_requested_index=0
+                for jobs_style_requested_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+                    if [ "4;$jobs_style_requested_index" = "$1" ]; then
+                        jobs_style_requested_hex=$jobs_style_requested_color
+                        break
+                    fi
+                    jobs_style_requested_index=$((jobs_style_requested_index + 1))
+                done
+                ;;
+        esac
+        [ -n "$jobs_style_requested_hex" ] || return 1
+        printf '%s|%s\n' "$jobs_style_normalized" "$jobs_style_requested_hex" | LC_ALL=C awk -F'|' '
+            function hexbyte(h) {
+                return (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            }
+            {
+                if (split($1, actual, "/") != 3 || length($2) != 6) exit 1
+                for (i = 1; i <= 3; i++) {
+                    difference = actual[i] - hexbyte(substr($2, i * 2 - 1, 2)) * 257
+                    if (difference < -255 || difference > 255) exit 1
+                }
+            }
+        '
+    }
+    # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
+    jobs_terminal_style_cleanup() {
+        jobs_style_result=$1
+        trap '' HUP INT TERM
+        if [ "$jobs_style_query_active" = 1 ]; then
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
+            jobs_style_query_active=0
+        fi
+        if [ "$jobs_style_changed" = 1 ]; then
+            jobs_style_cleanup_ok=0
+            jobs_style_conflicts=''
+            jobs_style_restore_safe=''
+            if [ "$jobs_style_applied_complete" = 1 ]; then
+                jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+                if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+                    jobs_style_query_active=1
+                    jobs_style_cleanup_ok=1
+                    while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
+                        [ -n "$jobs_style_key" ] || continue
+                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                            jobs_style_cleanup_ok=0
+                            break
+                        fi
+                        if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
+                            jobs_style_restore_safe=$jobs_style_restore_safe$jobs_style_original
+                        else
+                            jobs_style_conflicts="$jobs_style_conflicts $jobs_style_key"
+                        fi
+                    done <<JOBS_STYLE_APPLIED
+$jobs_style_applied_rows
+JOBS_STYLE_APPLIED
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    jobs_style_query_active=0
+                fi
+            fi
+            if [ "$jobs_style_cleanup_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_restore_safe" > /dev/tty; then
+                if [ -z "$jobs_style_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                else
+                    printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_conflicts" >&2
+                    printf '确认要覆盖后续改色时才使用恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+                    [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+                fi
+            else
+                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+        fi
+        if [ "${2:-}" = continue ]; then
+            jobs_style_cleanup_status=$jobs_style_result
+            return 0
+        fi
+        exit "$jobs_style_result"
+    }
+    trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
+    trap 'jobs_style_exit_status=129; exit 129' HUP
+    trap 'jobs_style_exit_status=130; exit 130' INT
+    trap 'jobs_style_exit_status=143; exit 143' TERM
+    if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    for jobs_style_key in 10 11 12 '4;0' '4;1' '4;2' '4;3' '4;4' '4;5' '4;6' '4;7' '4;8' '4;9' '4;10' '4;11' '4;12' '4;13' '4;14' '4;15'; do
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
+"
+    done
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_recovery_dir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/jobs-terminal-style.XXXXXX") || jobs_terminal_style_plain "$@"
+    jobs_style_recovery=$jobs_style_recovery_dir/restore.sh
+    if ! (umask 077; {
+        printf '#!/bin/sh\n'
+        printf '[ -t 0 ] && [ "$(tty)" = '\''%s'\'' ] || { printf '\''请在原终端运行恢复入口。\\n'\'' >&2; exit 1; }\n' "$jobs_style_tty"
+        printf 'printf '\''本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：'\'' >&2\n'
+        printf 'IFS= read -r jobs_restore_choice\n[ "$jobs_restore_choice" = YES ] || exit 1\n'
+        printf 'printf '\''%%s\\033[0m'\'' '\''%s'\'' > /dev/tty\n' "$jobs_style_saved"
+    } > "$jobs_style_recovery"); then
+        printf '%s\n' '无法保存终端配色恢复入口；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '正在准备本次终端临时配色；强退后恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+    jobs_style_changed=1
+    printf '\033]10;#ffffff\007\033]11;#000000\007\033]12;#ffffff\007' > /dev/tty
+    jobs_style_index=0
+    for jobs_style_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+        printf '\033]4;%s;#%s\007' "$jobs_style_index" "$jobs_style_color" > /dev/tty
+        jobs_style_index=$((jobs_style_index + 1))
+    done
+    printf '\033[0m' > /dev/tty
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || { jobs_style_exit_status=1; exit 1; }
+    stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    jobs_style_targets_ok=1
+    while IFS='|' read -r jobs_style_key jobs_style_original; do
+        [ -n "$jobs_style_key" ] || continue
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_applied_rows="$jobs_style_applied_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_original
+"
+        if ! jobs_terminal_style_accepts_target "$jobs_style_key"; then
+            jobs_style_targets_ok=0
+        fi
+    done <<JOBS_STYLE_ORIGINAL
+$jobs_style_saved_rows
+JOBS_STYLE_ORIGINAL
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '无法核实本次临时配色，已停止启动业务。' >&2
+        jobs_style_exit_status=1
+        exit 1
+    fi
+    jobs_style_applied_complete=1
+    if [ "$jobs_style_targets_ok" != 1 ]; then
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; exit 129' HUP
+        trap 'jobs_style_exit_status=130; exit 130' INT
+        trap 'jobs_style_exit_status=143; exit 143' TERM
+        printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '%s\n' '本次终端已临时使用黑底白字。' >&2
+    JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
+    JOBS_TERMINAL_STYLE_OWNER=$$
+    export JOBS_TERMINAL_STYLE_TTY JOBS_TERMINAL_STYLE_OWNER
+    if "$@"; then
+        jobs_style_exit_status=0
+    else
+        jobs_style_exit_status=$?
+    fi
+    exit "$jobs_style_exit_status"
+}
+# 仅监督直接执行的入口；被 source 时不切换配色、不重新执行业务。
+jobs_terminal_style_bootstrap() {
+    jobs_style_bootstrap_script=$1
+    shift
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        case ${ZSH_EVAL_CONTEXT:-} in
+            *:file|*:file:*) return 0 ;;
+        esac
+    elif [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE:-$jobs_style_bootstrap_script}" != "$jobs_style_bootstrap_script" ]; then
+        return 0
+    fi
+    if [ "${JOBS_TERMINAL_STYLE_REEXEC:-}" = "$jobs_style_bootstrap_script" ]; then
+        unset JOBS_TERMINAL_STYLE_REEXEC
+        return 0
+    fi
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       [ -n "${TMUX:-}${STY:-}" ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        return 0
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null &&
+               [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$(tty 2>/dev/null)" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    JOBS_TERMINAL_STYLE_REEXEC=$jobs_style_bootstrap_script
+    export JOBS_TERMINAL_STYLE_REEXEC
+    jobs_terminal_style_run /bin/zsh "$jobs_style_bootstrap_script" "$@"
+    jobs_style_bootstrap_result=$?
+    exit "$jobs_style_bootstrap_result"
+}
+jobs_terminal_style_bootstrap "$0" "$@"
+# <<< Jobs terminal style protection v1 <<<
+
 # ━━━━━━━━━━ 维护索引：面板 → 叶 ID → 安装单元 → 菜单 → 宿主业务 ━━━━━━━━━━
 # 1、面板来源：Scripts/SelectFinderExtensionFeatures.swift 的 FeatureOption.all 与 FeatureGroup.all。
 # 2、下方 SELECTABLE_FUNCTION_TITLE/PROJECT_KEY 将面板 leaf ID 映射到唯一安装单元；
@@ -88,6 +414,13 @@ SELECTED_KEYS=()
 SELECTED_FUNCTION_IDS=()
 SUCCEEDED_FEATURES=()
 FAILED_FEATURES=()
+NOT_INSTALLED_FEATURES=()
+UNINSTALL_SUCCEEDED_KEYS=()
+UNINSTALL_FAILED_KEYS=()
+UNINSTALL_NOT_INSTALLED_KEYS=()
+UNINSTALL_SKIPPED_KEYS=()
+UNINSTALL_SKIPPED_FEATURES=()
+UNINSTALL_OUTCOME=""
 REGISTERED_PATHS=()
 TERMINAL_OPENER_ENABLED_FEATURES=""
 IOS_TOOLS_ENABLED_FEATURES=""
@@ -106,7 +439,7 @@ JOBS_FINDER_STOP_REQUEST_FILE=""
 JOBS_FINDER_BLOCKED_FILE=""
 MANAGER_CONTROL_DIRECTORY=""
 
-FEATURE_KEYS=(project-tools path_copier file-create run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
+FEATURE_KEYS=(project-tools path_copier file-create file-hash run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -164,7 +497,15 @@ FEATURE_APP_ID[file-create]="com.jobs.filecreator"
 FEATURE_EXTENSION_NAME[file-create]="JobsFileCreatorFinderSync.appex"
 FEATURE_EXTENSION_ID[file-create]="com.jobs.filecreator.findersync"
 
-FEATURE_TITLE[run-authorize]="运行授权"
+FEATURE_TITLE[file-hash]="查看文件指纹 Hash（SHA-256）"
+FEATURE_PROJECT_DIR[file-hash]="JobsFileHasher"
+FEATURE_SCHEME[file-hash]="JobsFileHasher"
+FEATURE_APP_NAME[file-hash]="JobsFileHasher"
+FEATURE_APP_ID[file-hash]="com.jobs.filehasher"
+FEATURE_EXTENSION_NAME[file-hash]="JobsFileHasherFinderSync.appex"
+FEATURE_EXTENSION_ID[file-hash]="com.jobs.filehasher.findersync"
+
+FEATURE_TITLE[run-authorize]="授予执行权限（chmod +x）"
 FEATURE_PROJECT_DIR[run-authorize]="JobsRunAuthorizer"
 FEATURE_SCHEME[run-authorize]="JobsRunAuthorizer"
 FEATURE_APP_NAME[run-authorize]="JobsRunAuthorizer"
@@ -172,7 +513,7 @@ FEATURE_APP_ID[run-authorize]="com.jobs.JobsRunAuthorizer"
 FEATURE_EXTENSION_NAME[run-authorize]="JobsRunAuthorizerFinderSync.appex"
 FEATURE_EXTENSION_ID[run-authorize]="com.jobs.JobsRunAuthorizer.FinderSyncExtension"
 
-FEATURE_TITLE[run-revoke]="解除运行授权"
+FEATURE_TITLE[run-revoke]="移除执行权限（chmod -x）"
 FEATURE_PROJECT_DIR[run-revoke]="JobsRunAuthorizationRevoker"
 FEATURE_SCHEME[run-revoke]="JobsRunAuthorizationRevoker"
 FEATURE_APP_NAME[run-revoke]="JobsRunAuthorizationRevoker"
@@ -347,7 +688,7 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create file-hash run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
@@ -356,9 +697,11 @@ SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
 SELECTABLE_FUNCTION_TITLE[file-create]="新建文件"
 SELECTABLE_FUNCTION_PROJECT_KEY[file-create]="file-create"
-SELECTABLE_FUNCTION_TITLE[run-authorize]="运行授权"
+SELECTABLE_FUNCTION_TITLE[file-hash]="查看文件指纹 Hash（SHA-256）"
+SELECTABLE_FUNCTION_PROJECT_KEY[file-hash]="file-hash"
+SELECTABLE_FUNCTION_TITLE[run-authorize]="授予执行权限（chmod +x）"
 SELECTABLE_FUNCTION_PROJECT_KEY[run-authorize]="run-authorize"
-SELECTABLE_FUNCTION_TITLE[run-revoke]="解除运行授权"
+SELECTABLE_FUNCTION_TITLE[run-revoke]="移除执行权限（chmod -x）"
 SELECTABLE_FUNCTION_PROJECT_KEY[run-revoke]="run-revoke"
 SELECTABLE_FUNCTION_TITLE[ipa-resign]="IPA 免编译重签"
 SELECTABLE_FUNCTION_PROJECT_KEY[ipa-resign]="ipa-resign"
@@ -947,6 +1290,10 @@ print_selected_features() {
 derived_data_dir_for_key() {
   local key="$1"
 
+  if [[ "$key" == project-tools || "$key" == desktop-tools ]]; then
+    print -r -- "${WORKSPACE_DIR}/${FEATURE_PROJECT_DIR[$key]}/work/DerivedData"
+    return 0
+  fi
   print -r -- "${WORKSPACE_DIR}/work/${FEATURE_PROJECT_DIR[$key]}DerivedData"
 }
 # 返回构建器的原始产物；安装到应用程序时也不能把构建输出改到系统目录。
@@ -989,6 +1336,10 @@ selected_location_has_app() {
   local key="$1" app_path="$(app_path_for_key "$1")"
   if [[ -L "$app_path" ]]; then
     error_echo "拒绝操作链接形式的 App：$app_path"
+    return 2
+  fi
+  if [[ -e "$app_path" && ! -d "$app_path" ]]; then
+    error_echo "所选 App 路径被非目录对象占用，未修改其它位置：$app_path"
     return 2
   fi
   if [[ -d "$app_path" ]]; then
@@ -1241,7 +1592,7 @@ open_host_for_extension_registration() {
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == file-create ]]; then
+  if [[ "$key" == file-create || "$key" == file-hash ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   if [[ "$key" == "run-authorize" || "$key" == "run-revoke" || "$key" == "ipa-resign" || "$key" == "hidden-files-toggle" || "$key" == "ios-tools" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "android-simulator-repair" || "$key" == "harmony-simulator-create" || "$key" == "harmony-simulator-repair" || "$key" == "git-proxy-configure" ]]; then
@@ -1478,12 +1829,16 @@ run_independent_uninstall() {
 # 与安装共用叶 ID 和安装单元映射；共享扩展只关闭勾选动作。
 uninstall_feature() {
   local key="$1" identifier="" features=()
-  # 两个聚合安装器使用自身构建目录，其路径核验由独立事务处理。
+  local location_result=0
+  UNINSTALL_OUTCOME=""
+  selected_location_has_app "$key" || location_result=$?
+  if (( location_result == 1 )); then
+    UNINSTALL_OUTCOME=not-installed
+    return 3
+  fi
+  (( location_result == 0 )) || return "$location_result"
+  # 聚合安装器自行保护其它位置；根层只统一识别当前位置是否存在。
   if [[ "$key" != project-tools && "$key" != desktop-tools ]]; then
-    local location_result=0
-    selected_location_has_app "$key" || location_result=$?
-    (( location_result != 1 )) || return 0
-    (( location_result == 0 )) || return "$location_result"
     local active_result=0
     another_location_is_active "$key" || active_result=$?
     if (( active_result == 0 )); then
@@ -1498,10 +1853,11 @@ uninstall_feature() {
     done
     if [[ "$key" == project-tools ]]; then
       JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsProjectTools/Scripts/ManageProjectTools.zsh" uninstall "${features[@]}" --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
+      return ${pipestatus[1]}
     else
       JOBS_SKIP_FINDER_RESTART=1 /bin/zsh "$WORKSPACE_DIR/JobsDesktopTools/Scripts/ManageDesktopTools.zsh" uninstall "${features[@]}" --non-interactive --skip-finder-restart --install-location "$JOBS_FINDER_INSTALL_LOCATION" 2>&1 | tee -a "$LOG_FILE"
+      return ${pipestatus[1]}
     fi
-    return ${pipestatus[1]}
   fi
   if [[ "$key" == flutter-tools || "$key" == terminal_opener ]]; then
     plan_group_feature_removal "$key" || return 1
@@ -1510,7 +1866,7 @@ uninstall_feature() {
       return $?
     fi
   fi
-  run_independent_uninstall "$key" || return 1
+  run_independent_uninstall "$key" || return $?
   if [[ "$key" == terminal_opener ]]; then
     write_group_configuration "$TERMINAL_FEATURE_CONFIG_PATH" '' || return 1
   fi
@@ -1518,15 +1874,57 @@ uninstall_feature() {
 }
 # 汇总到实际菜单功能；某一安装单元失败时继续汇报其它已选功能的结果。
 uninstall_selected_features() {
-  local key=""
+  local key="" operation_result=0 identifier="" selected_leaf_count=0 blocked=0
   FINAL_EXIT_STATUS=0
+  NOT_INSTALLED_FEATURES=()
+  UNINSTALL_SUCCEEDED_KEYS=()
+  UNINSTALL_FAILED_KEYS=()
+  UNINSTALL_NOT_INSTALLED_KEYS=()
+  UNINSTALL_SKIPPED_KEYS=()
+  UNINSTALL_SKIPPED_FEATURES=()
   for key in "${SELECTED_KEYS[@]}"; do
+    if (( blocked )); then
+      UNINSTALL_SKIPPED_KEYS+=("$key")
+      for identifier in "${SELECTED_FUNCTION_IDS[@]}"; do
+        [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$identifier]}" == "$key" ]] || continue
+        UNINSTALL_SKIPPED_FEATURES+=("${SELECTABLE_FUNCTION_TITLE[$identifier]}")
+      done
+      emit_project_progress "$key" skipped
+      continue
+    fi
+    selected_leaf_count=0
+    for identifier in "${SELECTED_FUNCTION_IDS[@]}"; do
+      [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$identifier]}" != "$key" ]] || (( selected_leaf_count += 1 ))
+    done
+    note_echo "卸载安装单元：${FEATURE_TITLE[$key]}；本次包含 ${selected_leaf_count} 项菜单；目标：$(app_path_for_key "$key")"
     emit_project_progress "$key" running
-    if uninstall_feature "$key"; then
+    operation_result=0
+    UNINSTALL_OUTCOME=""
+    uninstall_feature "$key" || operation_result=$?
+    if (( operation_result == 77 )) || [[ -n "$JOBS_FINDER_BLOCKED_FILE" && -s "$JOBS_FINDER_BLOCKED_FILE" ]]; then
+      operation_result=77
+      blocked=1
+    fi
+    if (( operation_result == 0 )); then
+      UNINSTALL_SUCCEEDED_KEYS+=("$key")
       record_project_install_result "$key" 1
+    elif (( operation_result == 3 )) && [[ "$UNINSTALL_OUTCOME" == not-installed ]]; then
+      UNINSTALL_NOT_INSTALLED_KEYS+=("$key")
+      for identifier in "${SELECTED_FUNCTION_IDS[@]}"; do
+        [[ "${SELECTABLE_FUNCTION_PROJECT_KEY[$identifier]}" == "$key" ]] || continue
+        NOT_INSTALLED_FEATURES+=("${SELECTABLE_FUNCTION_TITLE[$identifier]}")
+        emit_feature_progress "$identifier" not-installed
+      done
     else
+      UNINSTALL_FAILED_KEYS+=("$key")
+      error_echo "安装单元卸载失败：${FEATURE_TITLE[$key]}（退出码 ${operation_result}）；关联的 ${selected_leaf_count} 项菜单共同标记失败，请查看此前同一单元的原始错误。"
       record_project_install_result "$key" 0
       FINAL_EXIT_STATUS=1
+    fi
+    if (( blocked )); then
+      FINAL_EXIT_STATUS=77
+      print -r -- $'JOBS_MANAGER_BLOCKED\tapp-management\t77'
+      warn_echo '需要检查 App 管理授权或所选目录权限；保留已完成和无需卸载的结果，不再卸载后续安装单元。'
     fi
   done
 }
@@ -1758,6 +2156,7 @@ emit_feature_progress() {
       ;;
     succeeded) message='成功' ;;
     failed) message='失败，请查看下方日志' ;;
+    not-installed) message='所选位置未安装，无需卸载' ;;
     skipped) message='未执行，已停止后续任务' ;;
   esac
   /usr/bin/printf '\nJOBS_MANAGER_EVENT\t%s\t%s\t%s\n' "$identifier" "$state" "$message"
@@ -1864,9 +2263,21 @@ restart_finder_after_install() {
 }
 # 输出安装结果、日志路径和后续排查提示。
 print_done_tips() {
-  local feature_name=""
+  local feature_name="" key=""
 
   echo ""
+  if [[ "$MANAGEMENT_ACTION" == uninstall ]]; then
+    note_echo "卸载按安装单元汇总：成功 ${#UNINSTALL_SUCCEEDED_KEYS}，所选位置未安装 ${#UNINSTALL_NOT_INSTALLED_KEYS}，失败 ${#UNINSTALL_FAILED_KEYS}，未执行 ${#UNINSTALL_SKIPPED_KEYS}；菜单项：成功 ${#SUCCEEDED_FEATURES}，无需卸载 ${#NOT_INSTALLED_FEATURES}，失败 ${#FAILED_FEATURES}，未执行 ${#UNINSTALL_SKIPPED_FEATURES}。"
+    for key in "${UNINSTALL_FAILED_KEYS[@]}"; do
+      error_echo "失败安装单元：${FEATURE_TITLE[$key]}；目标：$(app_path_for_key "$key")"
+    done
+    if (( ${#NOT_INSTALLED_FEATURES} > 0 )); then
+      note_echo '所选位置未安装，无需卸载（未删除其它位置副本）：'
+      for feature_name in "${NOT_INSTALLED_FEATURES[@]}"; do
+        gray_echo "- ${feature_name}"
+      done
+    fi
+  fi
   if (( ${#SUCCEEDED_FEATURES[@]} > 0 )); then
     success_echo "${MANAGEMENT_ACTION} 成功："
     for feature_name in "${SUCCEEDED_FEATURES[@]}"; do
@@ -1879,7 +2290,7 @@ print_done_tips() {
     for feature_name in "${FAILED_FEATURES[@]}"; do
       gray_echo "- ${feature_name}"
     done
-    gray_echo "请查看日志中的 xcodebuild / pluginkit 输出。"
+    gray_echo "请查看失败安装单元之前的原始错误、退出码及 lsregister / pluginkit 输出；共享单元失败会关联其所选菜单。"
   fi
 
   gray_echo "日志位置：${LOG_FILE}"

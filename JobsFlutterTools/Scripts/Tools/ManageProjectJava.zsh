@@ -7,6 +7,182 @@
 
 # JOBS_SDK_RETRY_BEGIN
 # 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+jobs_prompt_color_ready() {
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" '
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0) connector segment(right, 31)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31) "或" segment(substr(value, splitAt + length("或")), 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!kind || !color) return value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original) {
+      original = value
+      gsub(esc "\\[[0-9;]*m", "", value)
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return original
+      output = ""
+      inherited = 0
+      depth = 0
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited) boundary
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return output segment(value, inherited)
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1 }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
 jobs_sdk_stop_tree() {
     local root="$1" child=""
     for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
@@ -153,7 +329,7 @@ show_script_intro_and_wait() {
     pj_intro_line body '2、确认后，缺少 jEnv / JDK 时会通过已安装的 Homebrew 自动补齐；下载源是 Homebrew 官方 Formulae，软件安装影响本机共享工具目录。'
     pj_intro_line body '3、向 jEnv 注册 JDK 并只执行项目 jenv local；不修改 jenv global、Shell 配置、全局 Flutter jdk-dir 或系统 Java 链接。'
     pj_intro_line body '4、菜单启动的 Android 构建绑定所选 JAVA_HOME 和 Gradle JVM；Flutter 自身仍可能采用 Android Studio JDK。现有 Gradle JVM criteria 冲突时停止。'
-    pj_intro_line body '5、先回车进入选择，再回车确认具体版本；q / 非空最终确认 / Ctrl+C 取消。日志与原配置快照保留在系统临时目录 JobsProjectJava.*。'
+    jobs_prompt_output pj_intro_line body '5、先回车进入选择，再回车确认具体版本；q / 非空最终确认 / Ctrl+C 取消。日志与原配置快照保留在系统临时目录 JobsProjectJava.*。'
     pj_intro_line body '6、--check 只读、不联网、不安装、不写日志；源码被 source 时不执行入口或修改环境。'
     pj_parse_invocation "$@" || result=$?
     if (( result )); then
@@ -163,7 +339,7 @@ show_script_intro_and_wait() {
     pj_intro_line body "目标目录：$PJ_PROJECT"
     [[ "$PJ_MODE" == check ]] && return 0
     [[ -t 0 && -t 1 ]] || { pj_log '✖ 需要可交互 Terminal；请在终端重新运行。'; exit 2; }
-    IFS= read -r 'answer?👉 已了解用途与影响，按回车继续；Ctrl+C 取消：' || exit 130
+    IFS= read -r "answer?$(jobs_prompt_render '👉 已了解用途与影响，按回车继续；Ctrl+C 取消：')" || exit 130
     [[ -z "$answer" ]] || exit 130
 }
 # 确认后才建立运行日志和中断保护，检查模式不创建任何文件。
@@ -313,10 +489,10 @@ pj_choose_jdk() {
         pj_log "${index}、本机 Java ${PJ_VERSIONS[index]} · ${PJ_HOMES[index]}"
     done
     pj_log 'n、安装 / 复用指定 Java 主版本；q、取消'
-    IFS= read -r "answer?选择编号（回车进入 Java ${default_major} 安装 / 复用；q 取消）：" || return 130
+    IFS= read -r "answer?$(jobs_prompt_render "选择编号（回车进入 Java ${default_major} 安装 / 复用；q 取消）：")" || return 130
     [[ "$answer" != [qQ] ]] || return 130
     if [[ -z "$answer" || "$answer" == [nN] ]]; then
-        IFS= read -r "requested?Java 主版本（回车 ${default_major}；q 取消）：" || return 130
+        IFS= read -r "requested?$(jobs_prompt_render "Java 主版本（回车 ${default_major}；q 取消）：")" || return 130
         [[ "$requested" != [qQ] ]] || return 130
         [[ -n "$requested" ]] || requested="$default_major"
         [[ "$requested" == <-> && ${#requested} -le 2 && "$requested" -ge 8 && "$requested" -le 99 ]] || { pj_log '✖ 主版本须为 8–99 之间的整数。'; return 2; }
@@ -340,7 +516,7 @@ pj_confirm_selection() {
     local answer=""
     pj_log "➤ 即将绑定 Java ${PJ_SELECTED_MAJOR}：${PJ_SELECTED_HOME:-将从 Homebrew 安装 openjdk@${PJ_SELECTED_MAJOR}}"
     pj_log "➤ 项目声明：$PJ_PROJECT/.java-version；缺少 jEnv 时安装 jenv。"
-    if ! IFS= read -r 'answer?按回车安装 / 切换；任意非空输入取消：' || [[ -n "$answer" ]]; then return 130; fi
+    if ! IFS= read -r "answer?$(jobs_prompt_render '按回车安装 / 切换；任意非空输入取消：')" || [[ -n "$answer" ]]; then return 130; fi
 }
 # 在已有 Homebrew 上验证真实前缀；缺失时停止，不自动安装包管理器。
 pj_find_brew() {

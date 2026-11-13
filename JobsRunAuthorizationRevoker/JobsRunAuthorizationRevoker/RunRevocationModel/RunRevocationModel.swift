@@ -35,7 +35,7 @@ final class RunRevocationModel {
             completion()
             return
         }
-        record("正在请求 Terminal 处理单文件解除运行授权。")
+        record("正在请求 Terminal 处理单文件移除执行权限。")
         DispatchQueue.global(qos: .userInitiated).async {
             let failureMessage: String?
             do {
@@ -48,7 +48,7 @@ final class RunRevocationModel {
                 if let failureMessage {
                     self.showFailure(failureMessage)
                 } else {
-                    self.record("已交给 Terminal，请在终端确认解除运行授权并查看结果。")
+                    self.record("已交给 Terminal，请在终端确认移除执行权限并查看结果。")
                 }
                 completion()
             }
@@ -59,7 +59,7 @@ final class RunRevocationModel {
         record(message)
         NSAlert.jobsMake {
             $0.byAlertStyle(.warning)
-                .byMessageText("解除运行授权未启动")
+                .byMessageText("移除执行权限未启动")
                 .byInformativeText(message)
                 .byAddButton("好")
         }.runModal()

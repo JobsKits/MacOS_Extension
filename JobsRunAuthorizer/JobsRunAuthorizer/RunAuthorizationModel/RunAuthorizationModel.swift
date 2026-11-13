@@ -35,7 +35,7 @@ final class RunAuthorizationModel {
             completion()
             return
         }
-        record("正在请求 Terminal 处理单文件运行授权。")
+        record("正在请求 Terminal 处理单文件授予执行权限。")
         DispatchQueue.global(qos: .userInitiated).async {
             let failureMessage: String?
             do {
@@ -59,7 +59,7 @@ final class RunAuthorizationModel {
         record(message)
         NSAlert.jobsMake {
             $0.byAlertStyle(.warning)
-                .byMessageText("运行授权未启动")
+                .byMessageText("授予执行权限未启动")
                 .byInformativeText(message)
                 .byAddButton("好")
         }.runModal()

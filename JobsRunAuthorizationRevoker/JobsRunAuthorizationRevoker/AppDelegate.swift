@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard acceptedRequests.insert(fileURL.path).inserted else {
             return
         }
-        model.record("收到 Finder 单文件解除运行授权请求。")
+        model.record("收到 Finder 单文件移除执行权限请求。")
         beginOperation()
         model.revoke(fileURL) { [weak self] in
             self?.finishOperation()

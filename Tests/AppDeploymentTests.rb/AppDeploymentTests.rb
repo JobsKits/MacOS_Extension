@@ -1,5 +1,244 @@
 # frozen_string_literal: true
 # Jobs：仅使用临时 App 夹具，系统签名与登记全部由函数替身承接。
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
 require 'minitest/autorun'
 require 'tmpdir'
 require 'fileutils'
@@ -442,6 +681,154 @@ class AppDeploymentTests < Minitest::Test
     ZSH
   end
 
+  def test_missing_host_registration_allows_exact_uninstall_and_repeat_without_touching_other_copy
+    make_app(@deployed, 'old')
+    set_active(@built)
+    shell(<<~'ZSH')
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { return 0; }
+      jobs_deployment_unregister_host_command() {
+        print -r -- "host:$1" >> "$CALLS"
+        print -u2 -r -- "failed to scan $1: -10814"
+        print -u2 -r -- ' from spotlight'
+        return 7
+      }
+      jobs_deployment_dump_host_registrations() {
+        printf '%s\n' '--------------------------------------------------------------------------------' 'bundle id: fixture (0x1)' "path: $BUILT (0xab)" 'identifier: com.jobs.fixture'
+        printf '%s\n' '--------------------------------------------------------------------------------' 'bundle id: prefix (0x2)' "path: $DEPLOYED.backup (0xac)" 'identifier: com.jobs.fixture'
+      }
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      [[ ! -e "$DEPLOYED" && -d "$BUILT" && ! -e "$CONTAINER" ]] || exit 2
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 3
+      [[ "$(<"$CALLS")" == "host:$DEPLOYED" ]] || exit 4
+    ZSH
+  end
+
+  def test_failed_host_unregister_keeps_app_when_exact_registration_still_exists
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { return 0; }
+      jobs_deployment_unregister_host_command() { print -u2 -r -- "failed to scan $1: -10814"; return 7; }
+      jobs_deployment_dump_host_registrations() { printf '%s\n' 'bundle id: fixture (0x1)' "path: $DEPLOYED (0xab)"; }
+      result=0
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+      [[ "$result" == 7 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 1
+      [[ ! -e "$JOBS_FINDER_APPLICATIONS_DIR/.JobsFinderDeployment.Jobs自定义右键菜单.lock" ]] || exit 2
+    ZSH
+  end
+
+  def test_host_unregister_query_failure_or_invalid_dump_keeps_app_and_failure_code
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { return 0; }
+      jobs_deployment_unregister_host_command() { print -u2 -r -- "failed to scan $1: -10814"; return 7; }
+      for scenario in failed empty malformed partial; do
+        jobs_deployment_dump_host_registrations() {
+          case "$scenario" in
+            failed) print -r -- 'bundle id: partial'; return 9 ;;
+            empty) return 0 ;;
+            malformed) print -r -- 'unexpected database format' ;;
+            partial) printf '%s\n' 'bundle id: fixture (0x1)' "path: $BUILT (0xab)" '--------------------------------' 'bundle id: truncated' ;;
+          esac
+        }
+        result=0
+        jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+        [[ "$result" == 7 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 1
+      done
+    ZSH
+  end
+
+  def test_host_unregister_preserves_other_failures_without_querying_or_deleting
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { return 0; }
+      jobs_deployment_dump_host_registrations() { print UNEXPECTED_QUERY >> "$CALLS"; return 0; }
+      for reason in permission unknown mixed other-path; do
+        jobs_deployment_unregister_host_command() {
+          case "$reason" in
+            permission) print -u2 -r -- 'Operation not permitted' ;;
+            unknown) print -u2 -r -- 'failed to communicate with LaunchServices' ;;
+            mixed) printf '%s\n' "failed to scan $1: -10814" 'Permission denied' ;;
+            other-path) print -u2 -r -- "failed to scan $1.backup: -10814" ;;
+          esac
+          return 13
+        }
+        result=0
+        jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+        [[ "$result" == 13 && -d "$DEPLOYED" && ! -e "$CALLS" ]] || exit 1
+      done
+    ZSH
+  end
+
+  def test_host_dump_parser_preserves_spaces_unicode_and_literal_hex_suffix_in_paths
+    shell(<<~'ZSH')
+      jobs_deployment_dump_host_registrations() {
+        printf '%s\n' '--------------------------------' 'bundle id: fixture (0x1)' "path: $BUILT (0xab) (0x1c)" 'identifier: com.jobs.fixture'
+        printf '%s\n' '--------------------------------' 'bundle id: other (0x2)' "path: $DEPLOYED" 'identifier: com.jobs.fixture'
+      }
+      parsed="$(jobs_deployment_registered_host_paths)" || exit 1
+      [[ "$parsed" == "$BUILT (0xab)"$'\n'"$DEPLOYED" ]] || exit 2
+    ZSH
+  end
+
+  def test_uninstall_reports_delete_failure_or_false_success_and_releases_scope_lock
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      jobs_deployment_remove_app_files() { return 17; }
+      result=0
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+      [[ "$result" == 17 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 1
+      [[ ! -e "$JOBS_FINDER_APPLICATIONS_DIR/.JobsFinderDeployment.Jobs自定义右键菜单.lock" ]] || exit 2
+      jobs_deployment_remove_app_files() { return 0; }
+      result=0
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+      [[ "$result" == 1 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 3
+    ZSH
+  end
+
+  def test_exact_app_removal_permission_denial_emits_blocker_and_retains_files
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      exec 2> "$TEST_ROOT/remove-errors.log"
+      JOBS_FINDER_RESPONSIBLE_APP=FixtureManager.app
+      for reason in 'Permission denied' 'Operation not permitted'; do
+        jobs_deployment_remove_app_command() { print -u2 -r -- "rm: $1/Contents/Resources/业务.zsh: $reason"; return 1; }
+        result=0
+        jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+        [[ "$result" == 77 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 1
+        [[ ! -e "$JOBS_FINDER_APPLICATIONS_DIR/.JobsFinderDeployment.Jobs自定义右键菜单.lock" ]] || exit 2
+      done
+      /usr/bin/grep -F $'JOBS_MANAGER_BLOCKED\tapp-management\t77' "$TEST_ROOT/remove-errors.log" >/dev/null || exit 3
+      /usr/bin/grep -F FixtureManager.app "$TEST_ROOT/remove-errors.log" >/dev/null || exit 4
+      /usr/bin/grep -F '目录权限' "$TEST_ROOT/remove-errors.log" >/dev/null || exit 5
+    ZSH
+  end
+
+  def test_remove_unknown_error_or_permission_for_another_path_preserves_original_code
+    make_app(@deployed, 'old')
+    shell(<<~'ZSH')
+      exec 2> "$TEST_ROOT/remove-errors.log"
+      for reason in other-path ordinary; do
+        jobs_deployment_remove_app_command() {
+          if [[ "$reason" == other-path ]]; then
+            print -u2 -r -- "rm: $1.backup: Permission denied"
+          else
+            print -u2 -r -- "rm: $1: Input/output error"
+          fi
+          return 17
+        }
+        result=0
+        jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || result=$?
+        [[ "$result" == 17 && -d "$DEPLOYED" && -d "$BUILT" ]] || exit 1
+      done
+      /usr/bin/grep -F JOBS_MANAGER_BLOCKED "$TEST_ROOT/remove-errors.log" >/dev/null && exit 2
+      return 0
+    ZSH
+  end
+
   def test_outer_signature_is_prepared_before_registration_and_commit_does_not_resign
     shell(<<~'ZSH')
       sign_count=0
@@ -654,6 +1041,8 @@ class AppDeploymentTests < Minitest::Test
       jobs_deployment_registered_extension_paths() { if [[ -f "$TEST_ROOT/registered.txt" ]]; then /bin/cat "$TEST_ROOT/registered.txt"; else jobs_deployment_enabled_extension_paths "$1"; fi; }
       jobs_deployment_source_is_running() { return 1; }
       jobs_deployment_unregister_app() { print -r -- "unregister:$1" >> "$CALLS"; }
+      jobs_deployment_unregister_host_command() { print -u2 -r -- 'Unexpected real host unregister call'; return 98; }
+      jobs_deployment_dump_host_registrations() { print -u2 -r -- 'Unexpected real host query'; return 98; }
       jobs_deployment_register_restored_app() { print -r -- "register:$1" >> "$CALLS"; }
     ZSH
     output, error, result = Open3.capture3(

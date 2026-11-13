@@ -64,37 +64,74 @@ enum FlutterRunTransportTests {
         let fakeScript = root.appendingPathComponent("fake.zsh")
         let captured = root.appendingPathComponent("captured")
         let helper = root.appendingPathComponent("helper.jxa")
+        let preflightResources = root.appendingPathComponent("体检资源 中文 ' $()", isDirectory: true)
+        let preflightScriptName = "【MacOS】Flutter运行前体检.zsh"
+        let preflightCapture = root.appendingPathComponent("preflight-captured")
+        try fileManager.createDirectory(at: preflightResources, withIntermediateDirectories: false)
+        try Data("JOBS_PREFLIGHT_FIXTURE='fixture-ready'\n".utf8).write(to: preflightResources.appendingPathComponent(preflightScriptName))
+        try Data("# 运行前体检说明\n".utf8).write(to: preflightResources.appendingPathComponent("README.md"))
         try Data("// test helper".utf8).write(to: helper)
-        try Data("[[ \"$1\" == --project ]] || exit 2\nprintf '%s' \"$2\" > \"$JOBS_NATIVE_CAPTURE\"\nexit ${JOBS_NATIVE_EXIT:-0}\n".utf8).write(to: fakeScript)
+        try Data("""
+        [[ "$1" == --project ]] || exit 2
+        source "${0:A:h}/【MacOS】Flutter运行前体检.zsh/【MacOS】Flutter运行前体检.zsh" || exit 3
+        print -r -- "$JOBS_PREFLIGHT_FIXTURE" > "$JOBS_NATIVE_PREFLIGHT_CAPTURE"
+        printf '%s' "$2" > "$JOBS_NATIVE_CAPTURE"
+        exit ${JOBS_NATIVE_EXIT:-0}
+
+        """.utf8).write(to: fakeScript)
         let launcher = FlutterRunTerminalLauncher()
+        let legacy = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper)
+        try check(!fileManager.fileExists(atPath: legacy.preflightResourcesURL.path), "可选资源参数破坏旧测试载体接口")
+        launcher.cleanup(legacy)
+        for invalid in [root.appendingPathComponent("missing-preflight"), root.appendingPathComponent("empty-preflight")] {
+            if invalid.lastPathComponent == "empty-preflight" {
+                try fileManager.createDirectory(at: invalid, withIntermediateDirectories: false)
+                try Data().write(to: invalid.appendingPathComponent(preflightScriptName))
+            }
+            var refused = false
+            do {
+                let unexpected = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper, preflightResourcesURL: invalid)
+                launcher.cleanup(unexpected)
+            } catch {
+                refused = error.localizedDescription.contains("运行前环境体检脚本")
+            }
+            try check(refused, "缺失或空体检脚本仍允许制备运行载体")
+        }
         for exitCode in [0, 7] {
-            let prepared = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper)
+            let prepared = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper, preflightResourcesURL: preflightResources)
             try check(!prepared.commandLine.contains("\n") && !prepared.commandLine.contains("\r"), "Terminal 命令必须保持物理单行")
             try check(try Data(contentsOf: prepared.helperURL) == Data(contentsOf: helper), "JXA helper 未精确复制")
+            try check(try Data(contentsOf: prepared.preflightResourcesURL.appendingPathComponent(preflightScriptName)) == Data(contentsOf: preflightResources.appendingPathComponent(preflightScriptName)), "体检脚本未精确复制")
+            try check(try Data(contentsOf: prepared.preflightResourcesURL.appendingPathComponent("README.md")) == Data(contentsOf: preflightResources.appendingPathComponent("README.md")), "体检配套资源未完整复制")
             try check(prepared.commandLine.hasPrefix("/bin/zsh -l "), "入口必须使用登录 zsh 环境")
             try check(permission(prepared.directoryURL) == 0o700, "私有目录权限错误")
             try check(permission(prepared.carrierURL) == 0o600 && permission(prepared.businessURL) == 0o600 && permission(prepared.helperURL) == 0o600, "私有文件权限错误")
+            try check(permission(prepared.preflightResourcesURL) == 0o700 && permission(prepared.preflightResourcesURL.appendingPathComponent(preflightScriptName)) == 0o600, "体检私有资源权限错误")
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
             process.arguments = [prepared.carrierURL.path]
             var environment = ProcessInfo.processInfo.environment
             environment["JOBS_NATIVE_CAPTURE"] = captured.path
+            environment["JOBS_NATIVE_PREFLIGHT_CAPTURE"] = preflightCapture.path
             environment["JOBS_NATIVE_EXIT"] = String(exitCode)
             process.environment = environment
             try process.run()
             process.waitUntilExit()
             try check(process.terminationStatus == exitCode, "业务退出码未保留")
             try check(try String(contentsOf: captured, encoding: .utf8) == project.path, "载体没有精确传递项目路径")
+            try check(try String(contentsOf: preflightCapture, encoding: .utf8) == "fixture-ready\n", "载体未从自身目录读取体检脚本")
             try check(!fileManager.fileExists(atPath: prepared.directoryURL.path), "退出后未清理私有目录")
         }
-        let first = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper)
-        let second = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper)
+        let first = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper, preflightResourcesURL: preflightResources)
+        let second = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper, preflightResourcesURL: preflightResources)
         launcher.cleanup(first)
         launcher.cleanup(first)
         try check(fileManager.fileExists(atPath: second.carrierURL.path), "清理影响了其它请求")
+        try check(fileManager.fileExists(atPath: second.preflightResourcesURL.appendingPathComponent(preflightScriptName).path), "清理影响了其它请求的体检资源")
+        try check(!fileManager.fileExists(atPath: first.directoryURL.path), "显式清理未完整移除体检目录")
         launcher.cleanup(second)
         try Data("/bin/kill -TERM \"$PPID\"\nexit 0\n".utf8).write(to: fakeScript)
-        let interrupted = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper)
+        let interrupted = try launcher.prepare(projectURL: project, businessScriptURL: fakeScript, helperScriptURL: helper, preflightResourcesURL: preflightResources)
         let interruptedProcess = Process()
         interruptedProcess.executableURL = URL(fileURLWithPath: "/bin/zsh")
         interruptedProcess.arguments = [interrupted.carrierURL.path]
@@ -102,7 +139,7 @@ enum FlutterRunTransportTests {
         interruptedProcess.waitUntilExit()
         try check(interruptedProcess.terminationStatus == 143, "终止信号未保留标准退出码")
         try check(!fileManager.fileExists(atPath: interrupted.directoryURL.path), "终止信号后未清理私有目录")
-        print("✔ 共享 Flutter 判定、URL 路径往返、私有载体权限与精确清理回归通过。")
+        print("✔ 共享 Flutter 判定、URL 路径往返、体检资源运输、私有载体权限与精确清理回归通过。")
     }
 
     private static func permission(_ url: URL) -> Int {

@@ -31,7 +31,7 @@ jobs_combined_manager_copy_package() {
 # 身份匹配后将新资源准备在同卷暂存区，再替换 ManagerRoot；失败恢复原目录。
 jobs_prepare_combined_manager_resources() {
   local container="$1" library_dir="${JOBS_COMBINED_MANAGER_LIBRARY_SOURCE:A:h}" source_root="" resources="" stage="" target="" package="" snapshot="" result=0
-  local packages=(JobsProjectTools JobsPathCopier JobsFileCreator JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
+  local packages=(JobsProjectTools JobsPathCopier JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
   [[ "$container" == /* && -d "$container" && ! -L "$container" && "${container:A}" == "$container" &&
      "${container:t}" == Jobs自定义右键菜单.app && ! -L "$container/Contents" &&
      -f "$container/Contents/Info.plist" && ! -L "$container/Contents/Info.plist" &&

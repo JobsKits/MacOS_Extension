@@ -151,6 +151,8 @@ function projectSupportsPlatform(project, targetPlatform) {
         directory = 'android';
     } else if (/^ios/.test(platform)) {
         directory = 'ios';
+    } else if (/^(ohos|openharmony)/.test(platform)) {
+        directory = 'ohos';
     } else if (/^(darwin|macos)/.test(platform)) {
         directory = 'macos';
     } else if (/^web/.test(platform)) {

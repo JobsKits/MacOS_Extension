@@ -25,6 +25,10 @@
 
 ## 🔥 <span id="前言">前言</span>
 
+**鸿蒙连接可见性：** “目前已有的设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+
+**运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。检查失败、超时、结果无法解析或体检资源缺失时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；选中鸿蒙连接项或环境未就绪的真实鸿蒙设备后，当前流程会备份配置并直接承接准备，不要求另找入口。准备只执行一次，之后有界重查原设备，不重复获取 SDK 或构建。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
+
 **下载版本与组件：** 运行器在 SDK 安装 / 首次补齐及选定平台预缓存之前，先展示项目声明 Flutter、实际解析的 SDK 根路径、本地 Git 精确 tag / 提交或本地版本记录、下载宿主架构、目标平台和 Engine 提交；不靠执行 Flutter / Dart 探测版本。Git 查询只读、禁止隐式联网且单次最多 5 秒，无法确认就明确未解析。Darwin 下载架构按物理 ARM 能力识别，兼容 Rosetta。Dart 目标版本只采信 SDK 明确声明，或与目标 Engine 一致的版本 JSON / 当前缓存 stamp；`.old` 和不匹配的缓存不当作本次目标。尚无可信记录时显示“版本尚未解析，待目标 SDK 下载完成后确认”，目标版本展示不代表已经安装验收。
 
 已打开的终端使用启动时的脚本快照，源码改动不替换当前下载进程；安装 / 更新菜单后重新发起才加载新的上下文展示。版本上下文与重试提示进入本次操作日志，原生机器输出文件及退出码保持原路径。
@@ -42,10 +46,10 @@
 | 项目 | 实际行为 |
 | --- | --- |
 | 菜单条件 | 精确目录自身的 `pubspec.yaml` 声明 `dependencies.flutter.sdk: flutter`；普通目录才接受，不递归查找，也不把 `flutter_test` 当作项目依据。 |
-| 设备 | 公共 SDK 组件准备就绪后枚举 `flutter devices --machine`，按项目已有平台目录过滤可运行目标，在终端用 fzf 上下键选择并可直接输入关键字筛选；未安装 fzf 或非终端时回退编号输入。支持重新加载、iOS 模拟器及 Android AVD 入口。 |
+| 设备 | 公共 SDK 就绪后先分已有／新建两组；已有目标按工程平台过滤，新建始终提供 iOS／Android／Harmony。创建成功后精确等待本轮新设备就绪并自动运行当前工程。 |
 | fzf 选择 | 终端内所有列表（设备、模拟器型号、iOS 系统版本、Android AVD）统一走 fzf：`↑/↓` 移动、输入即筛选、回车确认、`Esc` 取消。环境变量 `JOBS_FLUTTER_RUNNER_FZF=0` 可强制关闭并回到编号输入。 |
-| iOS 模拟器缺失 | 内置查询设备型号与已安装 iOS runtime、选择、创建、启动和等待就绪流程；型号按有无可搭配系统优先推荐，选定型号后只列匹配该型号的系统；创建结果不明确时不自动重试，明确不兼容需输入 `r` 才重选；缺 runtime 时提示在 Xcode Settings → Components（旧版 Platforms）安装。新模拟器命名与[独立初始化脚本](<../../../JobsCommand@iOS/其他/【MacOS】📱双击初始化iOS模拟器.command/README.md>)一致：`型号名@年.月.日 时:分:秒-进程号`，重名追加 ` (2)`。模拟器界面按当前 Xcode 定位：Xcode 27 为 `Contents/Applications/DeviceHub.app`，旧版为 `Contents/Developer/Applications/Simulator.app`；界面打不开只提示，不终止运行。新建模拟器后等设备进入 Flutter 列表，读取超时依次为 120 / 60 / 30 / 30 秒，共 4 次后才判定未识别；这些窗口只用于设备枚举，公共 SDK 下载已提前完成。 |
-| Android 模拟器 | 项目含 `android/` 时可列出 Android SDK 已配置的 AVD，选择后交给独立 launchd job 启动；不创建 AVD，启动后返回设备列表。 |
+| iOS 模拟器 | 已有组只启动现有设备；新建组调用随包桌面创建器，按匹配型号和已安装 Runtime 创建并启动。不安装 Xcode / Runtime、不删除其它设备，创建结果不明确时保留诊断，不盲目重试。 |
+| Android 模拟器 | 已有组按 AVD 名精确启动并等待被 Flutter 识别；新建组复用桌面创建器，准备所需工具链、型号与系统镜像，再按原许可和确认执行。 |
 | 终端与后台 | `launchd` 管理独立 `flutter run --machine`；终端实时追踪会话 `run.log`。关闭窗口、Ctrl+C 或 `d` 只断开查看；`s` 明确停止。 |
 | 继续查看 | 再次右键同一项目，选择同一设备，连接已有会话；不重复启动同一项目和设备。 |
 | SDK | 优先使用项目 `.fvm/flutter_sdk/bin/flutter`；缺失或断链时读取 `.fvmrc` / `.fvm/fvm_config.json` 声明的版本并用本机 fvm 补齐——本机缓存已有该版本只重建链接、不下载，缓存没有时自动下载，失败持续重试；其次终端 PATH 中的 Flutter。不安装或升级全局 Flutter / Xcode。 |
@@ -60,7 +64,7 @@
 卸载按同一复选框选定的位置执行，所选位置没有 App 时保留另一位置及其功能配置；共享宿主仍有未卸载菜单时保留 App，最后一项移除后注销并删除该功能模块；联合 App 的最后一个模块移除后才删除外层 `Jobs自定义右键菜单.app`。切换位置安装会把登记切到新位置，构建目录中的另一份产物保留；所选功能的旧版顶层自有 App 在成功提交后收拢至联合 App，未知 App 不覆盖或删除。完整说明见[App 部署支持库](./Scripts/【MacOS】AppDeployment.zsh/README.md)。
 
 
-**独立清理与停止：** 安装位置选择、显示中的自动清理复选框与红色“🧹 清除构建产物”按钮排在同一行，垂直居中、间隔统一。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
 
 安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
 
@@ -84,11 +88,11 @@
 
 ## 二、<span id="use">运行与环境</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-需要 macOS 12.0 及以上、完整 [**Xcode**](https://developer.apple.com/xcode/)、可用 Flutter SDK，以及目标设备对应的平台工具。iOS 使用当前 Xcode 的 `xcrun simctl`；不会自动运行 `brew install`、安装 Xcode runtime 或修改 `xcode-select`。Android 支持启动已有 AVD，或缺失时内置选择型号、系统镜像、确认下载和创建；创建需要可用 Java 与 SDK Command-line Tools，详见[Android 初始化与运行](./Scripts/README.md#runtime)。
+需要 macOS 12.0 及以上、完整 [**Xcode**](https://developer.apple.com/xcode/)、可用 Flutter SDK，以及目标设备对应的平台工具。iOS 使用当前 Xcode 的 `xcrun simctl`；不会自动运行 `brew install`、安装 Xcode runtime 或修改 `xcode-select`。Android 支持在已有组启动 AVD，在新建组复用桌面创建器准备工具链、选择型号与系统镜像并确认创建，详见[Android 初始化与运行](./Scripts/README.md#runtime)。
 
 1、在 Finder 右键单个真实 Flutter 项目文件夹，或进入该项目后右键空白处，点击“从终端运行 Flutter 项目”。宿主为 `LSUIElement` 后台进程，不创建管理窗口或 Dock 图标；Terminal 转发完成后退出。
 
-2、在终端阅读自述后回车继续，非空输入取消；用 `↑/↓` 选择实际设备，回车确认，`Esc` 取消（未安装 fzf 时回退为输入编号）。设备按项目已有的 `ios/`、`android/`、`macos/`、`web/` 等平台目录过滤。设备列表为空时可重新加载；有 `ios/`、`android/` 才分别提供“启动已有 / 缺失时初始化”入口。Android 子层支持 `←` 返回，优先复用已装镜像，最终确认才下载和创建，不覆盖已有 AVD；等待精确目标开机及被 Flutter 识别后继续。iOS 缺 runtime 时按明确提示先在 Xcode 安装，再重新加载。
+- 在终端阅读自述后回车继续，非空输入取消。设备选择分为“目前已有的设备”“新建设备”和独立的“启动虚拟设备”。已有组只显示当前已连接 / 正在运行的设备及鸿蒙连接诊断，可重新加载；启动组二级固定提供 iOS、Android、鸿蒙模拟器，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再列出、启动已有实例。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件。空清单不会隐式新建；启动就绪后才进入工程运行门禁，失败不改选其它设备。新建组始终提供 iOS、Android、Harmony（鸿蒙）三项，直接在当前终端复用桌面右键的创建脚本和原有自述、许可及最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，创建器通过本轮私有回执交接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 目标核验后等待同一 Flutter ID；就绪后自动继续原工程的预缓存与 `flutter run`，不再要求二次选择。取消、缺少有效回执、等待失败均不运行其它设备；没有对应平台目录的工程仍可新建设备，完成后保留设备并返回分组，不自动运行。 根层 `Esc` 或“取消本轮运行”结束；已有／新建子层用 `←` 或“返回设备分组”回根层，启动平台层用 `←` 返回根层，实例层用 `←` 返回启动平台层；返回保留已准备工具，本轮复用已通过的准备。`↑/↓` 移动、回车选择，搜索可选；创建器内部沿用其原有按键和确认。
 
 3、查看实时日志。输入 `r` 热重载、`R` 热重启、`s` 停止、`d` 离开；构建阶段尚无 Flutter appId 时，热重载会提示稍后重试。终端关闭不作为停止信号。
 
@@ -140,7 +144,7 @@ FIFO 控制通道使用读写模式的保活 fd，Flutter stdin 单独以只读�
 
 Finder 在显示菜单和点击时分别检查项目，避免菜单打开后切换路径误执行。URL scheme 为 `jobsflutterrunner://run`，路径只作为数据参数；重复、畸形及含 NUL 的 URL 拒绝。终端请求载体使用私有目录与权限，路径中的空格、引号、反斜线、控制符均按数据转义；后台启动前再保存会话脚本，载体清理不影响 Worker。
 
-App Bundle 的业务资源恰为 `RunFlutterProject.zsh` 与 `FlutterRunner.jxa`。`EnableFinderExtension.zsh` 只在 Xcode Build Phase 使用，不是业务资源；隔离构建用 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过项目自定义启用阶段。
+App Bundle 的业务资源包括 `RunFlutterProject.zsh`、`FlutterRunner.jxa`、`SimulatorCreators/` 和[运行前体检模块](./Scripts/【MacOS】Flutter运行前体检.zsh/README.md)；启动载体保留完整相对结构。`EnableFinderExtension.zsh` 只在 Xcode Build Phase 使用，不是业务资源；隔离构建用 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过项目自定义启用阶段。
 
 ```mermaid
 flowchart TD
@@ -157,12 +161,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[RunFlutterProject.zsh 自述与根目录复核] --> B[查找项目 SDK 与设备]
-    B --> C{选择 iOS 且无模拟器?}
+    A[RunFlutterProject.zsh 自述与根目录复核] --> B[准备项目 SDK 与公共缓存]
+    B --> B1[展示 iOS / Android / 鸿蒙健康检查结果]
+    B1 --> C{选择 iOS 且无模拟器?}
     C -->|是| D[选择已安装 runtime 和设备型号并创建]
     C -->|否| E[选择已有设备]
     D --> E
-    E --> F{同项目与设备已有会话?}
+    E --> E1{所选运行平台检查全部通过?}
+    E1 -->|否| E2[显示缺项并停止运行]
+    E1 -->|是| E3[准备所选目标平台缓存]
+    E3 --> F{同项目与设备已有会话?}
     F -->|是| H[连接 run.log 与控制 FIFO]
     F -->|否| G[保存脚本快照并 bootstrap launchd Worker]
     G --> H

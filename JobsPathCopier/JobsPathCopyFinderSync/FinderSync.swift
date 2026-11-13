@@ -27,12 +27,18 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        let urls = candidateURLs()
+        let urls = menuKind == .contextualMenuForSidebar ? sidebarCandidateURLs() : candidateURLs()
         writeLog("menu kind=\(menuKind.rawValue), candidates=\(urls.map(\.path).joined(separator: " | "))")
-        guard menuKind == .contextualMenuForItems, urls.count == 1 else { return nil }
+        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForSidebar,
+              urls.count == 1 else {
+            return nil
+        }
 
         let menu = NSMenu(title: "")
-        let copyItem = NSMenuItem(title: "📋 复制绝对路径", action: #selector(copyAbsolutePath(_:)), keyEquivalent: "")
+        let action = menuKind == .contextualMenuForSidebar ? #selector(copyAbsolutePathFromSidebar(_:)) : #selector(copyAbsolutePath(_:))
+        let copyItem = NSMenuItem(title: "📋 复制绝对路径",
+                                  action: action,
+                                  keyEquivalent: "")
         copyItem.target = self
         copyItem.isEnabled = true
         menu.addItem(copyItem)
@@ -48,7 +54,14 @@ private extension FinderSync {
     }
 
     @objc func copyAbsolutePath(_ sender: Any?) {
-        let urls = candidateURLs()
+        copyAbsolutePath(urls: candidateURLs())
+    }
+
+    @objc func copyAbsolutePathFromSidebar(_ sender: Any?) {
+        copyAbsolutePath(urls: sidebarCandidateURLs())
+    }
+
+    func copyAbsolutePath(urls: [URL]) {
         var messages: [String] = []
         writeLog("action candidates=\(urls.map(\.path).joined(separator: " | "))")
 
@@ -72,6 +85,16 @@ private extension FinderSync {
         }
 
         showFailureAlert(messages: messages)
+    }
+
+    func sidebarCandidateURLs() -> [URL] {
+        guard let targetURL = FIFinderSyncController.default().targetedURL(),
+              targetURL.isFileURL,
+              targetURL.host.map({ $0.isEmpty || $0.lowercased() == "localhost" }) ?? true,
+              (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+            return []
+        }
+        return [targetURL.standardizedFileURL]
     }
 
     func candidateURLs() -> [URL] {

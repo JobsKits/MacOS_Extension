@@ -17,13 +17,23 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer,
+        guard menuKind == .contextualMenuForItems
+                || menuKind == .contextualMenuForContainer
+                || menuKind == .contextualMenuForSidebar,
               let projectURL = candidateURL(for: menuKind),
               validator.isFlutterProject(at: projectURL) else {
             return nil
         }
         let menu = NSMenu(title: "")
-        let action = menuKind == .contextualMenuForItems ? #selector(manageSelectedProject(_:)) : #selector(manageContainerProject(_:))
+        let action: Selector
+        switch menuKind {
+        case .contextualMenuForItems:
+            action = #selector(manageSelectedProject(_:))
+        case .contextualMenuForSidebar:
+            action = #selector(manageSidebarProject(_:))
+        default:
+            action = #selector(manageContainerProject(_:))
+        }
         let item = NSMenuItem(title: "🔀 安装/切换 Flutter SDK（FVM）", action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
@@ -32,6 +42,15 @@ final class FinderSync: FIFinderSync {
 
     private func candidateURL(for menuKind: FIMenuKind) -> URL? {
         let controller = FIFinderSyncController.default()
+        if menuKind == .contextualMenuForSidebar {
+            // 侧边栏目标独立于主区域的选中项，也不套用桌面空白处的过滤规则。
+            guard let targetURL = controller.targetedURL(), targetURL.isFileURL,
+                  targetURL.host == nil || targetURL.host == "" || targetURL.host == "localhost",
+                  (try? targetURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return targetURL.standardizedFileURL
+        }
         if menuKind == .contextualMenuForItems {
             guard let items = controller.selectedItemURLs(), items.count == 1 else {
                 return nil
@@ -51,6 +70,10 @@ final class FinderSync: FIFinderSync {
 
     @objc private func manageContainerProject(_ sender: NSMenuItem) {
         manageFlutter(for: .contextualMenuForContainer)
+    }
+
+    @objc private func manageSidebarProject(_ sender: NSMenuItem) {
+        manageFlutter(for: .contextualMenuForSidebar)
     }
 
     private func manageFlutter(for menuKind: FIMenuKind) {

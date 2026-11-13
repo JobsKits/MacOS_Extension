@@ -9,6 +9,182 @@
 # >>> Jobs Android simulator core >>>
 # JOBS_SDK_RETRY_BEGIN
 # 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+jobs_prompt_color_ready() {
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" '
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0) connector segment(right, 31)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31) "或" segment(substr(value, splitAt + length("或")), 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!kind || !color) return value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original) {
+      original = value
+      gsub(esc "\\[[0-9;]*m", "", value)
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return original
+      output = ""
+      inherited = 0
+      depth = 0
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited) boundary
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return output segment(value, inherited)
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1 }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
 jobs_sdk_stop_tree() {
     local root="$1" child=""
     for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
@@ -130,7 +306,7 @@ android_help() {
     android_log '用法：/bin/zsh 当前脚本 [--create | --prepare | --check | --help]'
     android_log '无参数：已有模拟器可启动或新建；没有已有设备时进入新建。'
     android_log '--create：仅进入新建流程，仍逐步选择并最终确认。'
-    android_log '--prepare：首屏回车后自动补齐、复检必要工具链，完成即退出；不查询系统映像、不创建设备。'
+    jobs_prompt_output android_log '--prepare：首屏回车后自动补齐、复检必要工具链，完成即退出；不查询系统映像、不创建设备。'
     android_log '--check：只读检查 SDK / Java / 工具 / 已装映像和已有 AVD；不联网、不安装、不新建设备、不写脚本日志。'
     android_log '网络：优先使用 ANDROID_SIM_PROXY 或 HTTPS_PROXY / ALL_PROXY，其次读取 macOS 静态代理；仅影响本次下载。'
     android_log '示例：ANDROID_SIM_PROXY=http://127.0.0.1:7890；也支持 socks5://主机:端口，direct 表示本次直连。PAC / 认证代理请使用已配置网络的 Android Studio SDK Manager。'
@@ -142,10 +318,10 @@ show_script_intro_and_wait() {
     android_log "当前脚本：${SCRIPT_PATH}"
     android_log '1、双击可启动已有 AVD，也可新建；桌面右键使用 --create 直接新建。'
     android_log '2、新建时先选完整设备清单，再选匹配 Apple Silicon / Intel 的手机或平板系统映像。'
-    android_log '3、首屏回车即授权本次自动体检、补齐或修复必要 SDK / Java / 命令行工具 / emulator；健康组件不升级。工具下载约数百 MB，选中映像可能数 GB，不再逐层询问安装。'
+    jobs_prompt_output android_log '3、首屏回车即授权本次自动体检、补齐或修复必要 SDK / Java / 命令行工具 / emulator；健康组件不升级。工具下载约数百 MB，选中映像可能数 GB，不再逐层询问安装。'
     android_log '4、不覆盖或清理任何现有 AVD，不安装 Homebrew，不改 Shell 配置或系统代理。'
     android_log '➤ SDK / Java 下载、清单和组件获取失败自动持续重试，无次数或总时长上限；Ctrl+C 主动结束。'
-    android_log '5、无映像时自动读取官方清单，选中后直接安装；SDK 许可证仍须本人阅读接受。列表回车选首项，q / Esc / Ctrl+C 取消；最后回车才创建。'
+    jobs_prompt_output android_log '5、无映像时自动读取官方清单，选中后直接安装；SDK 许可证仍须本人阅读接受。列表回车选首项，q / Esc / Ctrl+C 取消；最后回车才创建。'
     android_log "日志位置：${LOG_FILE}（确认后创建；--check / --help 不写日志）"
     if (( $# > 1 )); then
         android_log '✖ 参数过多。' '1;31'
@@ -164,7 +340,7 @@ show_script_intro_and_wait() {
         exit 1
     fi
     local answer=""
-    if ! IFS= read -r "?已了解用途，按回车继续，非空输入取消：" answer || [[ -n "$answer" ]]; then
+    if ! IFS= read -r "?$(jobs_prompt_render "已了解用途，按回车继续，非空输入取消：")" answer || [[ -n "$answer" ]]; then
         android_log '➤ 已取消，未执行后续操作。'
         exit 0
     fi
@@ -803,7 +979,7 @@ android_choose() {
         android_log "${index}、${rows[index]%%$'\t'*}"
     done
     while true; do
-        if ! IFS= read -r "?输入编号（回车选第 1 项，q 取消）：" answer || [[ "$answer" == [qQ] || "$answer" == $'\e' ]]; then
+        if ! IFS= read -r "?$(jobs_prompt_render "输入编号（回车选第 1 项，q 取消）：")" answer || [[ "$answer" == [qQ] || "$answer" == $'\e' ]]; then
             return 130
         fi
         [[ -n "$answer" ]] || answer=1
@@ -936,7 +1112,7 @@ android_name_exists() {
 android_choose_name() {
     local default_name="$1" answer=""
     while true; do
-        if ! IFS= read -r "?新 AVD 名称（回车用 ${default_name}；q 取消）：" answer || [[ "$answer" == [qQ] ]]; then
+        if ! IFS= read -r "?$(jobs_prompt_render "新 AVD 名称（回车用 ${default_name}；q 取消）：")" answer || [[ "$answer" == [qQ] ]]; then
             return 130
         fi
         [[ -n "$answer" ]] || answer="$default_name"
@@ -964,6 +1140,28 @@ android_launch() {
     android_log "✔ 模拟器启动进程已保持运行（PID ${pid}）；Android 开机仍需等待。关闭终端不会主动停止它。" '1;32'
     android_log "➤ emulator 日志：${launch_log}"
 }
+# 仅向父运行器预建的空普通文件交接精确设备标识，不创建路径或跟随符号链接。
+android_publish_created_device() (
+    local created_file="${JOBS_FLUTTER_CREATED_DEVICE_FILE:-}" created_fd="" result=0
+    [[ -n "$created_file" ]] || return 0
+    if [[ ! -f "$created_file" || -L "$created_file" || -s "$created_file" || ! -O "$created_file" ]]; then
+        android_log "✖ 模拟器已创建，但设备交接文件无效；须为本用户预建的空普通文件：${created_file}"
+        return 1
+    fi
+    # 系统 zsh 的 sysopen 不接受含中文的完整路径，父目录由原生 cd 处理。
+    if ! cd -- "${created_file:h}" || ! zmodload zsh/system || ! sysopen -w -o nofollow,nonblock -u created_fd "${created_file:t}"; then
+        android_log "✖ 模拟器已创建，但无法打开设备交接文件：${created_file}"
+        return 1
+    fi
+    if [[ -f "/dev/fd/$created_fd" && ! -s "/dev/fd/$created_fd" && -O "/dev/fd/$created_fd" ]]; then
+        print -r -- $'android\t'"$ANDROID_SIM_NEW_AVD" >&$created_fd || result=1
+    else
+        result=1
+    fi
+    exec {created_fd}>&-
+    (( result == 0 )) || android_log "✖ 模拟器已创建，但设备交接失败；保留设备，请重新选择：${created_file}"
+    return "$result"
+)
 # 按实际 SDK 型号、架构映像和无冲突名称新增 AVD，不使用 --force 或 wipe。
 android_create() {
     local rows="" device_id api default_name answer="" result=0
@@ -981,7 +1179,7 @@ android_create() {
     default_name="${device_id}_API_${api}_${ANDROID_SIM_ABI//-/_}"
     android_choose_name "$default_name" || return $?
     android_log "➤ 即将新建：${ANDROID_SIM_NEW_AVD}；设备：${device_id}；系统：${ANDROID_SIM_IMAGE}"
-    if ! IFS= read -r "?按回车创建并启动，任意非空输入取消：" answer || [[ -n "$answer" ]]; then
+    if ! IFS= read -r "?$(jobs_prompt_render "按回车创建并启动，任意非空输入取消：")" answer || [[ -n "$answer" ]]; then
         return 130
     fi
     if android_name_exists "$ANDROID_SIM_NEW_AVD"; then
@@ -1000,7 +1198,8 @@ android_create() {
         return 1
     fi
     android_log "✔ 已新增 AVD：${ANDROID_SIM_NEW_AVD}" '1;32'
-    android_launch "$ANDROID_SIM_NEW_AVD"
+    android_launch "$ANDROID_SIM_NEW_AVD" || return $?
+    android_publish_created_device
 }
 # 双击入口保留已有设备启动能力，同时显式提供新增入口。
 android_menu() {
@@ -1037,7 +1236,7 @@ android_check() {
     if [[ -n "$installed" ]]; then
         count="$(print -r -- "$installed" | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
         android_log "✔ 已装匹配架构的手机 / 平板系统映像：${count} 个" '1;32'
-        android_log "➤ 回车首选系统映像：${installed%%$'\n'*}"
+        jobs_prompt_output android_log "➤ 回车首选系统映像：${installed%%$'\n'*}"
     else
         android_log "⚠ 尚无完整的 ${ANDROID_SIM_ABI} 手机 / 平板系统映像；交互新建时可选择官方下载安装。" '1;33'
         failures=$((failures + 1))

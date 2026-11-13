@@ -17,7 +17,8 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer,
+        guard menuKind == .contextualMenuForItems || menuKind == .contextualMenuForContainer
+                || menuKind == .contextualMenuForSidebar,
               let candidate = candidateURL(for: menuKind), validator.isIOSProject(at: candidate) else {
             return nil
         }
@@ -37,7 +38,8 @@ final class FinderSync: FIFinderSync {
                 $0.byTarget(self)
             }
             // tag 只传固定动作和菜单种类，路径在点击时重新读取。
-            item.tag = IOSToolsAction.allCases.firstIndex(of: action)! * 2 + (menuKind == .contextualMenuForItems ? 1 : 0)
+            let context = menuKind == .contextualMenuForSidebar ? 2 : (menuKind == .contextualMenuForItems ? 1 : 0)
+            item.tag = IOSToolsAction.allCases.firstIndex(of: action)! * 3 + context
             tools.byAddItem(item)
         }
         return menu
@@ -51,16 +53,28 @@ final class FinderSync: FIFinderSync {
             }
             return urls.first
         }
+        if kind == .contextualMenuForSidebar {
+            guard let target = controller.targetedURL(), target.isFileURL,
+                  (target.host == nil || target.host == "" || target.host?.lowercased() == "localhost"),
+                  (try? target.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            return target.standardizedFileURL
+        }
+        guard kind == .contextualMenuForContainer else {
+            return nil
+        }
         return controller.targetedURL()
     }
 
     @objc private func performAction(_ sender: NSMenuItem) {
-        let index = sender.tag / 2
+        let index = sender.tag / 3
         guard IOSToolsAction.allCases.indices.contains(index) else {
             return
         }
         let action = IOSToolsAction.allCases[index]
-        let kind: FIMenuKind = sender.tag % 2 == 1 ? .contextualMenuForItems : .contextualMenuForContainer
+        let context = sender.tag % 3
+        let kind: FIMenuKind = context == 2 ? .contextualMenuForSidebar : (context == 1 ? .contextualMenuForItems : .contextualMenuForContainer)
         guard IOSFeatureConfiguration.enabledFeatures().contains(action),
               let project = candidateURL(for: kind), validator.supports(action, at: project),
               let request = IOSToolsRequest.url(for: project, action: action), NSWorkspace.shared.open(request) else {

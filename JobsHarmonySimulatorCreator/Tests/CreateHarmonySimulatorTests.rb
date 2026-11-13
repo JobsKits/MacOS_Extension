@@ -2,6 +2,245 @@
 # Created by Jobs on 2026年10月23日，星期五。
 # 用假 Emulator 与真实 zsh / JXA 验证官方命令契约，不下载、安装或操作真实模拟器。
 
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
 require 'fileutils'
 require 'digest'
 require 'json'
@@ -103,6 +342,16 @@ class CreateHarmonySimulatorTests < Minitest::Test
         puts '官方许可：请自行选择 y/n'
         response = STDIN.gets.to_s.strip
         File.write(ENV.fetch('HS_TEST_LICENSE'), response)
+        if ENV['HS_TEST_HDC_PORT']
+          records = JSON.parse(File.read(ENV.fetch('HS_TEST_INSTANCES')))
+          records.each do |record|
+            next unless record['name'] == ARGV[1]
+            record['isRunning'] = true
+            record['hw.hdc.port'] = ENV.fetch('HS_TEST_HDC_PORT')
+            record['sdkPath'] = ENV.fetch('HS_TEST_INSTANCE_SDK')
+          end
+          File.write(ENV.fetch('HS_TEST_INSTANCES'), JSON.generate(records))
+        end
         exit ENV.fetch('HS_TEST_START_EXIT', '0').to_i
       else
         abort 'Unexpected operation: ' + ARGV.inspect
@@ -226,6 +475,88 @@ class CreateHarmonySimulatorTests < Minitest::Test
     assert_empty calls
     assert_empty Dir.children(@run)
     refute_includes out, "\e["
+  end
+
+  def test_tools_only_reuses_sdk_without_requiring_emulator_or_images
+    root = File.join(@root, 'healthy toolchain')
+    sdk = File.join(root, 'sdk/default/openharmony')
+    FileUtils.mkdir_p(%w[ets native toolchains].map { |name| File.join(sdk, name) })
+    hdc = File.join(sdk, 'toolchains/hdc')
+    File.write(hdc, "#!/bin/sh\nexit 0\n")
+    File.chmod(0o700, hdc)
+    receipt = File.join(@root, 'tools-receipt')
+    File.write(receipt, '')
+    out, err, result = shell(<<~ZSH, env: {'DEVECO_STUDIO_HOME' => root, 'DEVECO_SDK_HOME' => nil, 'OHOS_SDK_HOME' => nil, 'JOBS_HARMONY_TOOLS_RECEIPT' => receipt})
+      hs_install_clt() { print UNEXPECTED_INSTALL; return 91; }
+      hs_install_image() { print UNEXPECTED_IMAGE; return 92; }
+      hs_prepare_tools_only
+    ZSH
+    assert result.success?, out + err
+    assert_equal "#{root}\n", File.read(receipt)
+    refute_includes out, 'UNEXPECTED'
+    assert_empty calls
+  end
+
+  def test_tools_only_installs_missing_clt_then_requests_personal_license_without_images
+    root = File.join(@root, 'new toolchain')
+    receipt = File.join(@root, 'tools-receipt')
+    File.write(receipt, '')
+    out, err, result = shell(<<~ZSH, env: {'DEVECO_STUDIO_HOME' => nil, 'TOOL_HOME' => nil, 'DEVECO_SDK_HOME' => nil, 'OHOS_SDK_HOME' => nil, 'JOBS_HARMONY_TOOLS_RECEIPT' => receipt})
+      hs_find_toolchain_root() { return 3; }
+      hs_install_clt() {
+        print INSTALLED_CLT
+        /bin/mkdir -p #{File.join(root, 'sdk/default/openharmony/ets').shellescape} #{File.join(root, 'sdk/default/openharmony/native').shellescape} #{File.join(root, 'sdk/default/openharmony/toolchains').shellescape}
+        print '#!/bin/sh' > #{File.join(root, 'sdk/default/openharmony/toolchains/hdc').shellescape}
+        /bin/chmod 700 #{File.join(root, 'sdk/default/openharmony/toolchains/hdc').shellescape}
+        HS_BIN=#{File.join(root, 'emulator/Emulator').shellescape}
+      }
+      hs_review_licenses() { print PERSONALLY_REVIEWED_LICENSE; }
+      hs_install_image() { print UNEXPECTED_IMAGE; return 92; }
+      hs_prepare_tools_only
+    ZSH
+    assert result.success?, out + err
+    assert_match(/INSTALLED_CLT.*PERSONALLY_REVIEWED_LICENSE/m, out)
+    assert_equal "#{root}\n", File.read(receipt)
+    refute_includes out, 'UNEXPECTED_IMAGE'
+    assert_empty calls
+  end
+
+  def test_tools_only_and_readonly_mode_are_mutually_exclusive
+    out, err, result = invoke('--tools-only', '--check')
+    refute result.success?, out + err
+    assert_empty calls
+    refute File.exist?(@curl_calls)
+  end
+
+  def test_tools_only_package_install_does_not_require_emulator_create_capability
+    prepared = File.join(@root, 'tools-package')
+    FileUtils.mkdir_p(prepared)
+    system('/usr/bin/tar', '-xf', @archive, '-C', prepared, exception: true)
+    package = File.join(prepared, 'command-line-tools')
+    sdk = File.join(package, 'sdk/default/openharmony')
+    FileUtils.mkdir_p(%w[ets native toolchains].map { |name| File.join(sdk, name) })
+    hdc = File.join(sdk, 'toolchains/hdc')
+    File.write(hdc, "#!/bin/sh\nexit 0\n")
+    File.chmod(0o700, hdc)
+    archive = File.join(@root, 'tools-sdk.zip')
+    system('/usr/bin/ditto', '-c', '-k', '--keepParent', package, archive, exception: true)
+    stage = File.join(@root, '.install.tools-only')
+    tools = File.join(@root, 'published-tools')
+    FileUtils.mkdir_p([stage, tools])
+    out, err, result = shell(<<~ZSH)
+      HS_TOOLS_ONLY=1
+      HS_CLT_SIZE=#{File.size(archive)}
+      HS_CLT_SHA256=#{Digest::SHA256.file(archive).hexdigest.shellescape}
+      HS_TOOLS_HOME=#{tools.shellescape}
+      HS_INSTALL_STAGE=#{stage.shellescape}
+      HARMONY_CLT_ARCHIVE=#{archive.shellescape}
+      hs_check_capabilities() { print UNEXPECTED_CREATE_PROBE; return 97; }
+      hs_perform_clt_install
+    ZSH
+    assert result.success?, out + err
+    refute_includes out, 'UNEXPECTED_CREATE_PROBE'
+    assert Dir.glob(File.join(tools, 'clt-*/sdk/default/openharmony/toolchains/hdc')).any?
+    assert_empty calls
   end
 
   def install_sdk_fixture
@@ -740,6 +1071,110 @@ class CreateHarmonySimulatorTests < Minitest::Test
     assert result.success?, out
     assert_match(/已验证新建实例：JobsHarmony_phone_\d{8}_\d{6}/, out)
     assert_equal 1, calls.count { |call| call.first == '-create' }
+  end
+
+  def test_creator_without_start_leaves_receipt_empty
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    out, result = interactive('--create', '--name', 'JobsPhone', '--no-start', env: {'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt})
+    assert result.success?, out
+    assert_includes out, '新实例未请求启动'
+    assert_empty File.read(receipt)
+    assert_equal 1, calls.count { |call| call.first == '-create' }
+  end
+
+  def prepare_hdc(targets)
+    sdk = File.join(@root, 'SDK 中文')
+    hdc = File.join(sdk, 'default/openharmony/toolchains/hdc')
+    FileUtils.mkdir_p(File.dirname(hdc))
+    File.write(hdc, "#!/bin/zsh\n[[ \"$*\" == 'list targets' ]] || exit 42\nprint -r -- #{targets.shellescape}\n")
+    File.chmod(0o700, hdc)
+    sdk
+  end
+
+  def test_created_device_receipt_requires_exact_hdc_target_from_instance_sdk
+    sdk = prepare_hdc("phone-other\n127.0.0.1:10444")
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    out, result = interactive('--create', '--name', 'JobsPhone', input: "\n\n\n\n\ny\n", env: {
+      'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt, 'HS_TEST_HDC_PORT' => '10444',
+      'HS_TEST_INSTANCE_SDK' => sdk, 'JOBS_HARMONY_CREATED_DEVICE_WAIT_SECONDS' => '0'
+    })
+    assert result.success?, out
+    assert_equal "harmony\t127.0.0.1:10444\n", File.read(receipt)
+    assert_includes out, '已确认新实例 HDC 目标'
+    assert_equal 1, calls.count { |call| call.first == '-create' }
+    assert_equal 1, calls.count { |call| call.first == '-start' }
+  end
+
+  def test_receipt_never_uses_another_hdc_target_or_unconfirmed_metadata
+    sdk = prepare_hdc('127.0.0.1:10001')
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    record = {name: 'JobsPhone', isRunning: true, sdkPath: sdk, instancePath: File.join(@root, 'JobsPhone'), 'hw.hdc.port' => 10444}
+    [record, record.merge('hw.hdc.port' => 0), record.merge(isRunning: false)].each do |instance|
+      File.write(@instances, JSON.generate([instance]))
+      out, err, result = shell('HS_BIN="$HARMONY_EMULATOR_BIN"; HS_NAME=JobsPhone; hs_wait_and_publish_created_device', env: {
+        'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt, 'JOBS_HARMONY_CREATED_DEVICE_WAIT_SECONDS' => '0'
+      })
+      assert result.success?, out + err
+      assert_empty File.read(receipt)
+      assert_includes out, '不自动选择其它设备'
+    end
+  end
+
+  def test_connection_metadata_accepts_flat_and_nested_port_and_rejects_conflicts
+    base = {name: 'JobsPhone', isRunning: true, instancePath: '/fixture/JobsPhone', sdkPath: '/fixture/sdk'}
+    [base.merge('hw.hdc.port' => 10444), base.merge(hw: {hdc: {port: '10444'}})].each do |record|
+      out, err, result = shell("hs_json connection #{JSON.generate([record]).shellescape} JobsPhone")
+      assert result.success?, out + err
+      assert_equal "127.0.0.1:10444\t/fixture/sdk\t/fixture/JobsPhone", out.strip
+    end
+    record = base.merge('hw.hdc.port' => 10444, hw: {hdc: {port: 10445}})
+    _out, _err, result = shell("hs_json connection #{JSON.generate([record]).shellescape} JobsPhone")
+    refute result.success?
+    record = base.merge('hw.hdc.port' => 10444)
+    other = record.merge(name: 'Other')
+    _out, _err, result = shell("hs_json connection #{JSON.generate([record, other]).shellescape} JobsPhone")
+    refute result.success?
+  end
+
+  def test_receipt_uses_same_instance_config_sdk_and_refuses_conflicting_metadata
+    sdk = prepare_hdc('127.0.0.1:10444')
+    directory = File.join(@root, 'JobsPhone')
+    FileUtils.mkdir_p(directory)
+    File.write(File.join(directory, 'config.ini'), "name=JobsPhone\nsdkPath=#{sdk}\n")
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    record = {name: 'JobsPhone', isRunning: true, instancePath: directory, 'hw.hdc.port' => 10444}
+    File.write(@instances, JSON.generate([record]))
+    out, err, result = shell('HS_BIN="$HARMONY_EMULATOR_BIN"; HS_NAME=JobsPhone; hs_wait_and_publish_created_device', env: {
+      'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt, 'JOBS_HARMONY_CREATED_DEVICE_WAIT_SECONDS' => '0'
+    })
+    assert result.success?, out + err
+    assert_equal "harmony\t127.0.0.1:10444\n", File.read(receipt)
+    File.write(receipt, '')
+    File.write(@instances, JSON.generate([record.merge(sdkPath: @root)]))
+    out, err, result = shell('HS_BIN="$HARMONY_EMULATOR_BIN"; HS_NAME=JobsPhone; hs_wait_and_publish_created_device', env: {
+      'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt, 'JOBS_HARMONY_CREATED_DEVICE_WAIT_SECONDS' => '0'
+    })
+    assert result.success?, out + err
+    assert_empty File.read(receipt)
+    assert_includes out, 'SDK 配置冲突'
+  end
+
+  def test_harmony_receipt_rejects_missing_symlink_and_nonempty_files
+    target = File.join(@root, 'keep')
+    link = File.join(@root, 'linked-device')
+    File.write(target, 'preserve')
+    File.symlink(target, link)
+    [File.join(@root, 'missing-device'), link, target].each do |receipt|
+      out, err, result = shell('hs_publish_created_device 127.0.0.1:10444', env: {'JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt})
+      refute result.success?, out + err
+      assert_includes err, '设备交接文件无效'
+      assert_equal 'preserve', File.read(target)
+    end
+    refute File.exist?(File.join(@root, 'missing-device'))
   end
 
   def test_name_policy_rejects_native_invalid_names_before_querying_or_creating

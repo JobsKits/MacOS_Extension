@@ -1,0 +1,157 @@
+ObjC.import('Foundation');
+// Jobs：严格解析官方清单；记录身份包含名称、路径和系统版本，重查时不能换成同名实例。
+function run(argv) {
+  function read(path) {
+    var error = Ref(), value = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, error);
+    if (!value) throw Error('无法读取清单');
+    var s = ObjC.unwrap(value); if (s.length > 1000000) throw Error('清单过大'); return s;
+  }
+  function text(s) { if (typeof s !== 'string' || !s || /[\u0000-\u001f\u007f-\u009f]/.test(s)) throw Error('无效实例字段'); return s; }
+  function hash(s) {
+    var task=$.NSTask.alloc.init, input=$.NSPipe.pipe, output=$.NSPipe.pipe;
+    task.launchPath='/usr/bin/shasum'; task.arguments=['-a','256']; task.standardInput=input; task.standardOutput=output;
+    task.launch;
+    input.fileHandleForWriting.writeData($(s).dataUsingEncoding($.NSUTF8StringEncoding)); input.fileHandleForWriting.closeFile;
+    var value=ObjC.unwrap($.NSString.alloc.initWithDataEncoding(output.fileHandleForReading.readDataToEndOfFile,$.NSUTF8StringEncoding));
+    task.waitUntilExit;
+    if (task.terminationStatus!==0 || !/^[0-9a-f]{64} /.test(value)) throw Error('实例配置摘要失败');
+    return value.substring(0,64);
+  }
+  function fileStamp(attrs) {
+    var device=attrs.objectForKey('NSFileSystemNumber'), inode=attrs.objectForKey('NSFileSystemFileNumber'), created=attrs.objectForKey('NSFileCreationDate');
+    if (!device||!inode||!created) throw Error('实例文件身份不可验证');
+    return [ObjC.unwrap(device.stringValue),ObjC.unwrap(inode.stringValue),ObjC.unwrap(created.description)];
+  }
+  function configIdentity(path) {
+    var error=Ref(), attrs=$.NSFileManager.defaultManager.attributesOfItemAtPathError(path+'/config.ini',error);
+    if (!attrs) throw Error('实例config.ini缺失');
+    var a=ObjC.deepUnwrap(attrs);
+    if (a.NSFileType!=='NSFileTypeRegular' || Number(a.NSFileSize)>1000000) throw Error('实例配置不是普通小文件');
+    var content=read(path+'/config.ini'), stable=content.split(/\r?\n/).filter(function(line) {
+      return /^(?:name|uuid|deviceType|os\.osVersion|imagePath|imageRoot|sdkPath|harmonyos\.sdk\.path|hw\.deviceType|AvdId|avd\.ini\.displayname|image\.sysdir\.1|abi\.type|tag\.id|hw\.cpu\.arch)=/.test(line);
+    }).sort().join('\n');
+    var id=fileStamp(attrs);
+    return [JSON.stringify(id)+':'+hash(stable),hash(content)];
+  }
+  if (argv[0]==='avd-identity') {
+    var ini=argv[1]+'/'+text(argv[2])+'.ini', rawAttrs=$.NSFileManager.defaultManager.attributesOfItemAtPathError(ini,null), attrs=rawAttrs?ObjC.deepUnwrap(rawAttrs):null;
+    if (!attrs || attrs.NSFileType!=='NSFileTypeRegular' || Number(attrs.NSFileSize)>1000000) throw Error('AVD .ini不是普通文件');
+    var content=read(ini), paths=content.split(/\r?\n/).filter(function(line) { return /^path=/.test(line); });
+    if (paths.length!==1) throw Error('AVD路径不唯一');
+    var path=text(paths[0].substring(5));
+    if (path.charAt(0)!=='/') throw Error('AVD路径不是绝对路径');
+    return JSON.stringify([argv[2],path,fileStamp(rawAttrs),hash(content),configIdentity(path)[0]]);
+  }
+  if (argv[0]==='ios-ready') {
+    var inventory=JSON.parse(read(argv[1]));
+    if (!inventory || !Array.isArray(inventory.runtimes)) throw Error('iOS Runtime清单不完整');
+    return String(inventory.runtimes.some(function(r) { return r && r.isAvailable===true && /^com\.apple\.CoreSimulator\.SimRuntime\.iOS-/.test(r.identifier); }));
+  }
+  if (argv[0] === 'android-updates') {
+    var report = read(argv[1]), section = '', phase = 0, updates = [];
+    var tables = Object.create(null), order = ['Installed packages:', 'Available Packages:', 'Available Updates:'];
+    var headers = {
+      'Installed packages:': ['Path', 'Version', 'Description', 'Location'],
+      'Available Packages:': ['Path', 'Version', 'Description'],
+      'Available Updates:': ['ID', 'Installed', 'Available']
+    };
+    if (/(?:^|[\r\n])\s*(?:Warning|Error|Exception|Failed)\b|Failed to (?:download|fetch|parse)|Errors during XML parse|IOException|UnknownHostException|Read timed out/i.test(report)) {
+      throw Error('SDK远程清单包含获取失败或警告，不能当作无更新');
+    }
+    function fields(line) {
+      return line.split('|').map(function(value) { return value.trim(); });
+    }
+    function version(value) {
+      if (!/^\d+(?:\.\d+){0,3}$/.test(value)) throw Error('启动组件版本不是可核验的正式数字版本');
+      var parts = value.split('.').map(Number);
+      if (parts.some(function(part) { return !isFinite(part) || part > 9007199254740991; })) throw Error('启动组件版本超出范围');
+      return parts;
+    }
+    function compare(left, right) {
+      var a = version(left), b = version(right);
+      for (var i = 0; i < Math.max(a.length, b.length); i++) {
+        if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
+      }
+      return 0;
+    }
+    report.split(/\r\n|\r|\n/).forEach(function(raw) {
+      var line = raw.trim();
+      if (!line) return;
+      if (Object.prototype.hasOwnProperty.call(headers, line)) {
+        if (section && phase !== 2) throw Error('SDK表格在表头完成前截断');
+        if (tables[line] || (section && order.indexOf(line) <= order.indexOf(section))) throw Error('SDK表格顺序或唯一性无效');
+        if (!section && line !== order[0]) throw Error('SDK已安装清单缺失');
+        section = line;
+        tables[section] = Object.create(null);
+        phase = 0;
+        return;
+      }
+      if (!section) return;
+      var row = fields(line), expected = headers[section];
+      if (row.length !== expected.length) throw Error('SDK表格列数不完整');
+      if (phase === 0) {
+        if (row.join('|') !== expected.join('|')) throw Error('SDK表格表头无效');
+        phase = 1;
+        return;
+      }
+      if (phase === 1) {
+        if (!row.every(function(value) { return /^-+$/.test(value); })) throw Error('SDK表格分隔行无效');
+        phase = 2;
+        return;
+      }
+      if (!/^[A-Za-z0-9_.;-]+$/.test(row[0]) || row.some(function(value) { return !value; })) throw Error('SDK包记录不完整');
+      if (Object.prototype.hasOwnProperty.call(tables[section], row[0])) throw Error('SDK包记录重复');
+      tables[section][row[0]] = row;
+      if (/^(emulator|platform-tools)$/.test(row[0])) {
+        version(row[1]);
+        if (section === order[2]) version(row[2]);
+      }
+    });
+    if (!tables[order[0]] || !tables[order[1]] || phase !== 2) throw Error('SDK正式远程清单未完整返回');
+    ['emulator', 'platform-tools'].forEach(function(id) {
+      var installed = tables[order[0]][id], available = tables[order[1]][id];
+      var listed = tables[order[2]] && tables[order[2]][id];
+      if (!available) throw Error('SDK远程清单缺少所需正式启动组件');
+      if (listed && (!installed || compare(listed[1], installed[1]) !== 0 || compare(listed[2], available[1]) !== 0)) throw Error('SDK更新记录与完整清单不一致');
+      if (!installed) {
+        updates.push(id);
+      } else if (compare(available[1], installed[1]) > 0) {
+        if (!listed) throw Error('SDK更新清单截断，不能当作无更新');
+        updates.push(id);
+      } else if (listed) {
+        throw Error('SDK更新记录未指向更高正式版本');
+      }
+    });
+    return updates.join('\n');
+  }
+  var data=read(argv[1]).trim(), records=data==='[Empty]'?[]:JSON.parse(data);
+  if (records && !Array.isArray(records) && typeof records.name==='string') records=[records];
+  if (!Array.isArray(records)) throw Error('无效官方实例清单');
+  if (records.length>128) throw Error('实例清单超过有界解析上限');
+  var expectedFields=null;
+  if (argv[0]==='record'||argv[0]==='verify-record') {
+    if (argv[2].indexOf('__harmony_instance__:')!==0) throw Error('无效原实例身份');
+    expectedFields=JSON.parse(decodeURIComponent(argv[2].substring('__harmony_instance__:'.length)));
+    if (!Array.isArray(expectedFields)||expectedFields.length!==7) throw Error('原实例身份不完整');
+  }
+  var seen=Object.create(null), rows=[];
+  records.forEach(function(r) {
+    if (!r || Array.isArray(r) || typeof r!=='object') throw Error('无效实例');
+    var name=text(r.name), path=text(r.instancePath), type=text(r.deviceType), version=text(r['os.osVersion']||(r.os&&r.os.osVersion));
+    if (name.charAt(0)==='-' || path.charAt(0)!=='/' || path==='/') throw Error('实例身份无效');
+    if (seen[name]) throw Error('实例名称不唯一'); seen[name]=true;
+    if (expectedFields && name!==expectedFields[0]) return;
+    var identity=configIdentity(path), uuid=r.uuid===undefined?'':text(r.uuid);
+    var fields=[name,path,type,version,uuid,identity[0],identity[1]];
+    var key='__harmony_instance__:'+encodeURIComponent(JSON.stringify(fields));
+    if (argv[0]==='rows') rows.push(key+'\t'+name+' — '+type+' / '+version+(String(r.isRunning)==='true'?'（已启动）':''));
+    else if (argv[0]==='record' && key===argv[2]) rows.push([name,path,type,version].join('\t'));
+    else if (argv[0]==='verify-record') {
+      if (argv[2].indexOf('__harmony_instance__:')!==0) throw Error('无效原实例身份');
+      if (JSON.stringify(fields.slice(0,6))===JSON.stringify(expectedFields.slice(0,6))) rows.push([name,path,type,version].join('\t'));
+    }
+  });
+  if ((argv[0]==='record'||argv[0]==='verify-record') && rows.length!==1) throw Error('原实例已变化或不存在，未选择其它实例');
+  if (argv[0]!=='rows' && argv[0]!=='record' && argv[0]!=='verify-record') throw Error('未知模式');
+  return rows.join('\n');
+}

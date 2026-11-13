@@ -1,0 +1,136 @@
+ObjC.import('Foundation');
+// Jobs：只解析数据；公开版本说明与下载目录分别取证，任何响应都不作为代码执行。
+function read(path) {
+    var error = Ref(), value = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, error);
+    if (!value) throw Error('无法读取官方响应。');
+    var text = ObjC.unwrap(value);
+    if (text.length > 2097152) throw Error('官方响应超过读取上限。');
+    return text;
+}
+function text(value) {
+    if (typeof value !== 'string' || !value || value.length > 2048 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) throw Error('官方元数据字符串无效。');
+    return value;
+}
+function version(value) {
+    if (typeof value !== 'string' || !/^6\.1\.\d{1,5}\.\d{1,8}$/.test(value)) throw Error('未能确认兼容的 6.1 正式 CLT 版本。');
+    return value;
+}
+function compare(a, b) {
+    var left = a.split('.').map(Number), right = b.split('.').map(Number);
+    for (var i = 0; i < 4; i++) if (left[i] !== right[i]) return left[i] > right[i] ? 1 : -1;
+    return 0;
+}
+function plain(html) {
+    return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/\s+/g, ' ').trim();
+}
+function response(path) {
+    var data = JSON.parse(read(path));
+    if (!data || Array.isArray(data) || typeof data !== 'object') throw Error('官方响应不是 JSON 对象。');
+    if (data.returnCode !== undefined) {
+        if (data.returnCode !== 0 && data.returnCode !== '0') throw Error('官方认证或服务未就绪：' + String(data.returnCode));
+        if (typeof data.resJson !== 'string') throw Error('官方服务封装缺少 resJson。');
+        data = JSON.parse(data.resJson);
+    }
+    return data;
+}
+function publicRelease(path, current, versionFile) {
+    var data = response(path), document = data.value;
+    if (data.code !== 0 || !document || String(document.status) !== '4' || document.lang !== 'en' ||
+        document.fileName !== 'deveco-studio-new-features-611' || !document.content || typeof document.content.content !== 'string') {
+        throw Error('公开正式版本说明未完整返回，不能确认是否已有更新。');
+    }
+    var html = document.content.content, headings = [], match;
+    var heading = /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+    while ((match = heading.exec(html))) {
+        var title = plain(match[1]);
+        if (/^DevEco Studio\s/.test(title)) headings.push({title: title, start: heading.lastIndex, end: match.index});
+    }
+    var releases = [];
+    headings.forEach(function (item, index) {
+        var title = item.title.match(/^DevEco Studio (6\.1\.\d+) Release \((6\.1\.\d+\.\d+)\)$/);
+        if (!title) return;
+        var build = version(title[2]);
+        if (build.substring(0, build.lastIndexOf('.')) !== title[1]) throw Error('正式版本标题与构建号不一致。');
+        var section = html.substring(item.start, index + 1 < headings.length ? headings[index + 1].end : html.length);
+        var rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi, row, versions = [];
+        while ((row = rowPattern.exec(section))) {
+            var cells = [], cellPattern = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi, cell;
+            while ((cell = cellPattern.exec(row[1]))) cells.push(plain(cell[1]));
+            if (cells[0] === 'Command Line') versions.push(cells[1]);
+        }
+        if (versions.length !== 1 || versions[0] !== build) throw Error('正式说明缺少唯一且一致的 Command Line 版本行。');
+        releases.push(build);
+    });
+    if (!releases.length) throw Error('公开说明未提供可验证的兼容 Release。');
+    releases.sort(compare);
+    var latest = releases[releases.length - 1];
+    if (current) {
+        version(current);
+        if (!versionFile || read(versionFile).trim() !== current) throw Error('本机 CLT version.txt 与所报版本不一致；不能使用 Emulator、IDE 或 SDK 版本代替。');
+    }
+    return {schemaVersion: 1, state: current && compare(current, latest) >= 0 ? 'ready' : 'update', version: latest,
+        currentVersion: current || '', compatibilityLine: '6.1', releaseDocument: 'deveco-studio-new-features-611',
+        source: 'https://developer.huawei.com/consumer/en/doc/doccenter-release-notes/deveco-studio-new-features-611/'};
+}
+function identifier(value) {
+    if (typeof value === 'number' && isFinite(value) && Math.floor(value) === value && value > 0 && value <= 9007199254740991) return value;
+    if (typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,256}$/.test(value)) return value;
+    throw Error('官方软件包标识无效。');
+}
+function catalog(path, platform, minimum) {
+    var data = response(path);
+    if (data.code !== '00000' || !data.value || !Array.isArray(data.value.versionTypeList) ||
+        !/^Command Line Tools(?: for (?:HarmonyOS|HMOS))?$/i.test(String(data.value.toolName || ''))) throw Error('官方 CLT 目录未完整返回。');
+    var groups = data.value.versionTypeList.filter(function (item) { return item && item.osType === Number(platform); });
+    if (groups.length !== 1 || !Array.isArray(groups[0].versionList) || !groups[0].versionList.length) throw Error('官方目录没有唯一的本机架构版本列表。');
+    var candidates = [], seen = Object.create(null);
+    groups[0].versionList.forEach(function (item) {
+        if (!item || typeof item !== 'object' || typeof item.versionName !== 'string') throw Error('官方版本条目格式无效。');
+        if (!/\bRelease\b/i.test(item.versionName) || /\b(?:Beta|Preview|Alpha|Canary|Candidate|RC)\b/i.test(item.versionName)) return;
+        if (typeof item.buildVersion !== 'string') throw Error('正式 CLT 缺少构建号。');
+        if (!/^6\.1\./.test(item.buildVersion)) return;
+        var build = version(item.buildVersion), base = build.substring(0, build.lastIndexOf('.'));
+        if (item.versionName.indexOf(base) < 0 || seen[build]) throw Error('正式 CLT 名称或版本唯一性无效。');
+        seen[build] = true;
+        if (!Array.isArray(item.packageList)) throw Error('正式 CLT 缺少软件包列表。');
+        var escaped = build.replace(/\./g, '\\.'), expression = Number(platform) === 3 ?
+            '^commandline-tools-mac-arm64-' + escaped + '\\.zip$' : '^commandline-tools-mac(?:-x64|-x86_64)?-' + escaped + '\\.zip$';
+        var packages = item.packageList.filter(function (entry) { return entry && new RegExp(expression).test(String(entry.packageName || '')); });
+        if (packages.length !== 1) throw Error('正式 CLT 没有唯一且匹配架构、版本的软件包。');
+        var pkg = packages[0], size = typeof pkg.packageSize === 'string' && /^\d{1,12}$/.test(pkg.packageSize) ? Number(pkg.packageSize) : pkg.packageSize;
+        if (typeof size !== 'number' || !isFinite(size) || Math.floor(size) !== size || size <= 0 || size > 21474836480 ||
+            typeof pkg.sha256 !== 'string' || !/^[a-fA-F0-9]{64}$/.test(pkg.sha256)) throw Error('官方软件包大小或 SHA-256 缺失/无效。');
+        candidates.push({schemaVersion: 1, state: 'update', version: build, packageName: pkg.packageName, size: size,
+            sha256: pkg.sha256.toLowerCase(), versionId: identifier(item.versionId), sdkId: identifier(pkg.sdkId), packageId: identifier(pkg.packageId)});
+    });
+    if (!candidates.length) throw Error('官方目录没有可验证的兼容正式 CLT 软件包。');
+    candidates.sort(function (a, b) { return compare(a.version, b.version); });
+    var result = candidates[candidates.length - 1];
+    if (compare(result.version, version(minimum)) < 0) throw Error('下载目录落后于公开正式说明，未退回旧 CLT。');
+    return result;
+}
+function download(path, candidatePath) {
+    var data = response(path), candidate = JSON.parse(read(candidatePath));
+    if (data.code !== '00000' || !data.value) throw Error('官方归档下载未获授权或协议尚未确认。');
+    var url = text(data.value.downloadUrl);
+    var parsed = url.match(/^https:\/\/([^\/:?#]+)(?::443)?\/([^?#]+)(?:\?[^#]*)?$/i);
+    if (!parsed || !/(?:^|\.)(?:huawei\.com|hicloud\.com|dbankcdn\.com|dbankcdn\.cn|dbankcloud\.com|dbankcloud\.cn|myhuaweicloud\.com|myhuaweicloud\.cn)$/i.test(parsed[1]) ||
+        /\\|[\u0000-\u0020]/.test(url) || /%2f|%5c/i.test(parsed[2]) || decodeURIComponent(parsed[2].split('/').pop()) !== candidate.packageName) {
+        throw Error('官方归档 URL 的来源、文件名或 HTTPS 格式无法核验。');
+    }
+    candidate.url = url;
+    candidate.source = 'Huawei official download center';
+    return candidate;
+}
+function run(args) {
+    if (args[0] === 'release') return JSON.stringify(publicRelease(args[1], args[2] || '', args[3] || ''));
+    if (args[0] === 'catalog') return JSON.stringify(catalog(args[1], args[2], args[3]));
+    if (args[0] === 'download') return JSON.stringify(download(args[1], args[2]));
+    if (args[0] === 'request') {
+        var params = args[1] === 'catalog' ? {toolAlias: 'command-line-tools-for-hmos', language: 'cn'} : JSON.parse(read(args[2]));
+        if (args[1] !== 'catalog') params = {versionId: params.versionId, sdkId: params.sdkId, packageId: params.packageId};
+        return JSON.stringify({svc: 'PartnerCommunityService/v1/developer/downloadCenter/' + (args[1] === 'catalog' ? 'getToolVersionList' : 'getToolVersionDownloadUrl'), reqType: 1, reqJson: JSON.stringify(params)});
+    }
+    if (args[0] === 'field') return String(JSON.parse(read(args[1]))[args[2]] || '');
+    throw Error('未知官方更新数据操作。');
+}

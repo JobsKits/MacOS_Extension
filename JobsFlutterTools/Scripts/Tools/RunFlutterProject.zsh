@@ -1,13 +1,515 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：从终端运行 Flutter 项目。
-# - 核心用途：终端选择设备，独立后台运行 Flutter，并查看日志及控制热重载。
-# - 影响范围：Flutter 构建可更新项目依赖和构建目录；按需创建、启动所选 iOS 模拟器。
+# - 核心用途：先体检 iOS / Android / 鸿蒙环境，所选平台通过后独立后台运行 Flutter，并查看日志及控制热重载。
+# - 影响范围：Flutter 构建可更新项目依赖和构建目录；可启动已有设备，或复用桌面流程新建 iOS / Android / Harmony 模拟器。
 # - 运行提示：先回车确认；关闭终端只离开日志，输入 s 才停止后台任务。
-# - 选择方式：终端内优先用 fzf 上下键 + 输入筛选选择；fzf 不可用或非终端时自动回退编号输入。
+# - 选择方式：交互终端用已验证的fzf方向键选择；显式关闭fzf或非终端时采用带返回入口的文本模式。
+
+# >>> Jobs terminal style protection v1 >>>
+# 临时保护当前终端配色，业务进程自行管理原有退出清理。
+jobs_terminal_style_run() {
+    # 无法可靠保存原色时，沿用脚本已有的纯文本约定。
+    jobs_terminal_style_plain() {
+        PLAIN_OUTPUT=1
+        NO_COLOR=1
+        FORCE_COLOR=0
+        CLICOLOR=0
+        ANSI_COLORS_DISABLED=1
+        npm_config_color=false
+        export PLAIN_OUTPUT NO_COLOR FORCE_COLOR CLICOLOR ANSI_COLORS_DISABLED npm_config_color
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    }
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    fi
+    if [ -n "${TMUX:-}${STY:-}" ]; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_tty=$(tty 2>/dev/null) || jobs_terminal_style_plain "$@"
+    if ! ps -o pgid= -o tpgid= -p "$$" 2>/dev/null |
+         LC_ALL=C awk 'NF == 2 && $1 == $2 && $1 > 0 { foreground = 1 } END { exit !foreground }'; then
+        jobs_terminal_style_plain "$@"
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$jobs_style_tty" ] &&
+               kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null; then
+                if "$@"; then
+                    jobs_style_exit_status=0
+                else
+                    jobs_style_exit_status=$?
+                fi
+                exit "$jobs_style_exit_status"
+            fi
+            ;;
+    esac
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
+    jobs_style_saved=''
+    jobs_style_saved_rows=''
+    jobs_style_applied_rows=''
+    jobs_style_changed=0
+    jobs_style_applied_complete=0
+    jobs_style_query_active=0
+    jobs_style_recovery=''
+    jobs_style_exit_status=0
+    jobs_style_esc=$(printf '\033')
+    jobs_style_bel=$(printf '\007')
+    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    jobs_terminal_style_query() {
+        jobs_style_query_key=$1
+        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
+        jobs_style_reply=''
+        for jobs_style_attempt in 1 2 3; do
+            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
+            jobs_style_reply=$jobs_style_reply$jobs_style_piece
+            case $jobs_style_reply in
+                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
+                '') ;;
+                "$jobs_style_esc"*) ;;
+                *) break ;;
+            esac
+        done
+        case $jobs_style_reply in
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
+                ;;
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
+                ;;
+            *) return 1 ;;
+        esac
+        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
+            NF != 3 { exit 1 }
+            {
+                for (i = 1; i <= 3; i++) {
+                    h = tolower($i)
+                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
+                    n = 0
+                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                }
+                printf "%d/%d/%d", value[1], value[2], value[3]
+            }
+        ') || return 1
+        [ -n "$jobs_style_normalized" ]
+    }
+    # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
+    jobs_terminal_style_accepts_target() {
+        jobs_style_requested_hex=''
+        case $1 in
+            10|12) jobs_style_requested_hex=ffffff ;;
+            11) jobs_style_requested_hex=000000 ;;
+            '4;'*)
+                jobs_style_requested_index=0
+                for jobs_style_requested_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+                    if [ "4;$jobs_style_requested_index" = "$1" ]; then
+                        jobs_style_requested_hex=$jobs_style_requested_color
+                        break
+                    fi
+                    jobs_style_requested_index=$((jobs_style_requested_index + 1))
+                done
+                ;;
+        esac
+        [ -n "$jobs_style_requested_hex" ] || return 1
+        printf '%s|%s\n' "$jobs_style_normalized" "$jobs_style_requested_hex" | LC_ALL=C awk -F'|' '
+            function hexbyte(h) {
+                return (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            }
+            {
+                if (split($1, actual, "/") != 3 || length($2) != 6) exit 1
+                for (i = 1; i <= 3; i++) {
+                    difference = actual[i] - hexbyte(substr($2, i * 2 - 1, 2)) * 257
+                    if (difference < -255 || difference > 255) exit 1
+                }
+            }
+        '
+    }
+    # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
+    jobs_terminal_style_cleanup() {
+        jobs_style_result=$1
+        trap '' HUP INT TERM
+        if [ "$jobs_style_query_active" = 1 ]; then
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
+            jobs_style_query_active=0
+        fi
+        if [ "$jobs_style_changed" = 1 ]; then
+            jobs_style_cleanup_ok=0
+            jobs_style_conflicts=''
+            jobs_style_restore_safe=''
+            if [ "$jobs_style_applied_complete" = 1 ]; then
+                jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+                if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+                    jobs_style_query_active=1
+                    jobs_style_cleanup_ok=1
+                    while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
+                        [ -n "$jobs_style_key" ] || continue
+                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                            jobs_style_cleanup_ok=0
+                            break
+                        fi
+                        if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
+                            jobs_style_restore_safe=$jobs_style_restore_safe$jobs_style_original
+                        else
+                            jobs_style_conflicts="$jobs_style_conflicts $jobs_style_key"
+                        fi
+                    done <<JOBS_STYLE_APPLIED
+$jobs_style_applied_rows
+JOBS_STYLE_APPLIED
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    jobs_style_query_active=0
+                fi
+            fi
+            if [ "$jobs_style_cleanup_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_restore_safe" > /dev/tty; then
+                if [ -z "$jobs_style_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                else
+                    printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_conflicts" >&2
+                    printf '确认要覆盖后续改色时才使用恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+                    [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+                fi
+            else
+                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+        fi
+        if [ "${2:-}" = continue ]; then
+            jobs_style_cleanup_status=$jobs_style_result
+            return 0
+        fi
+        exit "$jobs_style_result"
+    }
+    trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
+    trap 'jobs_style_exit_status=129; exit 129' HUP
+    trap 'jobs_style_exit_status=130; exit 130' INT
+    trap 'jobs_style_exit_status=143; exit 143' TERM
+    if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    for jobs_style_key in 10 11 12 '4;0' '4;1' '4;2' '4;3' '4;4' '4;5' '4;6' '4;7' '4;8' '4;9' '4;10' '4;11' '4;12' '4;13' '4;14' '4;15'; do
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
+"
+    done
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_recovery_dir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/jobs-terminal-style.XXXXXX") || jobs_terminal_style_plain "$@"
+    jobs_style_recovery=$jobs_style_recovery_dir/restore.sh
+    if ! (umask 077; {
+        printf '#!/bin/sh\n'
+        printf '[ -t 0 ] && [ "$(tty)" = '\''%s'\'' ] || { printf '\''请在原终端运行恢复入口。\\n'\'' >&2; exit 1; }\n' "$jobs_style_tty"
+        printf 'printf '\''本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：'\'' >&2\n'
+        printf 'IFS= read -r jobs_restore_choice\n[ "$jobs_restore_choice" = YES ] || exit 1\n'
+        printf 'printf '\''%%s\\033[0m'\'' '\''%s'\'' > /dev/tty\n' "$jobs_style_saved"
+    } > "$jobs_style_recovery"); then
+        printf '%s\n' '无法保存终端配色恢复入口；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '正在准备本次终端临时配色；强退后恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+    jobs_style_changed=1
+    printf '\033]10;#ffffff\007\033]11;#000000\007\033]12;#ffffff\007' > /dev/tty
+    jobs_style_index=0
+    for jobs_style_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+        printf '\033]4;%s;#%s\007' "$jobs_style_index" "$jobs_style_color" > /dev/tty
+        jobs_style_index=$((jobs_style_index + 1))
+    done
+    printf '\033[0m' > /dev/tty
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || { jobs_style_exit_status=1; exit 1; }
+    stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    jobs_style_targets_ok=1
+    while IFS='|' read -r jobs_style_key jobs_style_original; do
+        [ -n "$jobs_style_key" ] || continue
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_applied_rows="$jobs_style_applied_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_original
+"
+        if ! jobs_terminal_style_accepts_target "$jobs_style_key"; then
+            jobs_style_targets_ok=0
+        fi
+    done <<JOBS_STYLE_ORIGINAL
+$jobs_style_saved_rows
+JOBS_STYLE_ORIGINAL
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '无法核实本次临时配色，已停止启动业务。' >&2
+        jobs_style_exit_status=1
+        exit 1
+    fi
+    jobs_style_applied_complete=1
+    if [ "$jobs_style_targets_ok" != 1 ]; then
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; exit 129' HUP
+        trap 'jobs_style_exit_status=130; exit 130' INT
+        trap 'jobs_style_exit_status=143; exit 143' TERM
+        printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '%s\n' '本次终端已临时使用黑底白字。' >&2
+    JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
+    JOBS_TERMINAL_STYLE_OWNER=$$
+    export JOBS_TERMINAL_STYLE_TTY JOBS_TERMINAL_STYLE_OWNER
+    if "$@"; then
+        jobs_style_exit_status=0
+    else
+        jobs_style_exit_status=$?
+    fi
+    exit "$jobs_style_exit_status"
+}
+# 仅监督直接执行的入口；被 source 时不切换配色、不重新执行业务。
+jobs_terminal_style_bootstrap() {
+    jobs_style_bootstrap_script=$1
+    shift
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        case ${ZSH_EVAL_CONTEXT:-} in
+            *:file|*:file:*) return 0 ;;
+        esac
+    elif [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE:-$jobs_style_bootstrap_script}" != "$jobs_style_bootstrap_script" ]; then
+        return 0
+    fi
+    if [ "${JOBS_TERMINAL_STYLE_REEXEC:-}" = "$jobs_style_bootstrap_script" ]; then
+        unset JOBS_TERMINAL_STYLE_REEXEC
+        return 0
+    fi
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       [ -n "${TMUX:-}${STY:-}" ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        return 0
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null &&
+               [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$(tty 2>/dev/null)" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    JOBS_TERMINAL_STYLE_REEXEC=$jobs_style_bootstrap_script
+    export JOBS_TERMINAL_STYLE_REEXEC
+    jobs_terminal_style_run /bin/zsh "$jobs_style_bootstrap_script" "$@"
+    jobs_style_bootstrap_result=$?
+    exit "$jobs_style_bootstrap_result"
+}
+jobs_terminal_style_bootstrap "$0" "$@"
+# <<< Jobs terminal style protection v1 <<<
 
 # JOBS_SDK_RETRY_BEGIN
 # 只处理本轮子树，避免超时或取消后残留下载进程占用 SDK 锁。
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+jobs_prompt_color_ready() {
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" '
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0) connector segment(right, 31)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31) "或" segment(substr(value, splitAt + length("或")), 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!kind || !color) return value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original) {
+      original = value
+      gsub(esc "\\[[0-9;]*m", "", value)
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return original
+      output = ""
+      inherited = 0
+      depth = 0
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited) boundary
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return output segment(value, inherited)
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1 }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
 jobs_sdk_stop_tree() {
     local root="$1" child=""
     for child in $(/usr/bin/pgrep -P "$root" 2>/dev/null); do
@@ -842,6 +1344,9 @@ QUERY_PID=""
 QUERY_PROGRESS_FD=""
 REPLY=""
 FZF_BIN=""
+HARMONY_PREPARATION_FAILED=0
+ANDROID_RUN_EMULATOR=""
+ANDROID_RUN_ADB=""
 typeset -a ROWS=() SDK_ARCHIVE_WRITERS=()
 
 intro_line() {
@@ -856,15 +1361,16 @@ intro_line() {
 
 show_script_intro_and_wait() {
   intro_line title '从终端运行 Flutter 项目'
-  intro_line body '1、选择设备后构建、运行当前 Flutter 项目；沿用项目 FVM SDK 或终端 Flutter。'
+  intro_line body '1、先展示 iOS / Android / 鸿蒙环境体检，所选运行平台全部通过后才构建、运行；沿用项目 FVM SDK 或终端 Flutter。'
   intro_line body '2、Flutter 由当前登录会话的 launchd 托管，关闭 Terminal 不影响运行。'
-  intro_line body '3、iOS 可选择已有模拟器；没有时内置选择型号、系统版本、创建及启动流程。'
-  intro_line body '4、可能下载项目依赖、生成构建文件；项目声明的 FVM SDK 缺失时自动下载，失败持续重试直至成功或 Ctrl+C，不安装或升级全局 Flutter / Xcode。'
-  intro_line body '5、日志与会话保存在用户资源库 Application Support/JobsFlutterRunner/sessions。'
-  intro_line body '6、回车继续，非空或 Ctrl+C 取消；运行后 d 离开日志，s 停止后台任务。'
-  intro_line body '7、设备、模拟器型号与系统版本用上下键选择，可直接输入关键字筛选；未装 fzf 时回退编号输入。'
+  intro_line body '3、设备分“目前已有的设备 / 新建设备 / 启动虚拟设备”；已有虚拟设备启动前自动准备、更新兼容正式工具并复检；新建复用桌面 iOS / Android / Harmony 流程及原确认，成功后等待新设备就绪并自动运行当前工程；取消不运行。'
+  intro_line body '4、可能下载项目依赖、生成构建文件；项目声明的 FVM SDK 缺失时自动下载，失败持续重试直至成功或 Ctrl+C，不升级全局 Flutter；模拟器启动准备使用本轮选定的 Xcode / Android / 鸿蒙工具，保留工程约束与已有镜像。'
+  intro_line body '5、选中鸿蒙连接项后，本轮直接准备 SDK、工具、平台与依赖；先备份配置，复检通过后只运行原设备，失败或取消则停止。'
+  intro_line body '日志与会话保存在用户资源库 Application Support/JobsFlutterRunner/sessions。'
+  jobs_prompt_output intro_line body '6、回车继续，非空或 Ctrl+C 取消；运行后 d 离开日志，s 停止后台任务。'
+  intro_line body '7、设备、模拟器型号与系统版本用上下键选择，可直接输入关键字筛选；交互终端缺少可用fzf时停止；显式文本模式或非终端使用编号，子层b返回。'
   local answer=""
-  IFS= read -r 'answer?已了解用途与范围，按回车继续；非空取消：' || exit 0
+  IFS= read -r "answer?$(jobs_prompt_render '已了解用途与范围，按回车继续；非空取消：')" || exit 0
   [[ -z "$answer" ]] || exit 0
 }
 
@@ -881,7 +1387,7 @@ initialize_runtime() {
 }
 
 log() {
-  print -r -- "$*" | /usr/bin/tee -a "$LOG_FILE"
+  print -r -- "$*" | jobs_prompt_tee "$LOG_FILE"
 }
 
 die() {
@@ -1212,7 +1718,7 @@ find_flutter() {
   log "Flutter：$FLUTTER_BIN"
 }
 
-# fzf 只用于终端交互；找不到就保持编号输入，不阻断运行。
+# 交互终端必须具备已验证的键盘选择器，文本模式由显式参数或非TTY决定。
 resolve_fzf() {
   local candidate=""
   for candidate in "${commands[fzf]:-}" /opt/homebrew/bin/fzf /usr/local/bin/fzf "$HOME/.fzf/bin/fzf"; do
@@ -1225,23 +1731,32 @@ resolve_fzf() {
   return 1
 }
 
+# 无交互filter模式实际校验所需选项，不用help是否列出反向参数冒充能力。
+fzf_capability_probe() {
+  printf 'probe\tfzf-fixture\n' | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
+    "$FZF_BIN" --filter=fzf-fixture --no-multi --no-height --layout=reverse --bind=up:up,down:down --expect=left --delimiter=$'\t' --with-nth=2..
+}
 # JOBS_FLUTTER_RUNNER_FZF：0 关闭；always 忽略终端检测（供测试注入）。
 fzf_ready() {
   local mode="${JOBS_FLUTTER_RUNNER_FZF:-auto}"
   [[ "$mode" != 0 ]] || return 1
-  if [[ "$mode" != always ]]; then
-    [[ -t 0 && -t 1 ]] || return 1
+  if [[ "$mode" != always && ( ! -t 0 || ! -t 1 ) ]]; then return 1; fi
+  if [[ -z "$FZF_BIN" ]]; then resolve_fzf || { log '✖ 缺少可用fzf键盘选择器；未退回数字菜单，请完成工具包环境安装后重试。'; return 2; }; fi
+  if [[ "${FZF_VALIDATED_BIN:-}" != "$FZF_BIN" ]]; then
+    run_bounded 5 "$LOG_FILE.fzf-version" /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE "$FZF_BIN" --version || { log '✖ fzf版本检查失败。'; return 2; }
+    run_bounded 5 "$LOG_FILE.fzf-options" fzf_capability_probe || { log '✖ fzf必需选项检查失败；未进入选择或业务。'; return 2; }
+    FZF_VALIDATED_BIN="$FZF_BIN"
   fi
-  if [[ -z "$FZF_BIN" ]]; then
-    resolve_fzf || return 1
-  fi
-  [[ -n "$FZF_BIN" ]] || return 1
 }
 
 # 每行是 "id\tdisplay"：只展示 display，输出整行以便回取原始 id。
 fzf_pick_row() {
-  local heading="$1" row="" answer="" pick_status=0
-  local -a lines=()
+  local heading="$1" parent="${2:-0}" row="" answer="" pick_status=0 header='↑/↓ 选择；回车确认；输入即筛选；Esc 取消'
+  local -a lines=() navigation=()
+  if [[ "$parent" == 1 ]]; then
+    navigation=(--expect=left)
+    header+='；← 返回上一层'
+  fi
   for row in "${ROWS[@]}"; do
     if [[ "$row" == *$'\t'* ]]; then
       lines+=("$row")
@@ -1251,41 +1766,53 @@ fzf_pick_row() {
   done
   # 清空个人选项；使用备用屏幕，避免内嵌 height 模式在终端重绘后留下两份菜单。
   answer="$(printf '%s\n' "${lines[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
-    "$FZF_BIN" --no-multi --cycle --layout=reverse \
+    "$FZF_BIN" --no-multi --bind=up:up,down:down --cycle --layout=reverse \
     --no-height --border \
     --delimiter=$'\t' --with-nth=2.. \
     --prompt="${heading}› " \
-    --header='↑/↓ 选择；输入即筛选；Esc 取消' 2>> "$LOG_FILE")"
+    --header="$header" "${navigation[@]}" 2>> "$LOG_FILE")"
   pick_status=$?
   # 退出码 2 是参数不兼容等运行错误，去掉装饰类参数再试一次；130 是用户取消，不再重试。
   if (( pick_status == 2 )); then
     answer="$(printf '%s\n' "${lines[@]}" | /usr/bin/env -u FZF_DEFAULT_OPTS -u FZF_DEFAULT_OPTS_FILE \
-      "$FZF_BIN" --no-multi --layout=reverse --no-height \
-      --delimiter=$'\t' --with-nth=2.. --prompt="${heading}› " 2>> "$LOG_FILE")"
+      "$FZF_BIN" --no-multi --bind=up:up,down:down --layout=reverse --no-height \
+      --delimiter=$'\t' --with-nth=2.. --prompt="${heading}› " --header="$header" "${navigation[@]}" 2>> "$LOG_FILE")"
     pick_status=$?
   fi
-  (( pick_status == 0 )) || return 1
+  if [[ "$parent" == 1 && "${answer%%$'\n'*}" == left ]]; then
+    REPLY=__back__
+    return 0
+  fi
+  if (( pick_status != 0 )); then
+    case "$pick_status" in 1|130) ;; *) log "✖ fzf选择器运行失败：$pick_status；未执行所选操作。" ;; esac
+    return "$pick_status"
+  fi
+  [[ "$parent" != 1 ]] || answer="${answer#*$'\n'}"
   [[ -n "$answer" ]] || return 1
   REPLY="${answer%%$'\t'*}"
   return 0
 }
 
 select_row() {
-  local heading="$1" answer="" row="" index=1
+  local heading="$1" parent="${2:-0}" answer="" row="" index=1 result=0
   (( ${#ROWS} > 0 )) || return 1
-  if fzf_ready; then
+  fzf_ready || result=$?
+  if (( result == 0 )); then
     log "$heading"
-    fzf_pick_row "$heading" || return 1
-    return 0
+    fzf_pick_row "$heading" "$parent"
+    return $?
   fi
+  (( result == 1 )) || return "$result"
   log "$heading"
   for row in "${ROWS[@]}"; do
     log "  ${index}、${row#*$'\t'}"
     (( index++ ))
   done
+  [[ "$parent" != 1 ]] || log '文本模式：输入b返回上一层；直接回车取消。'
   while true; do
-    IFS= read -r 'answer?输入编号，直接回车取消：' || return 1
+    IFS= read -r "answer?$(jobs_prompt_render '输入编号，直接回车取消：')" || return 1
     [[ -n "$answer" ]] || return 1
+    if [[ "$parent" == 1 && "$answer" == [bB] ]]; then REPLY=__back__; return 0; fi
     if [[ "$answer" == <-> ]] && (( answer >= 1 && answer <= ${#ROWS} )); then
       REPLY="${ROWS[$answer]%%$'\t'*}"
       return 0
@@ -1313,6 +1840,84 @@ refresh_devices() {
   fi
 }
 
+# 随包体检延迟加载，Worker 仅执行已经通过门禁的运行任务。
+load_run_preflight() {
+  local helper="$SCRIPT_DIR/【MacOS】Flutter运行前体检.zsh/【MacOS】Flutter运行前体检.zsh"
+  [[ -f "$helper" && ! -L "$helper" ]] || { log "✖ 缺少运行前环境体检模块：$helper；请更新完整工具包。"; return 1; }
+  source "$helper" || return $?
+  (( ${+functions[jobs_flutter_preflight_overview]} && ${+functions[jobs_flutter_preflight_require]} && ${+functions[jobs_flutter_harmony_discovery_rows]} )) || {
+    log '✖ 运行前环境体检模块不完整，已停止。'
+    return 1
+  }
+}
+
+# 原选择贯穿准备与设备复核；失败后停止本轮，不重放获取流程或改选其它设备。
+prepare_harmony_run_target() {
+  local key="$1" result=0 attempt=0 attempts="${JOBS_HARMONY_DEVICE_WAIT_ATTEMPTS:-3}" target=""
+  local directory="$SCRIPT_DIR/【MacOS】Flutter运行前体检.zsh" usb="$LOG_FILE.harmony-run.usb.plist"
+  local preparation="$directory/【MacOS】鸿蒙运行环境准备.zsh/【MacOS】鸿蒙运行环境准备.zsh"
+  HARMONY_PREPARATION_FAILED=1
+  DEVICE_ID=""
+  [[ "$attempts" == <-> ]] && (( attempts >= 1 && attempts <= 12 )) || { log '✖ 鸿蒙设备等待次数无效，已停止。'; return 1; }
+  [[ -f "$preparation" && ! -L "$preparation" && -f "$directory/Flutter运行前体检.jxa" ]] || {
+    log '✖ 缺少随包鸿蒙运行环境准备模块，请更新完整工具包。'; return 1
+  }
+  # 先核验物理身份；没有序列号或已换机时，不为未知目标改写项目环境。
+  print -r -- '[]' > "$LOG_FILE.harmony-run.identity.json" || return 1
+  if [[ "$key" == __harmony_usb__:* ]]; then
+    run_bounded 8 "$usb" /usr/sbin/ioreg -p IOUSB -a -l || return $?
+  fi
+  /usr/bin/osascript -l JavaScript "$directory/Flutter运行前体检.jxa" harmony-run-target \
+    "$key" "$LOG_FILE.harmony-run.identity.json" "$usb" >> "$LOG_FILE" 2>&1 || {
+    log "✖ 无法确认原鸿蒙设备身份，未开始环境准备；请重新加载设备。详情：$LOG_FILE"; return 1
+  }
+  source "$preparation" || return $?
+  (( ${+functions[jobs_flutter_prepare_harmony_for_run]} )) || { log '✖ 鸿蒙运行准备接口不可用。'; return 1; }
+  jobs_flutter_prepare_harmony_for_run "$key" || return $?
+  [[ "$REPLY" == "$key" ]] || { log '✖ 环境准备返回了不同设备，未继续运行。'; return 1; }
+  find_flutter || return $?
+  jobs_flutter_preflight_overview || return $?
+  if [[ "${JOBS_PREFLIGHT_STATE[ohos]:-failed}" != passed ]]; then
+    log "✖ 鸿蒙环境复检未通过，已停止本轮运行：${JOBS_PREFLIGHT_DETAIL[ohos]:-仍有未满足的运行条件。}"
+    return 1
+  fi
+  log '▶ 环境准备完成，等待原鸿蒙设备进入 Flutter 授权列表；只重查设备，不重复准备环境。'
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    result=0
+    if refresh_devices 15; then
+      if [[ "$key" == __harmony_usb__:* ]]; then
+        run_bounded 8 "$usb" /usr/sbin/ioreg -p IOUSB -a -l || return $?
+      fi
+      target="$(/usr/bin/osascript -l JavaScript "$directory/Flutter运行前体检.jxa" harmony-run-target \
+        "$key" "$LOG_FILE.devices.json" "$usb" 2>> "$LOG_FILE")" || {
+        log "✖ 原鸿蒙设备身份复核失败，未改选其它设备；请重新加载。详情：$LOG_FILE"; return 1
+      }
+      if [[ -n "$target" ]]; then
+        DEVICE_ID="$target"
+        HARMONY_PREPARATION_FAILED=0
+        return 0
+      fi
+    fi
+    (( attempt >= attempts )) || /bin/sleep 1
+  done
+  log '✖ 原鸿蒙设备仍未授权或未被当前 SDK 识别，已停止本轮；请确认手机 USB 调试授权后重新加载，未运行其它设备。'
+  return 1
+}
+
+# 平台来自本轮设备 JSON，拒绝设备消失、无法解析或未知平台的绕过。
+require_selected_device_environment() {
+  local platform=""
+  platform="$(json_helper precache-platform "$LOG_FILE.devices.json" "$DEVICE_ID")" || {
+    log '✖ 无法确认所选设备的平台，请重新加载设备列表后重试。'
+    return 1
+  }
+  [[ -n "$platform" ]] || { log '✖ 所选设备未声明可体检的平台，未启动 Flutter。'; return 1; }
+  if [[ "$platform" == ohos && "${JOBS_PREFLIGHT_STATE[ohos]:-failed}" != passed ]]; then
+    prepare_harmony_run_target "$DEVICE_ID" || return $?
+  fi
+  jobs_flutter_preflight_require "$platform" "$DEVICE_ID"
+}
+
 read_simulator_inventory() {
   /usr/bin/xcode-select -p >/dev/null 2>&1 || die '未选择 Xcode 开发目录，请先完成 Xcode 安装与配置。'
   run_bounded 30 "$LOG_FILE.simulators.json" /usr/bin/xcrun simctl list --json || die 'simctl 不可用，请确认当前开发目录是完整 Xcode，且已接受许可。'
@@ -1321,7 +1926,7 @@ read_simulator_inventory() {
 # 只在明确不兼容且用户精确输入 r 后才重选，一路回车不会再反复弹出型号 / 系统列表。
 confirm_simulator_reselection() {
   local answer=""
-  if IFS= read -r 'answer?输入 r 重新选择型号和系统；直接回车或其它输入停止：' && [[ "$answer" == [rR] ]]; then
+  if IFS= read -r "answer?$(jobs_prompt_render '输入 r 重新选择型号和系统；直接回车或其它输入停止：')" && [[ "$answer" == [rR] ]]; then
     return 0
   fi
   log '➤ 已停止，未重复选择或再次创建模拟器。'
@@ -1381,7 +1986,7 @@ create_simulator() {
     simulator_name="$REPLY"
     log "将创建模拟器：$type_name / $runtime_name"
     log "➤ 新名称：$simulator_name"
-    IFS= read -r 'answer?回车创建并启动；非空取消：' || return 1
+    IFS= read -r "answer?$(jobs_prompt_render '回车创建并启动；非空取消：')" || return 1
     [[ -z "$answer" ]] || return 1
     create_status=0
     run_bounded 45 "$output" /usr/bin/xcrun simctl create "$simulator_name" "$type_id" "$runtime_id" || create_status=$?
@@ -1453,12 +2058,18 @@ reveal_simulator_interface() {
 }
 
 select_ios_simulator() {
-  local table="" simulator_id="" row="" attempt=0
+  local table="" simulator_id="" row="" attempt=0 mode="${1:-manage}"
   read_simulator_inventory
   table="$(json_helper simulators "$LOG_FILE.simulators.json")" || die '无法解析模拟器列表。'
   ROWS=("${(@f)table}")
   [[ -n "$table" ]] || ROWS=()
-  if (( ${#ROWS} > 0 )); then
+  if [[ "$mode" == existing ]]; then
+    (( ${#ROWS} > 0 )) || { log 'ℹ 尚无可用 iOS 模拟器，请返回“新建设备”创建。'; return 1; }
+    ROWS+=($'__back__\t返回启动虚拟设备')
+    select_row '启动已有 iOS 模拟器：' 1 || return $?
+    [[ "$REPLY" != __back__ ]] || return 10
+    simulator_id="$REPLY"
+  elif (( ${#ROWS} > 0 )); then
     ROWS+=($'create\t创建新的 iOS 模拟器')
     select_row '选择 iOS 模拟器：' || return 1
     simulator_id="$REPLY"
@@ -1504,58 +2115,463 @@ wait_for_simulator_recognition() {
   die '模拟器已启动，但 Flutter 尚未识别；保留模拟器，请检查 flutter doctor 后重试。'
 }
 
-# Android SDK 原生命令列出 AVD；单独 launchd 作业防止模拟器跟随终端断连。
-start_android_emulator() {
-  local emulator="" candidate="" output="$LOG_FILE.avds" avd="" digest="" avd_session="" avd_label=""
-  local -a candidates=("${ANDROID_HOME:-}/emulator/emulator" "${ANDROID_SDK_ROOT:-}/emulator/emulator"
-    "$HOME/Library/Android/sdk/emulator/emulator" "${commands[emulator]:-}")
-  for candidate in "${candidates[@]}"; do
-    if [[ -n "$candidate" && -x "$candidate" && ! -d "$candidate" ]]; then
-      emulator="${candidate:A}"
-      break
-    fi
+# Android SDK 与模拟器选择复用独立运行器的同源实现。
+resolve_android_tools() {
+  local candidate="" tool="" root="" command_path="${commands[emulator]:-}"
+  local -a roots=("${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk")
+  [[ -z "$command_path" ]] || roots+=("${command_path:A:h:h}")
+  ANDROID_RUN_SDK=""
+  ANDROID_RUN_AVDMANAGER=""
+  ANDROID_RUN_SDKMANAGER=""
+  for root in "${roots[@]}"; do
+    [[ -n "$root" && -d "$root" ]] || continue
+    [[ -d "$root/emulator" || -d "$root/cmdline-tools" ]] || continue
+    ANDROID_RUN_SDK="${root:A}"
+    break
   done
-  [[ -n "$emulator" ]] || { log '⚠ 未找到 Android SDK emulator；设置 ANDROID_HOME / ANDROID_SDK_ROOT，或先从 Android Studio 启动模拟器。'; return 1; }
-  run_bounded 30 "$output" "$emulator" -list-avds || { log "⚠ 无法读取 Android AVD：$output"; return 1; }
+  [[ -n "$ANDROID_RUN_SDK" ]] || { log '⚠ 未找到 Android SDK；先运行“初始化 Android 模拟器”准备工具链，或设置 ANDROID_HOME。'; return 1; }
+  ANDROID_RUN_EMULATOR="$ANDROID_RUN_SDK/emulator/emulator"
+  ANDROID_RUN_ADB="$ANDROID_RUN_SDK/platform-tools/adb"
+  for candidate in "$ANDROID_RUN_SDK/cmdline-tools/latest/bin" "$ANDROID_RUN_SDK"/cmdline-tools/*/bin(N/); do
+    [[ -x "$candidate/avdmanager" && -x "$candidate/sdkmanager" ]] || continue
+    ANDROID_RUN_AVDMANAGER="$candidate/avdmanager"
+    ANDROID_RUN_SDKMANAGER="$candidate/sdkmanager"
+    break
+  done
+  export ANDROID_HOME="$ANDROID_RUN_SDK" ANDROID_SDK_ROOT="$ANDROID_RUN_SDK"
+  log "Android SDK：$ANDROID_RUN_SDK"
+}
+# 清单只包含安全 AVD 名称；已有设备无需依赖 Java 或 avdmanager。
+read_android_avds() {
+  local output="$LOG_FILE.avds" avd=""
+  [[ -x "$ANDROID_RUN_EMULATOR" ]] || { ROWS=(); return 0; }
+  run_bounded 30 "$output" "$ANDROID_RUN_EMULATOR" -list-avds || { log "⚠ 无法读取 Android AVD：$output"; return 1; }
   ROWS=()
   while IFS= read -r avd; do
     avd="${avd%$'\r'}"
     [[ "$avd" =~ '^[A-Za-z0-9_.-]+$' ]] && ROWS+=("${avd}"$'\t'"${avd}")
   done < "$output"
-  (( ${#ROWS} > 0 )) || { log 'ℹ 尚无 Android AVD，请先在 Android Studio Device Manager 创建，然后重新加载。'; return 1; }
-  select_row '选择已配置的 Android AVD：' || return 1
-  avd="$REPLY"
-  digest="$(printf '%s\0%s' "$emulator" "$avd" | /usr/bin/shasum -a 256)"
+}
+# 本机 ABI 只列稳定手机 / 平板镜像，优先复用已下载的完整映像。
+android_image_rows() {
+  local abi="$1" properties="" directory="" package=""
+  for properties in "$ANDROID_RUN_SDK"/system-images/*/*/"$abi"/source.properties(N); do
+    directory="${properties:h}"
+    [[ -f "$directory/system.img" ]] || continue
+    package="system-images;${${directory#"$ANDROID_RUN_SDK/system-images/"}//\//;}"
+    print -r -- "$package" | /usr/bin/grep -Eq "^system-images;android-[0-9]+(\.[0-9]+)?(-ext[0-9]+)?;(google_apis|google_apis_playstore|default);${abi}$" || continue
+    print -r -- "$package"$'\t'"${package#system-images;}（已安装）"
+  done
+}
+# 下载明确选中的缺失组件，许可证保留本人交互，不更新其它 SDK 包。
+install_android_packages() {
+  local package=""
+  (( $# > 0 )) || return 0
+  [[ -x "$ANDROID_RUN_SDKMANAGER" ]] || { log '⚠ 缺少 sdkmanager，请先在 Android Studio 安装 Android SDK Command-line Tools。'; return 1; }
+  log '来源：Google Android SDK Repository（https://dl.google.com/android/repository/）'
+  log "目标：$ANDROID_RUN_SDK"
+  for package in "$@"; do
+    log "➤ 安装：$package（许可证请本人阅读后选择）"
+    "$ANDROID_RUN_SDKMANAGER" --sdk_root="$ANDROID_RUN_SDK" --install "$package" --channel=0 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+    (( pipestatus[1] == 0 )) || { log "✖ 安装失败：$package"; return 1; }
+  done
+}
+# 只供有界任务的子进程调用：exec 保持创建器为被计时 PID，避免超时后管道子进程继续创建。
+create_android_avd_command() {
+  exec "$ANDROID_RUN_AVDMANAGER" create avd -n "$1" -k "$2" --device "$3" <<< no
+}
+# 型号 → 系统 → 确认分层返回，写入只发生在最终确认之后。
+create_android_emulator() {
+  local output="$LOG_FILE.android-models" table="" models="" model="" image="" abi="" answer="" avd="" row="" avd_home=""
+  local -a packages=()
+  [[ -x "$ANDROID_RUN_AVDMANAGER" ]] || { log '⚠ 缺少 avdmanager，请先在 Android Studio 安装 Android SDK Command-line Tools（含可用 Java），再重试。'; return 1; }
+  run_bounded 45 "$output" "$ANDROID_RUN_AVDMANAGER" list device || { log "⚠ 读取 Android 型号失败，请检查 Java / Command-line Tools：$output"; return 1; }
+  models="$(/usr/bin/awk '
+    /^[[:space:]]*id:/ { id=$0; sub(/^[^"]*"/, "", id); sub(/".*$/, "", id) }
+    /^[[:space:]]*Name:/ && id ~ /^[A-Za-z0-9_.-]+$/ {
+      name=$0; sub(/^[[:space:]]*Name:[[:space:]]*/, "", name)
+      if (tolower(id " " name) !~ /wear|watch|tv|television|automotive|desktop/) print id "\t" name
+    }' "$output")"
+  [[ -n "$models" ]] || { log "⚠ 未找到 Android 手机 / 平板型号：$output"; return 1; }
+  case "$(/usr/bin/uname -m)" in
+    arm64) abi=arm64-v8a ;;
+    x86_64) abi=x86_64 ;;
+    *) log '⚠ 当前主机架构不支持此 Android 模拟器初始化流程。'; return 1 ;;
+  esac
+  while true; do
+    ROWS=("${(@f)models}" $'__back__\t返回 Flutter 设备列表')
+    select_row '选择 Android 模拟器型号：' 1 || return 1
+    [[ "$REPLY" != __back__ ]] || return 1
+    model="$REPLY"
+    while true; do
+      table="$(android_image_rows "$abi")"
+      ROWS=()
+      [[ -z "$table" ]] || ROWS=("${(@f)table}")
+      ROWS+=($'__download__\t从 Google 官方源选择其它系统镜像' $'__back__\t返回型号选择')
+      select_row '选择 Android 系统镜像：' 1 || return 1
+      [[ "$REPLY" != __back__ ]] || break
+      image="$REPLY"
+      if [[ "$image" == __download__ ]]; then
+        [[ -x "$ANDROID_RUN_SDKMANAGER" ]] || { log '⚠ 缺少 sdkmanager，无法读取官方镜像。'; return 1; }
+        log '➤ 从 Google Android SDK Repository 查询稳定系统镜像：https://dl.google.com/android/repository/'
+        run_bounded 90 "$LOG_FILE.android-images" "$ANDROID_RUN_SDKMANAGER" --sdk_root="$ANDROID_RUN_SDK" --list --channel=0 || { log "⚠ 镜像清单查询失败：$LOG_FILE.android-images"; return 1; }
+        table="$(/usr/bin/awk -F '|' -v abi="$abi" '{ p=$1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", p); if (p ~ ("^system-images;android-[0-9]+(\\.[0-9]+)?(-ext[0-9]+)?;(google_apis|google_apis_playstore|default);" abi "$")) print p "\t" p }' "$LOG_FILE.android-images" | /usr/bin/sort -u)"
+        [[ -n "$table" ]] || { log "⚠ 官方清单没有匹配 $abi 的稳定手机 / 平板镜像。"; continue; }
+        ROWS=("${(@f)table}" $'__back__\t返回系统镜像选择')
+        select_row '选择要下载的 Android 系统镜像：' 1 || return 1
+        [[ "$REPLY" != __back__ ]] || continue
+        image="$REPLY"
+      fi
+      packages=()
+      [[ -f "$ANDROID_RUN_SDK/${(j:/:)${(s:;:)image}}/system.img" ]] || packages+=("$image")
+      [[ -x "$ANDROID_RUN_EMULATOR" ]] || packages+=(emulator)
+      [[ -x "$ANDROID_RUN_ADB" ]] || packages+=(platform-tools)
+      avd="Jobs_${model}_$(/bin/date '+%Y%m%d_%H%M%S')_$$"
+      avd_home="${ANDROID_AVD_HOME:-${ANDROID_EMULATOR_HOME:-${ANDROID_USER_HOME:-$HOME/.android}}/avd}"
+      log "将新建：$avd / $model / $image"
+      (( ${#packages} == 0 )) || log "确认后下载：${(j:、:)packages}；目标：$ANDROID_RUN_SDK"
+      IFS= read -r "answer?$(jobs_prompt_render '回车确认下载所需组件并创建；b 返回系统选择；其它输入取消：')" || return 1
+      [[ "$answer" != b ]] || continue
+      [[ -z "$answer" ]] || return 1
+      install_android_packages "${packages[@]}" || return 1
+      [[ -x "$ANDROID_RUN_EMULATOR" && -x "$ANDROID_RUN_ADB" && -f "$ANDROID_RUN_SDK/${(j:/:)${(s:;:)image}}/system.img" ]] || { log '✖ Android 组件安装后复检失败，未创建设备。'; return 1; }
+      read_android_avds || return 1
+      for row in "${ROWS[@]}"; do
+        [[ "${row%%$'\t'*}" != "$avd" ]] || { log '✖ 同名 AVD 已存在，未覆盖。'; return 1; }
+      done
+      [[ ! -e "$avd_home/$avd.ini" && ! -L "$avd_home/$avd.ini" && ! -e "$avd_home/$avd.avd" && ! -L "$avd_home/$avd.avd" ]] || { log '✖ AVD 名称已有遗留目录，未覆盖。'; return 1; }
+      run_bounded 60 "$LOG_FILE.android-create" create_android_avd_command "$avd" "$image" "$model" || { log "✖ 创建失败，未自动重试或覆盖设备：$LOG_FILE.android-create"; return 1; }
+      read_android_avds || return 1
+      for row in "${ROWS[@]}"; do
+        if [[ "${row%%$'\t'*}" == "$avd" ]]; then
+          REPLY="$avd"
+          return 0
+        fi
+      done
+      log '✖ 创建命令成功但没有找到新 AVD，已停止，请检查 Device Manager。'
+      return 1
+    done
+  done
+}
+# 用 AVD 名称精确匹配 adb 序列号，避免误选其它已连接手机或模拟器。
+android_serial_for_avd() {
+  local avd="$1" serial="" state="" rest="" name=""
+  run_bounded 10 "$LOG_FILE.adb-devices" "$ANDROID_RUN_ADB" devices || return 1
+  while read -r serial state rest; do
+    [[ "$serial" == emulator-<-> && "$state" == device ]] || continue
+    run_bounded 5 "$LOG_FILE.adb-name" "$ANDROID_RUN_ADB" -s "$serial" emu avd name || continue
+    name="$(/usr/bin/head -n 1 "$LOG_FILE.adb-name")"
+    if [[ "${name%$'\r'}" == "$avd" ]]; then
+      REPLY="$serial"
+      return 0
+    fi
+  done < "$LOG_FILE.adb-devices"
+  return 1
+}
+# 等待目标 Android 完成开机，再等待同一 serial 出现在 Flutter 中。
+wait_for_android_avd() {
+  local avd="$1" serial="" current="" result=0 started=$SECONDS
+  DEVICE_ID=""
+  log "ℹ 等待 Android 模拟器就绪：$avd"
+  while (( SECONDS - started < 240 )); do
+    if [[ -n "${ANDROID_RUN_AVD_IDENTITY:-}" ]]; then
+      current="$(jobs_sim_android_avd_identity "$avd")" || return 1
+      [[ "$current" == "$ANDROID_RUN_AVD_IDENTITY" ]] || { log '✖ 原 AVD 的登记或配置身份已变化，停止等待，未改选。'; return 1; }
+    fi
+    if android_serial_for_avd "$avd"; then
+      serial="$REPLY"
+      if run_bounded 10 "$LOG_FILE.android-boot" "$ANDROID_RUN_ADB" -s "$serial" shell getprop sys.boot_completed &&
+          [[ "$(/usr/bin/tr -d '\r\n ' < "$LOG_FILE.android-boot")" == 1 ]]; then
+        result=0
+        wait_for_simulator_recognition "$serial" || result=$?
+        if (( result != 0 )); then
+          DEVICE_ID=""
+          return "$result"
+        fi
+        # Flutter枚举可能长时间等待；交接运行前再次绑定原AVD及原ADB端口。
+        if [[ -n "${ANDROID_RUN_AVD_IDENTITY:-}" ]]; then
+          current="$(jobs_sim_android_avd_identity "$avd")" || { DEVICE_ID=""; return 1; }
+          [[ "$current" == "$ANDROID_RUN_AVD_IDENTITY" ]] || { DEVICE_ID=""; log '✖ Flutter等待期间原AVD身份已变化，未交接运行。'; return 1; }
+        fi
+        if ! android_serial_for_avd "$avd" || [[ "$REPLY" != "$serial" || "$DEVICE_ID" != "$serial" ]]; then
+          DEVICE_ID=""
+          log '✖ 原AVD的ADB连接已变化，未交接其它设备。'
+          return 1
+        fi
+        return 0
+      fi
+    fi
+    /bin/sleep 3
+  done
+  log "⚠ Android 未在 240 秒内完成开机；保留设备，请检查模拟器日志并重新加载：$avd"
+  return 1
+}
+# 已有设备直接启动，空清单进入初始化；launchd 保留模拟器独立生命周期。
+start_android_emulator() {
+  local avd="" answer="" digest="" avd_session="" avd_label="" row="" identity="" mode="${1:-manage}"
+  local -A identities=()
+  ANDROID_RUN_AVD_IDENTITY=""
+  resolve_android_tools || return 1
+  read_android_avds || return 1
+  if [[ "$mode" == existing ]]; then
+    (( ${#ROWS} > 0 )) || { log 'ℹ 尚无 Android AVD，请返回“新建设备”创建。'; return 1; }
+    for row in "${ROWS[@]}"; do
+      avd="${row%%$'\t'*}"
+      identity="$(jobs_sim_android_avd_identity "$avd")" || { log '✖ 已有 AVD 无法验证实际实例身份，未启动。'; return 1; }
+      identities[$avd]="$identity"
+    done
+    ROWS+=($'__back__\t返回启动虚拟设备')
+    select_row '启动已有 Android 模拟器：' 1 || return $?
+    [[ "$REPLY" != __back__ ]] || return 10
+    avd="$REPLY"
+    ANDROID_RUN_AVD_IDENTITY="${identities[$avd]:-}"
+    identity="$(jobs_sim_android_avd_identity "$avd")" || return 1
+    [[ -n "$ANDROID_RUN_AVD_IDENTITY" && "$identity" == "$ANDROID_RUN_AVD_IDENTITY" ]] || { log '✖ 选择期间原 AVD 已被替换，未启动其它设备。'; return 1; }
+  elif (( ${#ROWS} > 0 )); then
+    ROWS+=($'__create__\t创建新的 Android 模拟器' $'__back__\t返回 Flutter 设备列表')
+    select_row '选择 Android 模拟器：' 1 || return 1
+    [[ "$REPLY" != __back__ ]] || return 1
+    avd="$REPLY"
+  else
+    log 'ℹ 尚无 Android AVD，进入内置初始化流程。'
+    avd=__create__
+  fi
+  if [[ "$avd" == __create__ ]]; then
+    create_android_emulator || return 1
+    avd="$REPLY"
+  fi
+  run_bounded 20 "$LOG_FILE.emulator-version" "$ANDROID_RUN_EMULATOR" -version || { log "⚠ emulator 不可用：$LOG_FILE.emulator-version"; return 1; }
+  if [[ ! -x "$ANDROID_RUN_ADB" ]]; then
+    IFS= read -r 'answer?缺少 platform-tools；输入 YES 下载到当前 SDK，其它取消：' || return 1
+    [[ "$answer" == YES ]] || return 1
+    install_android_packages platform-tools || return 1
+    [[ -x "$ANDROID_RUN_ADB" ]] || { log '✖ platform-tools 安装后仍缺 adb。'; return 1; }
+  fi
+  run_bounded 10 "$LOG_FILE.adb-version" "$ANDROID_RUN_ADB" version || { log "⚠ adb 不可用：$LOG_FILE.adb-version"; return 1; }
+  if android_serial_for_avd "$avd"; then
+    wait_for_android_avd "$avd"
+    return $?
+  fi
+  digest="$(printf '%s\0%s' "$ANDROID_RUN_EMULATOR" "$avd" | /usr/bin/shasum -a 256)"
   digest="${digest%% *}"
   avd_label="com.jobs.flutterrunner.avd.$digest"
   avd_session="$STATE_ROOT/android-$digest"
   [[ ! -L "$STATE_ROOT" && ! -L "$avd_session" ]] || die '模拟器会话目录不能是符号链接。'
   /bin/mkdir -p "$avd_session" || die '无法创建模拟器会话目录。'
   if /bin/launchctl print "gui/$UID/$avd_label" 2>/dev/null | /usr/bin/grep -Fq 'state = running'; then
-    log 'ℹ 该 AVD 已由后台启动，请在设备列表选择对应设备。'
-    return
+    log 'ℹ 该 AVD 已由后台启动，继续等待设备就绪。'
+    wait_for_android_avd "$avd"
+    return $?
   fi
   /bin/launchctl bootout "gui/$UID/$avd_label" >/dev/null 2>&1
-  json_helper emulator-plist "$avd_session" "$avd_label" "$emulator" "$avd" >/dev/null || die '无法生成 Android 模拟器后台配置。'
+  json_helper emulator-plist "$avd_session" "$avd_label" "$ANDROID_RUN_EMULATOR" "$avd" >/dev/null || die '无法生成 Android 模拟器后台配置。'
   /bin/launchctl bootstrap "gui/$UID" "$avd_session/job.plist" >> "$LOG_FILE" 2>&1 || { log "⚠ AVD 启动失败，详情：$LOG_FILE"; return 1; }
-  log "✔ 已请求后台启动 AVD：$avd；就绪后在设备列表选择，尚未出现可重新加载。"
+  log "✔ 已请求后台启动 AVD：$avd"
   log "模拟器日志：$avd_session/emulator.log"
+  wait_for_android_avd "$avd"
 }
 
-choose_device() {
+# 只复用已识别或已配置设备；此分组不会隐式创建模拟器。
+choose_existing_device() {
+  local result=0 table=""
   while true; do
     refresh_devices
+    if (( ${+functions[jobs_flutter_harmony_discovery_rows]} )); then
+      if table="$(jobs_flutter_harmony_discovery_rows "${ROWS[@]}")"; then
+        [[ -z "$table" ]] || ROWS+=("${(@f)table}")
+      else
+        log "⚠ 鸿蒙连接状态读取失败，可重新加载；详情：$LOG_FILE"
+      fi
+    fi
     (( ${#ROWS} > 0 )) || log 'ℹ 暂无当前项目可运行的设备；连接手机、启动模拟器后可重新加载。'
-    [[ ! -d "$PROJECT_PATH/ios" ]] || ROWS+=($'ios\tiOS 模拟器（启动已有 / 缺失时初始化）')
-    [[ ! -d "$PROJECT_PATH/android" ]] || ROWS+=($'android-avd\t启动已有 Android 模拟器')
-    ROWS+=($'refresh\t重新加载设备列表')
-    select_row '选择 Flutter 运行设备：' || exit 0
+    ROWS+=($'refresh\t重新加载设备列表' $'__back__\t返回设备分组' $'__cancel__\t取消本轮运行')
+    select_row '目前已有的设备：' 1 || return $?
     case "$REPLY" in
       refresh) continue ;;
-      ios) select_ios_simulator && return ;;
-      android-avd) start_android_emulator ;;
+      __back__) return 10 ;;
+      __cancel__) return 130 ;;
+      __harmony_usb__:*|__harmony_hdc__:*)
+        DEVICE_ID=""
+        prepare_harmony_run_target "$REPLY"
+        return $?
+        ;;
       *) DEVICE_ID="$REPLY"; return ;;
     esac
+  done
+}
+# 从完整随包资源解析桌面创建器，不依赖其它扩展已安装或源码绝对路径。
+simulator_creator_path() {
+  local platform="$1" file="" candidate=""
+  case "$platform" in
+    ios) file=CreateIOSSimulator.zsh ;;
+    android) file=CreateAndroidSimulator.zsh ;;
+    harmony) file=CreateHarmonySimulator.zsh ;;
+    *) return 2 ;;
+  esac
+  case "$platform" in
+    ios) candidate="$SCRIPT_DIR/SetupCreateIOSSimulator.zsh" ;;
+    android) candidate="$SCRIPT_DIR/SetupCreateAndroidSimulator.zsh" ;;
+    harmony) candidate="$SCRIPT_DIR/SetupCreateHarmonySimulator.zsh/SetupCreateHarmonySimulator.zsh" ;;
+  esac
+  [[ -f "$candidate" && ! -L "$candidate" ]] || { log "✖ 缺少随包模拟器创建器：$candidate；请更新完整菜单工具包。"; return 1; }
+  REPLY="$candidate"
+}
+# 只承接创建器明确回传的目标，不将真机或其它模拟器误认为本轮新设备。
+continue_created_device() {
+  local platform="$1" identity="$2" project_platform="$1"
+  [[ "$platform" != harmony ]] || project_platform=ohos
+  [[ -d "$PROJECT_PATH/$project_platform" ]] || {
+    log "ℹ 新设备已保留，但当前工程没有 $project_platform 平台；返回设备分组。"
+    return 10
+  }
+  log "▶ 新设备已创建，等待就绪后自动运行当前工程：$identity"
+  case "$platform" in
+    android)
+      resolve_android_tools || return $?
+      wait_for_android_avd "$identity" || return $?
+      ;;
+    ios|harmony) wait_for_simulator_recognition "$identity" || return $? ;;
+    *) return 1 ;;
+  esac
+  [[ -n "$DEVICE_ID" ]]
+}
+# 同一终端复用桌面创建流程；只有本轮成功回执才能进入等待和运行。
+run_simulator_creator() {
+  local platform="$1" creator="" result=0 receipt="" row="" identity=""
+  DEVICE_ID=""
+  simulator_creator_path "$platform" || return $?
+  creator="$REPLY"
+  receipt="$(/usr/bin/mktemp "$LOG_FILE.created.XXXXXX")" || return 1
+  log "▶ 复用桌面模拟器创建入口：$creator"
+  if [[ "$platform" == ios ]]; then
+    JOBS_FLUTTER_CREATED_DEVICE_FILE="$receipt" /bin/zsh "$creator" || result=$?
+  else
+    JOBS_FLUTTER_CREATED_DEVICE_FILE="$receipt" /bin/zsh "$creator" --create || result=$?
+  fi
+  if [[ -f "$receipt" && ! -L "$receipt" ]]; then
+    row="$(< "$receipt")"
+  fi
+  /bin/rm -f -- "$receipt"
+  case "$result" in
+    0) ;;
+    130|129|143) return 130 ;;
+    *) log "⚠ 模拟器创建流程未完成（退出码 $result）；保留已有设备，可返回或重新选择。"; return "$result" ;;
+  esac
+  if [[ -z "$row" ]]; then
+    log 'ℹ 创建流程未回传可确认的运行目标（可能已取消）；保留设备，返回设备分组。'
+    return 10
+  fi
+  identity="${row#*$'\t'}"
+  if [[ "$row" != "$platform"$'\t'* || -z "$identity" || "$identity" == *[$'\t\r\n']* ]]; then
+    log '✖ 创建器回执无效，未启动 Flutter；保留设备，请重新选择。'
+    return 1
+  fi
+  continue_created_device "$platform" "$identity"
+}
+# 创建本机设备不要求当前工程已有对应平台；运行列表仍按工程平台过滤。
+choose_new_device() {
+  while true; do
+    ROWS=($'ios\t新建 iOS 模拟器' $'android\t新建 Android 模拟器' $'harmony\t新建 Harmony（鸿蒙）模拟器'
+      $'__back__\t返回设备分组' $'__cancel__\t取消本轮运行')
+    select_row '新建设备：' 1 || return $?
+    case "$REPLY" in
+      __back__) return 10 ;;
+      __cancel__) return 130 ;;
+      ios|android|harmony) run_simulator_creator "$REPLY"; return $? ;;
+    esac
+  done
+}
+# 启动环境资源随 SimulatorCreators 整包运输，缺项不能绕过健康门禁。
+load_simulator_start_environment() {
+  local helper="$SCRIPT_DIR/SimulatorCreators/【MacOS】模拟器启动环境.zsh/【MacOS】模拟器启动环境.zsh"
+  [[ -s "$helper" && ! -L "$helper" ]] || { log "✖ 缺少模拟器启动环境模块：$helper"; return 1; }
+  source "$helper" || return $?
+  (( ${+functions[jobs_flutter_prepare_simulator_environment]} && ${+functions[jobs_flutter_start_harmony_instance]} )) || return 1
+}
+# 鸿蒙列表只取官方现有实例；同名替换、路径变更与其它手机均不能成为本轮目标。
+start_existing_harmony_emulator() {
+  local output="$LOG_FILE.harmony-instances" key="" receipt="" identity="" result=0
+  jobs_sim_query harmony-instances 60 "$JOBS_SIM_HARMONY_BIN" -list -details || return $?
+  output="$LOG_FILE.simulator-harmony-instances"
+  key="$(jobs_sim_instance_json rows "$output")" || return 1
+  ROWS=("${(@f)key}")
+  [[ -n "$key" ]] || ROWS=()
+  (( ${#ROWS} )) || { log 'ℹ 尚无已有鸿蒙模拟器，未创建设备；可返回新建设备分组。'; return 10; }
+  ROWS+=($'__back__\t返回启动虚拟设备' $'__cancel__\t取消本轮运行')
+  select_row '启动已有鸿蒙模拟器：' 1 || return $?
+  key="$REPLY"
+  case "$key" in __back__) return 10 ;; __cancel__) return 130 ;; __harmony_instance__:*) ;; *) return 1 ;; esac
+  receipt="$(/usr/bin/mktemp "$LOG_FILE.harmony-start.XXXXXX")" || return 1
+  jobs_flutter_start_harmony_instance "$key" "$receipt" || result=$?
+  if (( result == 0 )) && [[ -s "$receipt" && ! -L "$receipt" ]]; then identity="$(< "$receipt")"; fi
+  /bin/rm -f -- "$receipt"
+  (( result == 0 )) || return "$result"
+  [[ "$identity" == 127.0.0.1:<-> && "$identity" != *[$'\t\r\n']* ]] || return 1
+  # 启动就绪后才进入工程运行门禁；项目 SDK / 插件与启动工具链各自负责自己的检查。
+  prepare_harmony_run_target "__harmony_hdc__:$identity" || return $?
+  jobs_flutter_verify_harmony_instance "$key" "$DEVICE_ID"
+}
+# 平台选择先于环境准备；← 返回或取消时不安装、不查询或启动设备。
+choose_virtual_device() {
+  local result=0 platform="" loaded=0
+  local -A prepared=()
+  while true; do
+    ROWS=($'ios\t启动 iOS 模拟器' $'android\t启动 Android 模拟器' $'harmony\t启动鸿蒙模拟器'
+      $'__back__\t返回设备分组' $'__cancel__\t取消本轮运行')
+    select_row '启动虚拟设备：' 1 || return $?
+    case "$REPLY" in __back__) return 10 ;; __cancel__) return 130 ;; ios|android|harmony) platform="$REPLY" ;; *) return 1 ;; esac
+    DEVICE_ID=""
+    if (( ! loaded )); then load_simulator_start_environment || return $?; loaded=1; fi
+    result=0
+    if [[ "${prepared[$platform]:-0}" != 1 ]]; then
+      jobs_flutter_prepare_simulator_environment "$platform" || result=$?
+      (( result != 10 )) || continue
+      (( result == 0 )) || return "$result"
+      if (( ${+functions[jobs_flutter_preflight_overview]} )); then
+        jobs_flutter_preflight_overview || return $?
+      fi
+      prepared[$platform]=1
+    else
+      log 'ℹ 复用本轮已复检的启动环境；返回操作不重放工具获取。'
+    fi
+    case "$platform" in
+      ios) select_ios_simulator existing || result=$? ;;
+      android) start_android_emulator existing || result=$? ;;
+      harmony) start_existing_harmony_emulator || result=$? ;;
+    esac
+    (( result != 10 )) || continue
+    return "$result"
+  done
+}
+
+# 根层区分已连接、新建与启动已有虚拟设备；不将操作行作为设备ID。
+choose_device() {
+  local result=0
+  HARMONY_PREPARATION_FAILED=0
+  while true; do
+    ROWS=($'__existing__\t目前已有的设备（已连接 / 正在运行）'
+      $'__new__\t新建设备（iOS / Android / Harmony 模拟器）'
+      $'__virtual__\t启动虚拟设备（已有 iOS / Android / 鸿蒙模拟器）'
+      $'refresh\t重新加载设备列表' $'__cancel__\t取消本轮运行')
+    result=0
+    select_row '选择 Flutter 运行设备：' || result=$?
+    case "$result" in 0) ;; 1|130) exit 0 ;; *) return "$result" ;; esac
+    result=0
+    case "$REPLY" in
+      __existing__|refresh) choose_existing_device || result=$? ;;
+      __virtual__)
+        choose_virtual_device || result=$?
+        (( result == 0 || result == 10 || result == 130 )) || return "$result"
+        ;;
+      __new__)
+        choose_new_device || result=$?
+        ;;
+      __cancel__) exit 0 ;;
+      *) continue ;;
+    esac
+    (( result != 0 )) || return 0
+    (( HARMONY_PREPARATION_FAILED == 0 )) || return "$result"
+    (( result != 130 )) || exit 0
   done
 }
 
@@ -1653,7 +2669,7 @@ watch_session() {
   log ''
   log '━━━━━━━━━━ Flutter 构建与运行 ━━━━━━━━━━'
   log "完整原始日志：$SESSION_DIR/run.log"
-  log '控制：输入 r 热重载 / R 热重启 / s 停止 / d 离开，再按回车。'
+  jobs_prompt_output log '控制：输入 r 热重载 / R 热重启 / s 停止 / d 离开，再按回车。'
   log '关闭终端或 Ctrl+C 只离开；[警告] 不等于失败，以 [成功] / [错误] 为准。'
   log '──────────────────────────────────────'
   /usr/bin/osascript -l JavaScript "$HELPER" watch-log "$SESSION_DIR/run.log" "$SESSION_DIR/exitcode" &
@@ -1714,7 +2730,10 @@ main() {
   trap 'exit 0' HUP INT TERM
   read_project "$@"
   find_flutter || return $?
-  choose_device
+  load_run_preflight || return $?
+  jobs_flutter_preflight_overview || return $?
+  choose_device || return $?
+  require_selected_device_environment || return $?
   prepare_target_sdk_resources || return $?
   prepare_session
   watch_session
