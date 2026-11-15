@@ -16,7 +16,8 @@ typeset -g JOBS_DEPLOYMENT_TRANSACTION_LOCK="${JOBS_DEPLOYMENT_TRANSACTION_LOCK:
 typeset -g JOBS_DEPLOYMENT_TRANSACTION_IDENTITY="${JOBS_DEPLOYMENT_TRANSACTION_IDENTITY:-}"
 typeset -g JOBS_DEPLOYMENT_TARGET_IDENTITY="${JOBS_DEPLOYMENT_TARGET_IDENTITY:-}"
 typeset -g JOBS_DEPLOYMENT_REGISTRATION_ONLY="${JOBS_DEPLOYMENT_REGISTRATION_ONLY:-0}"
-typeset -g JOBS_DEPLOYMENT_MODULE_DIRECTORY="${${(%):-%x}:A:h}"
+# 源码栈保留路径原字节；提示符的 %x 在 C locale 会转义中文文件名。
+typeset -g JOBS_DEPLOYMENT_MODULE_DIRECTORY="${${${${funcsourcetrace[1]:-}%:*}:-$0}:A:h}"
 typeset -g JOBS_DEPLOYMENT_TRANSACTION_SOURCE="${JOBS_DEPLOYMENT_TRANSACTION_SOURCE:-}"
 typeset -g JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH="${JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH:-}"
 typeset -g JOBS_DEPLOYMENT_PREPARED_REGISTRATION="${JOBS_DEPLOYMENT_PREPARED_REGISTRATION:-0}"
@@ -130,6 +131,25 @@ jobs_deployment_prepare_container_resources() {
   if (( $+functions[jobs_prepare_combined_manager_resources] )); then
     jobs_prepare_combined_manager_resources "$container_app" || return $?
   fi
+  jobs_deployment_prepare_container_icon "$container_app"
+}
+# 图标随部署库交付，容器更新后仍使用本地资源，不依赖源码位置或网络。
+jobs_deployment_prepare_container_icon() {
+  local container_app="$1" icon="$JOBS_DEPLOYMENT_MODULE_DIRECTORY/Resources/JobsFinderManager.icns"
+  local resources="$container_app/Contents/Resources"
+  jobs_deployment_validate_container "$container_app" || return 1
+  [[ -f "$icon" && -r "$icon" ]] || {
+    jobs_deployment_error "管理器图标资源缺失或不可读：$icon；部署库：$JOBS_DEPLOYMENT_MODULE_DIRECTORY"; return 1
+  }
+  [[ ! -L "$icon" && ! -L "${icon:h}" ]] || {
+    jobs_deployment_error "管理器图标来源含链接：$icon"; return 1
+  }
+  [[ ! -L "$resources" && ! -L "$resources/JobsFinderManager.icns" ]] || {
+    jobs_deployment_error "管理器图标目标含链接：$resources/JobsFinderManager.icns"; return 1
+  }
+  /bin/mkdir -p "$resources" && /bin/cp -p "$icon" "$resources/JobsFinderManager.icns" || return 1
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile JobsFinderManager.icns' "$container_app/Contents/Info.plist" 2>/dev/null ||
+    /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string JobsFinderManager.icns' "$container_app/Contents/Info.plist"
 }
 # 缺失时原子创建联合 App 基座，然后交由随包函数补齐管理界面资源。
 jobs_deployment_prepare_container() {
@@ -799,12 +819,118 @@ jobs_deployment_cleanup_build_products() {
   JOBS_DEPLOYMENT_COMMITTED_RECEIPT=()
   print -u2 -r -- "✔ 本轮构建产物清理完成：$derived_root"
 }
-# 独立清理已安装联合 App 对应的历史构建根；强校验目标后才临时复用同一删除内核。
+# lsof 同时覆盖工作目录和打开文件；仅明确无匹配时返回闲置，查询异常不能视为空闲。
+jobs_deployment_source_has_open_files() {
+  local source_root="$1" output="" query_result=0
+  output="$(/usr/sbin/lsof -nP -F p +D "$source_root" 2>&1)" || query_result=$?
+  if (( query_result == 0 || query_result == 1 )) && [[ "$output" == p[0-9]* ]]; then
+    return 0
+  fi
+  if (( query_result == 1 )) && [[ -z "$output" ]]; then
+    return 1
+  fi
+  return 2
+}
+# 已卸载模块只清理无登记、无进程引用的来源，暂存后同时复查原位置和新位置。
+jobs_deployment_cleanup_unused_source_ready() {
+  local selected_app="$1" source_root="$2" extension_id="$3" moved_root="${4:-}"
+  local metadata="" candidate="" root="" process_result=0
+  [[ ! -e "$selected_app" && ! -L "$selected_app" ]] || {
+    jobs_deployment_error "所选 App 状态发生变化，保留构建产物：$selected_app"; return 1
+  }
+  metadata="$(jobs_deployment_registered_extension_paths "$extension_id")" || {
+    jobs_deployment_error '无法查询构建来源的扩展登记，保留构建产物。'; return 1
+  }
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    for root in "$source_root" "$moved_root"; do
+      [[ -n "$root" ]] || continue
+      if [[ "$candidate" == "$root" || "$candidate" == "$root"/* || "${candidate:A}" == "$root"/* ]]; then
+        jobs_deployment_error "构建来源仍有扩展登记，保留产物：$candidate"; return 1
+      fi
+    done
+  done <<< "$metadata"
+  metadata="$(jobs_deployment_registered_host_paths)" || {
+    jobs_deployment_error '无法查询构建来源的宿主登记，保留构建产物。'; return 1
+  }
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    for root in "$source_root" "$moved_root"; do
+      [[ -n "$root" ]] || continue
+      if [[ "$candidate" == "$root" || "$candidate" == "$root"/* || "${candidate:A}" == "$root"/* ]]; then
+        jobs_deployment_error "构建来源仍有宿主登记，保留产物：$candidate"; return 1
+      fi
+    done
+  done <<< "$metadata"
+  for root in "$source_root" "$moved_root"; do
+    [[ -n "$root" ]] || continue
+    process_result=0
+    jobs_deployment_source_is_running "$root" || process_result=$?
+    (( process_result == 1 )) || {
+      jobs_deployment_error "构建来源仍被进程引用或进程查询失败，保留产物：$root"; return 1
+    }
+    if [[ -e "$root" || -L "$root" ]]; then
+      [[ -d "$root" && ! -L "$root" ]] || return 1
+      process_result=0
+      jobs_deployment_source_has_open_files "$root" || process_result=$?
+      (( process_result == 1 )) || {
+        jobs_deployment_error "构建来源仍有打开文件或查询失败，保留产物：$root"; return 1
+      }
+    fi
+  done
+}
+# 卸载后的构建残留不依赖已安装副本；来源身份、路径和使用状态全部通过才删除。
+jobs_deployment_cleanup_unused_build_products() {
+  local built_app="$1" derived_root="$2" app_id="$3" extension_name="$4" extension_id="$5"
+  local selected_app="" applications_dir="" protected="" source_identity="" quarantine="" moved_root="" result=0
+  [[ "$(jobs_deployment_location)" == applications && -z "$JOBS_DEPLOYMENT_TRANSACTION_DIR" && "$JOBS_DEPLOYMENT_REGISTRATION_ONLY" != 1 ]] || {
+    jobs_deployment_error '卸载后清理不能与部署事务并行，且仅允许应用程序路线。'; return 2
+  }
+  selected_app="$(jobs_deployment_app_path "$built_app")" || return $?
+  applications_dir="$(jobs_deployment_applications_root)" || return $?
+  [[ -d "$derived_root" && ! -L "$derived_root" && "$derived_root" == /* &&
+     "$derived_root" == "${derived_root:a}" && "$derived_root" == "${derived_root:A}" &&
+     "${derived_root:h:t}" == work &&
+     ( "${derived_root:t}" == DerivedData || "${derived_root:t}" == "${built_app:t:r}DerivedData" ) &&
+     "${built_app:h:h}" == "$derived_root/Build/Products" &&
+     ( "${built_app:h:t}" == Debug || "${built_app:h:t}" == Release ) &&
+     "$selected_app" != "$derived_root"/* && "$derived_root" != "$applications_dir"/* ]] || {
+    jobs_deployment_error "拒绝未经验证的卸载后构建根：$derived_root"; return 2
+  }
+  source_identity="$(/usr/bin/stat -f '%d:%i' "$derived_root")" || return $?
+  jobs_deployment_validate_app "$built_app" "$app_id" "$extension_name" "$extension_id" || return 1
+  protected="$(/usr/bin/find "$derived_root" \( -name .git -o -name .hg -o -name .svn \) -print -quit)" || return $?
+  [[ -z "$protected" ]] || { jobs_deployment_error "构建根包含版本元数据，保留产物：$protected"; return 1; }
+  jobs_deployment_cleanup_unused_source_ready "$selected_app" "$derived_root" "$extension_id" || return 1
+  [[ ! -L "$derived_root" && "$(/usr/bin/stat -f '%d:%i' "$derived_root")" == "$source_identity" ]] || {
+    jobs_deployment_error "构建根在校验期间发生变化，保留产物：$derived_root"; return 1
+  }
+  quarantine="$(/usr/bin/mktemp -d "${derived_root:h}/.JobsFinderCleanup.XXXXXX")" || return $?
+  moved_root="$quarantine/DerivedData"
+  /bin/mv -- "$derived_root" "$moved_root" || { /bin/rmdir -- "$quarantine"; return 1; }
+  [[ ! -L "$moved_root" && "$(/usr/bin/stat -f '%d:%i' "$moved_root")" == "$source_identity" && "${quarantine:A}" == "$quarantine" ]] || result=1
+  if (( ! result )); then
+    jobs_deployment_cleanup_unused_source_ready "$selected_app" "$derived_root" "$extension_id" "$moved_root" || result=1
+  fi
+  [[ ! -L "$moved_root" && "$(/usr/bin/stat -f '%d:%i' "$moved_root")" == "$source_identity" && "${quarantine:A}" == "$quarantine" ]] || result=1
+  if (( result )); then
+    if [[ ! -e "$derived_root" && ! -L "$derived_root" && "${derived_root:h:A}" == "${derived_root:h}" ]]; then
+      /bin/mv -- "$moved_root" "$derived_root" && /bin/rmdir -- "$quarantine"
+    fi
+    jobs_deployment_error "清理前状态发生变化，已保留构建产物；原位置：$derived_root；暂存位置：$quarantine"
+    return 1
+  fi
+  print -u2 -r -- "🧹 已卸载模块的构建残留：$derived_root；已确认无登记或进程引用。"
+  /bin/rm -r -- "$moved_root" || { jobs_deployment_error "清理未完整完成，剩余产物：$quarantine"; return 1; }
+  /bin/rmdir -- "$quarantine" || return $?
+  print -u2 -r -- "✔ 卸载后构建残留清理完成：$derived_root"
+}
+# 独立清理历史构建根；已安装模块沿用强校验，已卸载模块单独核验来源是否闲置。
 jobs_deployment_cleanup_existing_build_products() {
   local built_app="$1" derived_root="$2" app_id="$3" extension_name="$4" extension_id="$5"
   local selected_app="" entries="" result=0 previous_receipt=("${JOBS_DEPLOYMENT_COMMITTED_RECEIPT[@]}")
   [[ "$(jobs_deployment_location)" == applications && -z "$JOBS_DEPLOYMENT_TRANSACTION_DIR" && "$JOBS_DEPLOYMENT_REGISTRATION_ONLY" != 1 ]] || {
-    jobs_deployment_error '独立清理只允许针对已安装的联合 App，且不能与部署事务并行。'; return 2
+    jobs_deployment_error '独立清理仅允许应用程序路线，且不能与部署事务并行。'; return 2
   }
   [[ "$derived_root" == /* && "$derived_root" == "${derived_root:a}" && ! -L "$derived_root" &&
      "${derived_root:h:t}" == work &&
@@ -823,6 +949,10 @@ jobs_deployment_cleanup_existing_build_products() {
   entries="$(/usr/bin/find "$derived_root" -mindepth 1 -maxdepth 1 -print -quit)" || return $?
   [[ -n "$entries" ]] || { print -u2 -r -- "ℹ 构建目录为空，无需清理：$derived_root"; return 0; }
   selected_app="$(jobs_deployment_app_path "$built_app")" || return $?
+  if [[ ! -e "$selected_app" && ! -L "$selected_app" ]]; then
+    jobs_deployment_cleanup_unused_build_products "$built_app" "$derived_root" "$app_id" "$extension_name" "$extension_id"
+    return $?
+  fi
   jobs_deployment_validate_app "$selected_app" "$app_id" "$extension_name" "$extension_id" || return 1
   jobs_deployment_verify_signature "$selected_app" || return $?
   jobs_deployment_verify_signature "${selected_app:h:h:h}" || return $?

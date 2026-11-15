@@ -9,7 +9,6 @@ import AppKit
 import FinderSync
 
 final class FinderSync: FIFinderSync {
-    private let resolver = GitRemoteResolver()
     private let logURL: URL = {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         let directoryURL = baseURL.appendingPathComponent("JobsGitRemoteFinderSync", isDirectory: true)
@@ -70,18 +69,35 @@ private extension FinderSync {
                 }
             }
 
-            do {
-                let webURL = try resolver.webURL(from: url)
-                writeLog("open \(webURL.absoluteString)")
-                NSWorkspace.shared.open(webURL)
-                return
-            } catch {
-                writeLog("failed \(url.path): \(error.localizedDescription)")
-                messages.append(error.localizedDescription)
+            guard let requestURL = openRequestURL(for: url) else {
+                messages.append("请选择真实存在的普通 Git 文件夹或仓库文件，不能使用链接、替身或应用包。")
+                continue
             }
+            writeLog("request host \(url.path)")
+            guard NSWorkspace.shared.open(requestURL) else {
+                messages.append("无法打开宿主，请先运行 JobsGitRemoteOpener.app；仍失败时重新安装此扩展。")
+                continue
+            }
+            return
         }
 
         showFailureAlert(messages: messages)
+    }
+
+    // 原有单文件入口使用其父目录；不存在、链接和替身不转成其它有效目标。
+    func openRequestURL(for url: URL) -> URL? {
+        guard url.isFileURL,
+              url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
+              url.query == nil, url.fragment == nil else {
+            return nil
+        }
+        if let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey]),
+           values.isRegularFile == true,
+           values.isSymbolicLink != true,
+           values.isAliasFile != true {
+            return GitRemoteOpenRequest.url(for: url.deletingLastPathComponent())
+        }
+        return GitRemoteOpenRequest.url(for: url)
     }
 
     func sidebarCandidateURLs() -> [URL] {

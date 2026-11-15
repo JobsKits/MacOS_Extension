@@ -35,14 +35,14 @@
 本工程源码、文档与版本由 [MacOS@Extension](../README.md) 统一管理，工程目录随总仓一起取得，保留独立构建、安装与卸载能力。
 
 
-**安装 / 卸载位置：** 面板提供“使用「应用程序」文件夹安装 / 卸载”复选框，默认不勾选。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
+**安装 / 卸载位置：** 面板提供“使用「应用程序」中的联合 App 安装 / 卸载”复选框，首次打开默认勾选，可手动取消。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
 
-**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示默认不勾选的“安装成功后清除此轮构建产物”。明确勾选后，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；构建目录路线及卸载模式隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
+**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示“安装成功后清除此轮构建产物”；首次打开默认勾选，可手动取消。保持勾选时，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；卸载模式隐藏但保留当前选择，返回安装时恢复；构建目录路线隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
 
 卸载按同一复选框选定的位置执行，所选位置没有 App 时保留另一位置及其功能配置；共享宿主仍有未卸载菜单时保留 App，最后一项移除后注销并删除该功能模块；联合 App 的最后一个模块移除后才删除外层 `Jobs自定义右键菜单.app`。切换位置安装会把登记切到新位置，构建目录中的另一份产物保留；所选功能的旧版顶层自有 App 在成功提交后收拢至联合 App，未知 App 不覆盖或删除。完整说明见[App 部署支持库](./Scripts/【MacOS】AppDeployment.zsh/README.md)。
 
 
-**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。“安装成功后清除此轮构建产物”复选框仅在应用程序安装模式出现，首次打开默认勾选，可手动取消。构建目录路线隐藏并清空自动清理复选框，独立清理按钮保持显示但禁用，避免清除正在使用的产物。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
 
 安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
 
@@ -51,7 +51,8 @@
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 在 Finder 中右键一个 Git 仓库文件夹或仓库子目录。
-- 通过系统默认浏览器打开仓库 `remote` 对应网页。
+- 只有一个 `remote` 时直接用系统默认浏览器打开；多个 `remote` 时打开 Terminal，用 [**fzf**](https://formulae.brew.sh/formula/fzf) 显示远程名称和网页地址，选择本次要打开的仓库。
+- 方向键或 Tab 移动、回车确认；选择“取消本轮”、按 `←` / Esc / Ctrl+C 或空选都不打开网页。不会因配置了 upstream 或 `origin` 就跳过选择。
 - 支持常见地址：
 
   | remote 形式 | 打开结果 |
@@ -68,7 +69,8 @@
 | 系统版本 | macOS `12.0` 及以上 | 工程 `MACOSX_DEPLOYMENT_TARGET` 为 `12.0`，功能依赖 Finder Sync Extension。 |
 | 开发工具 | [**Xcode**](https://developer.apple.com/xcode) + `xcodebuild` | 手动运行用 Xcode；根目录批量安装脚本会调用 `xcodebuild` 构建主 App 和扩展。 |
 | Finder 扩展 | 系统设置中启用 `打开 Git 远程地址` | 构建阶段会注册并尝试启用扩展；如果菜单未出现，先确认系统设置里的 Finder 扩展开关。 |
-| Git 仓库结构 | 目标目录存在可解析的 `.git` 信息 | 支持普通仓库、子模块和 worktree；优先读取真实 Git 配置，子模块 `.git` 指针失效时回退读取父仓 `.gitmodules`，不依赖 `/usr/bin/git`。 |
+| Git 仓库结构 | 目标目录存在可解析的 `.git` 信息 | 支持健康的普通仓库、子模块和 worktree；宿主通过 `/usr/bin/git` 读取实际配置（含 include），元数据损坏时停止并提示。 |
+| 多远程选择 | 健康的 `fzf` 与 Terminal | 仅在多个 remote 时需要；可通过 `brew install fzf` 准备。缺失、损坏或所需选项不支持时停止，不自动安装或打开默认项。 |
 | 默认浏览器 | 系统默认浏览器可打开网页 | 点击菜单后会把 remote 地址转成网页地址并交给 macOS 默认浏览器打开。 |
 
 建议运行前先做基础自检：
@@ -91,8 +93,10 @@ pluginkit -m -p com.apple.FinderSync -A -v | grep JobsGitRemote
 
 - Finder Sync Extension 可以进入 Finder 右键一级菜单区域，但最终位置由 macOS 决定，不能保证排在系统菜单项前面。
 - 扩展默认监控 `/`，用于覆盖 Finder 中任意位置的文件夹右键菜单。
-- 扩展不调用 `/usr/bin/git`，优先直接读取 `.git/config`，减少终端环境依赖。
-- 支持普通仓库、子模块、worktree 这类 `.git` 文件指向真实 Git 目录的结构；如果子模块 `.git` 文件指向的真实 Git 目录不存在，会向上查找父仓 `.gitmodules` 并读取对应子模块 remote。
+- 沙盒扩展只把目标文件夹通过 `jobsgitremoteopener` 请求转交宿主；宿主调用本机 Git 枚举所有 remote，再执行直接打开或 Terminal 选择。聚合菜单复用同一打开实现。
+- 支持普通仓库、子模块和 linked worktree，并遵循 Git 的 include 配置。每个 remote 使用首个 fetch URL；同一 remote 的 fetch / push 地址不重复列项，两个名称即使指向相同地址也分别显示。
+- 选择列表和请求日志不显示 HTTP 用户名或密码；不修改仓库、分支、remote 或全局 Git 配置。首次向 Terminal 派发时可能需要系统自动化授权。
+- [打开流程隔离验证](./Tests/GitRemoteBrowserOpenerTests.rb/README.md)覆盖原生 Git 配置、单 / 多远程分流、选择与取消；浏览器及 Terminal 派发均用替身拦截。
 - Finder Sync Extension 保留 App Sandbox；本机自用版通过 `com.apple.security.temporary-exception.files.absolute-path.read-only` 给 `/` 增加只读例外，否则菜单可以出现，但点击后读取仓库 `.git/config` 会被 macOS 沙盒拦截。
 
 ## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、排查说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -118,8 +122,9 @@ pluginkit -m -p com.apple.FinderSync -A -v | grep JobsGitRemote
   - 确认 `JobsGitRemoteFinderSync.entitlements` 保留了 `com.apple.security.app-sandbox`。
   - 确认 `JobsGitRemoteFinderSync.entitlements` 里有 `com.apple.security.temporary-exception.files.absolute-path.read-only`，并包含 `/`。
   - 确认仓库存在 `remote`。
-  - 优先读取当前分支 upstream remote，其次读取 `origin`，最后读取第一个 remote。
-  - 如果右键的是子模块目录，且子模块 `.git` 文件指向的 `../.git/modules/...` 不存在，确认父仓 `.gitmodules` 仍保留该子模块的 `path` 和 `url`。
+  - 单 remote 直接打开；多个 remote 请在新 Terminal 中选择。fzf 的取消、空选和失败都不会回退到 upstream、`origin` 或第一项。
+  - 如果 Git 元数据损坏，请先修复 `.git` / worktree / 子模块关联；不会绕过读取错误选一个默认地址。
+  - 多 remote 时确认 `fzf --version` 可运行，且系统允许宿主通过自动化控制 Terminal；本轮终端日志位于输出提示的 `$TMPDIR/JobsGitRemoteOpen-<PID>.log`。
   - 暂不处理需要额外登录或自定义跳转规则的私有 Git 服务。
 
 - 查看扩展调试日志：
@@ -164,6 +169,8 @@ pluginkit -m -p com.apple.FinderSync -A -v | grep JobsGitRemote
 │   └── JobsGitRemoteFinderSync.entitlements
 ├── JobsGitRemoteOpener/
 │   ├── AppDelegate.swift
+│   ├── GitRemoteBrowserOpener.swift
+│   ├── GitRemoteOpenRequest.swift
 │   ├── Info.plist
 │   ├── JobsGitRemoteOpener.entitlements
 │   └── MainViewController.swift

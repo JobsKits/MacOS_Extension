@@ -26,5 +26,18 @@
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jobs.JobsGitRemoteOpener.open</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>jobsgitremoteopener</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>在 Terminal 中使用 fzf 选择要打开的 Git 远程仓库。</string>
 </dict>
 </plist>

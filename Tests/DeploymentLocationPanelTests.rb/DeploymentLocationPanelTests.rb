@@ -263,13 +263,73 @@ class DeploymentLocationPanelTests < Minitest::Test
           expect(condition(), "isolated worker finishes")
       }
       extension FeatureSelectionController {
+          func verifyDefaultManagementSelections() {
+              buildWindow(screenSize: NSSize(width: 1280, height: 720))
+              let location = installLocationButton!
+              let cleanup = cleanupBuildProductsButton!
+              expect(location.state == .on && installLocation == "applications", "a manager without an explicit location initially selects Applications")
+              expect(!cleanup.isHidden && cleanup.isEnabled && cleanup.state == .on && cleanupBuildProducts, "a new Applications installation initially selects post-install cleanup")
+              expect(checkedIdentifiers().isEmpty && !installButton!.isEnabled, "default destination and cleanup never select features or enable empty execution")
+              installClicked()
+              expect(!isRunning && lastExitStatus == nil, "default checked options cannot execute an empty feature plan")
+              cleanup.performClick(nil)
+              refreshSelectionState()
+              applyPanelPreferences()
+              expect(cleanup.state == .off && !cleanupBuildProducts, "refreshing the default manager preserves manual cleanup cancellation")
+              cleanup.performClick(nil)
+              location.performClick(nil)
+              expect(installLocation == "build" && cleanup.isHidden && cleanup.state == .off && !cleanupBuildProducts, "switching the default manager to build cancels cleanup")
+              location.performClick(nil)
+              expect(installLocation == "applications" && !cleanup.isHidden && cleanup.state == .off && !cleanupBuildProducts, "returning to Applications does not reapply the initial cleanup default")
+          }
+
+          func verifyCleanupFlagOverride(location: String, enabled: Bool) {
+              expect(installLocation == location && cleanupBuildProducts == enabled, "explicit cleanup flags resolve before the first manager window")
+              buildWindow(screenSize: NSSize(width: 1280, height: 720))
+              expect(installLocationButton!.state == (location == "applications" ? .on : .off), "the initial location control reflects the parsed route")
+              expect(cleanupBuildProductsButton!.state == (enabled ? .on : .off) && cleanupBuildProducts == enabled, "the initial cleanup control reflects the final enable or disable flag")
+              expect(checkedIdentifiers().isEmpty && !installButton!.isEnabled && !isRunning, "cleanup flag overrides never select features or execute work")
+          }
+
+          func verifyCleanupSelectionRoundTrip(enabled: Bool) throws {
+              buildWindow(screenSize: NSSize(width: 1280, height: 720))
+              let cleanup = cleanupBuildProductsButton!
+              expect(cleanupBuildProducts == enabled, "the initial cleanup preference survives either starting action")
+              for _ in 0..<3 {
+                  actionControl!.selectedSegment = 1
+                  actionChanged()
+                  expect(cleanup.isHidden && !cleanup.isEnabled && cleanupBuildProducts == enabled, "uninstall hides and locks cleanup without discarding the install preference")
+                  cleanup.state = enabled ? .off : .on
+                  cleanupBuildProductsChanged()
+                  expect(cleanupBuildProducts == enabled && cleanup.state == (enabled ? .on : .off), "hidden cleanup changes cannot replace the retained preference")
+                  refreshSelectionState()
+                  applyPanelPreferences()
+                  actionControl!.selectedSegment = 0
+                  actionChanged()
+                  expect(installLocationButton!.state == .on && !cleanup.isHidden && cleanup.isEnabled && cleanup.state == (enabled ? .on : .off), "returning to install restores both deployment controls and the user's cleanup choice")
+              }
+              checkboxes.first { $0.option.identifier == "path_copier" }!.button.performClick(nil)
+              actionControl!.selectedSegment = 1
+              actionChanged()
+              installClicked()
+              pump { !isRunning }
+              expect(lastExitStatus == 0 && cleanupBuildProducts == enabled, "uninstall completes without consuming the retained install preference")
+              let capture = URL(fileURLWithPath: ProcessInfo.processInfo.environment["JOBS_TEST_ARGUMENTS"]!)
+              let arguments = try Data(contentsOf: capture).split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
+              expect(arguments == ["--non-interactive", "--action", "uninstall", "--features", "path_copier", "--install-location", "applications"], "uninstall never requests cleanup even when the retained install preference is selected")
+              actionControl!.selectedSegment = 0
+              actionChanged()
+              expect(cleanup.state == (enabled ? .on : .off) && cleanupBuildProducts == enabled, "returning after actual uninstall work preserves the cleanup preference")
+              try? FileManager.default.removeItem(at: logURL!.deletingLastPathComponent())
+          }
+
           func verifyLocationControls(screen: NSSize) {
               buildWindow(screenSize: screen)
               let button = installLocationButton!
               let label = installLocationLabel!
               expect(button.title == "使用「应用程序」中的联合 App 安装 / 卸载", "checkbox states both operations")
-              expect(button.state == .off && installLocation == "build", "build directory remains the default")
-              expect(label.stringValue.contains("构建目录"), "default destination is visible")
+              expect(button.state == .off && installLocation == "build", "an explicit build location remains respected")
+              expect(label.stringValue.contains("构建目录"), "the explicit build destination is visible")
               expect(cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .off && !cleanupBuildProducts, "build route hides and clears cleanup")
               expect(installButton!.isEnabled == false && checkedIdentifiers().isEmpty, "choosing a destination never selects functions")
               let header = button.superview!
@@ -312,23 +372,28 @@ class DeploymentLocationPanelTests < Minitest::Test
               expect(label.frame.width + 0.5 >= label.fittingSize.width, "Applications hint fits without relayout")
               button.performClick(nil)
               expect(installLocation == "build", "unchecking restores the existing directory route")
-              expect(cleanup.isHidden && cleanup.state == .off && !cleanupBuildProducts && cleanupNowButton!.isHidden, "returning to build clears automatic cleanup and hides independent cleanup")
+              expect(cleanup.isHidden && cleanup.state == .off && !cleanupBuildProducts && !cleanupNowButton!.isHidden && !cleanupNowButton!.isEnabled, "returning to build clears automatic cleanup and keeps the independent action visible but disabled")
           }
           func verifyExplicitApplicationsMode() {
               buildWindow(screenSize: NSSize(width: 1280, height: 720))
               expect(installLocationButton!.state == .on && installLocation == "applications", "explicit manager mode initializes the control")
-              expect(!cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .off, "explicit Applications route still defaults cleanup off")
+              expect(!cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .on && cleanupBuildProducts, "explicit Applications installation initially selects cleanup")
+              cleanupBuildProductsButton!.performClick(nil)
+              refreshSelectionState()
+              applyPanelPreferences()
+              expect(cleanupBuildProductsButton!.state == .off && !cleanupBuildProducts, "refreshing preserves explicit cleanup cancellation")
               cleanupBuildProductsButton!.performClick(nil)
               expect(cleanupBuildProducts, "cleanup can be explicitly selected")
               actionControl!.selectedSegment = 1
               actionChanged()
-              expect(cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .off && !cleanupBuildProducts && !cleanupNowButton!.isHidden, "uninstall hides automatic cleanup but retains independent cleanup")
+              expect(cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .on && cleanupBuildProducts && !cleanupNowButton!.isHidden, "uninstall hides automatic cleanup while retaining its install preference and independent cleanup")
               actionControl!.selectedSegment = 0
               actionChanged()
-              expect(!cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .off && !cleanupBuildProducts, "switching back to install never restores a previous cleanup request")
+              expect(!cleanupBuildProductsButton!.isHidden && cleanupBuildProductsButton!.state == .on && cleanupBuildProducts, "switching back to install restores the selected cleanup preference")
           }
           func verifyLegacyMode() {
               buildWindow(screenSize: NSSize(width: 1280, height: 720))
+              expect(installLocation == "build" && !cleanupBuildProducts, "legacy selection-only mode preserves its build location without cleanup")
               expect(installLocationButton == nil && installLocationLabel == nil && cleanupBuildProductsButton == nil, "legacy selection-only mode retains the old plan protocol and has no cleanup action")
               cancelClicked()
               expect(formattedOutcome() == "__CANCELLED__", "cancelling remains a plan with no operation")
@@ -499,16 +564,27 @@ class DeploymentLocationPanelTests < Minitest::Test
           _ = try FeatureSelectionController.parseArguments(arguments + ["--install-location"])
           fatalError("missing install location accepted")
       } catch {}
+      try FeatureSelectionController.parseArguments(arguments).verifyDefaultManagementSelections()
+      try FeatureSelectionController.parseArguments(["--manager", fixture]).verifyDefaultManagementSelections()
+      for initialAction in ["install", "uninstall"] {
+          try FeatureSelectionController.parseArguments(arguments + ["--action", initialAction]).verifyCleanupSelectionRoundTrip(enabled: true)
+          try FeatureSelectionController.parseArguments(arguments + ["--action", initialAction, "--no-cleanup-build-products"]).verifyCleanupSelectionRoundTrip(enabled: false)
+      }
+      try FeatureSelectionController.parseArguments(arguments + ["--no-cleanup-build-products"]).verifyCleanupFlagOverride(location: "applications", enabled: false)
+      try FeatureSelectionController.parseArguments(arguments + ["--install-location", "applications", "--no-cleanup-build-products"]).verifyCleanupFlagOverride(location: "applications", enabled: false)
+      try FeatureSelectionController.parseArguments(arguments + ["--no-cleanup-build-products", "--cleanup-build-products"]).verifyCleanupFlagOverride(location: "applications", enabled: true)
+      try FeatureSelectionController.parseArguments(arguments + ["--cleanup-build-products", "--no-cleanup-build-products"]).verifyCleanupFlagOverride(location: "applications", enabled: false)
+      try FeatureSelectionController.parseArguments(arguments + ["--install-location", "build", "--cleanup-build-products"]).verifyCleanupFlagOverride(location: "build", enabled: false)
       for theme in [NSAppearance.Name.aqua, .darkAqua] {
           application.appearance = NSAppearance(named: theme)
           for screen in [NSSize(width: 1920, height: 1080), NSSize(width: 1366, height: 768), NSSize(width: 800, height: 600)] {
-              try FeatureSelectionController.parseArguments(arguments).verifyLocationControls(screen: screen)
-              try FeatureSelectionController.parseArguments(["--manager", fixture]).verifyLocationControls(screen: screen)
+              try FeatureSelectionController.parseArguments(arguments + ["--install-location", "build"]).verifyLocationControls(screen: screen)
+              try FeatureSelectionController.parseArguments(["--manager", fixture, "--install-location", "build"]).verifyLocationControls(screen: screen)
           }
       }
       try FeatureSelectionController.parseArguments(arguments + ["--install-location", "applications"]).verifyExplicitApplicationsMode()
       try FeatureSelectionController.parseArguments([]).verifyLegacyMode()
-      let controller = try FeatureSelectionController.parseArguments(arguments)
+      let controller = try FeatureSelectionController.parseArguments(arguments + ["--install-location", "build"])
       controller.verifyEmptySelection()
       for operation in ["install", "uninstall"] {
           for location in ["build", "applications"] {
@@ -517,7 +593,7 @@ class DeploymentLocationPanelTests < Minitest::Test
               }
           }
       }
-      try FeatureSelectionController.parseArguments(["--manager", fixture, "--scope", "path_copier,file-create"]).verifyIndependentCleanupAndCooperativeStop(path: fixture)
+      try FeatureSelectionController.parseArguments(["--manager", fixture, "--scope", "path_copier,file-create", "--install-location", "build"]).verifyIndependentCleanupAndCooperativeStop(path: fixture)
       print("Deployment location checkbox, layout and isolated worker routes passed")
     SWIFT
     Dir.mktmpdir('jobs-deployment-panel-') do |directory|

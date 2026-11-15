@@ -14,6 +14,10 @@
 		01B000000000000000000012 /* GitRemoteResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000012 /* GitRemoteResolver.swift */; };
 		01B000000000000000000013 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000009 /* FinderSync.framework */; };
 		01B000000000000000000014 /* JobsGitRemoteFinderSync.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 01E000000000000000000001 /* JobsGitRemoteFinderSync.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		01B000000000000000000015 /* GitRemoteBrowserOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000015; };
+		01B000000000000000000016 /* GitRemoteResolver.swift in Host Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000012; };
+		01B000000000000000000017 /* GitRemoteOpenRequest.swift in Host Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016; };
+		01B000000000000000000018 /* GitRemoteOpenRequest.swift in Extension Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +56,8 @@
 		01A000000000000000000014 /* JobsGitRemoteFinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JobsGitRemoteFinderSync.entitlements; sourceTree = "<group>"; };
 		01E000000000000000000000 /* JobsGitRemoteOpener.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JobsGitRemoteOpener.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		01E000000000000000000001 /* JobsGitRemoteFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobsGitRemoteFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		01A000000000000000000015 /* GitRemoteBrowserOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitRemoteBrowserOpener.swift; sourceTree = "<group>"; };
+		01A000000000000000000016 /* GitRemoteOpenRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitRemoteOpenRequest.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +95,8 @@
 			children = (
 				01A000000000000000000001 /* AppDelegate.swift */,
 				01A000000000000000000002 /* MainViewController.swift */,
+				01A000000000000000000015 /* GitRemoteBrowserOpener.swift */,
+				01A000000000000000000016 /* GitRemoteOpenRequest.swift */,
 				01A000000000000000000003 /* Info.plist */,
 				01A000000000000000000004 /* JobsGitRemoteOpener.entitlements */,
 			);
@@ -230,6 +238,9 @@
 			files = (
 				01B000000000000000000001 /* AppDelegate.swift in Sources */,
 				01B000000000000000000002 /* MainViewController.swift in Sources */,
+				01B000000000000000000015 /* GitRemoteBrowserOpener.swift */,
+				01B000000000000000000016 /* GitRemoteResolver.swift */,
+				01B000000000000000000017 /* GitRemoteOpenRequest.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -238,6 +249,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				01B000000000000000000011 /* FinderSync.swift in Sources */,
+				01B000000000000000000018 /* GitRemoteOpenRequest.swift */,
 				01B000000000000000000012 /* GitRemoteResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

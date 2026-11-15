@@ -6,7 +6,8 @@
 # - 运行提示：仅供已确认的部署流程 source；写入前暂存，失败保留原管理资源。
 # shell: zsh
 
-typeset -g JOBS_COMBINED_MANAGER_LIBRARY_SOURCE="${(%):-%x}"
+# 使用原始来源路径，避免 C locale 下提示符展开转义中文包名。
+typeset -g JOBS_COMBINED_MANAGER_LIBRARY_SOURCE="${${${${funcsourcetrace[1]:-}%:*}:-$0}:A}"
 # 拒绝链接资源，复制不会读取容器外文件或写入其它位置。
 jobs_combined_manager_check_tree() {
   local directory="$1" linked=""
@@ -31,7 +32,7 @@ jobs_combined_manager_copy_package() {
 # 身份匹配后将新资源准备在同卷暂存区，再替换 ManagerRoot；失败恢复原目录。
 jobs_prepare_combined_manager_resources() {
   local container="$1" library_dir="${JOBS_COMBINED_MANAGER_LIBRARY_SOURCE:A:h}" source_root="" resources="" stage="" target="" package="" snapshot="" result=0
-  local packages=(JobsProjectTools JobsPathCopier JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
+  local packages=(JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
   [[ "$container" == /* && -d "$container" && ! -L "$container" && "${container:A}" == "$container" &&
      "${container:t}" == Jobs自定义右键菜单.app && ! -L "$container/Contents" &&
      -f "$container/Contents/Info.plist" && ! -L "$container/Contents/Info.plist" &&
@@ -84,7 +85,7 @@ jobs_prepare_combined_manager_resources() {
     /bin/cat > "$stage/ManageInstalledExtensions.zsh" <<'ENTRY'
 #!/bin/zsh
 # 联合 App 的管理入口：本次管理从私有快照运行，卸载自身后仍保留所有后端文件。
-JOBS_COMBINED_SESSION_SOURCE="${(%):-%x}"
+JOBS_COMBINED_SESSION_SOURCE="${${${${funcsourcetrace[1]:-}%:*}:-$0}:A}"
 JOBS_COMBINED_SESSION_DIR=""
 JOBS_COMBINED_SESSION_ROOT=""
 JOBS_COMBINED_SESSION_IDENTITY=""

@@ -422,6 +422,137 @@ class PanelPreferencesTests < Minitest::Test
               print("Native fixed status columns and title mappings passed")
           }
 
+          func verifyPinnedGroupActions() {
+              let scroll = featureScrollView!
+              let document = featureDocument!
+              let ios = featureBoxes["ios"]!
+              let controls = groupControls.first { $0.group.identifier == "ios" }!
+              let expectedPlan = FeatureOption.all.map { $0.identifier }
+              selectAllClicked()
+              let title = ios.convert(ios.titleRect, to: document)
+              scroll.contentView.scroll(to: NSPoint(x: 0, y: title.midY - scroll.contentSize.height))
+              scroll.reflectScrolledClipView(scroll.contentView)
+              guard let header = document.pinnedHeaders.first(where: { !$0.isHidden && $0.sourceBox === ios }) else {
+                  fatalError("the original group actions remain reachable after their title scrolls out")
+              }
+              for button in [controls.select, controls.clear] {
+                  let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: header.superview)
+                  expect(header.hitTest(point) === button, "pinned toolbar preserves native button hit testing instead of starting a card drag")
+              }
+              controls.clear.performClick(nil)
+              let iosIdentifiers = Set(controls.group.identifiers)
+              expect(checkedIdentifiers() == expectedPlan.filter { !iosIdentifiers.contains($0) }, "clearing the pinned group affects only that group's feature identifiers")
+              controls.select.performClick(nil)
+              expect(checkedIdentifiers() == expectedPlan, "selecting the pinned group restores only its own cleared features")
+              clearAllClicked()
+              scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.bounds.maxY - scroll.contentSize.height)))
+              scroll.reflectScrolledClipView(scroll.contentView)
+              expect(ios.groupToolbar?.superview === ios.contentView && ios.groupToolbar?.frame == ios.groupToolbarFrame, "returning to the top restores the original group toolbar parent and frame")
+          }
+
+          func verifyPinnedGroupHeaders() {
+              let scroll = featureScrollView!
+              let document = featureDocument!
+              let split = logSplitView!
+              let originalUpperHeight = split.arrangedSubviews[0].frame.height
+              let originalLanguage = preferences.language
+              let originalTheme = preferences.theme
+              let originalSelections = checkedIdentifiers()
+              let originalLog = logTextView!.string
+              let originalWorker = worker
+              let originalStates = featureStates
+              let originalToolbars = featureBoxes.mapValues { $0.groupToolbar! }
+              let originalToolbarFrames = featureBoxes.mapValues { $0.groupToolbarFrame }
+              defer {
+                  preferences.language = originalLanguage
+                  preferences.theme = originalTheme
+                  applyPanelPreferences()
+                  split.setPosition(originalUpperHeight, ofDividerAt: 0)
+                  scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.bounds.maxY - scroll.contentSize.height)))
+                  scroll.reflectScrolledClipView(scroll.contentView)
+              }
+              func scrollToTop(_ top: CGFloat) {
+                  scroll.contentView.scroll(to: NSPoint(x: 0, y: top - scroll.contentSize.height))
+                  scroll.reflectScrolledClipView(scroll.contentView)
+              }
+              func visibleHeader(for box: ManagerFeatureBox) -> ManagerFeaturePinnedHeader? {
+                  return document.pinnedHeaders.first { !$0.isHidden && $0.sourceBox === box }
+              }
+              scrollToTop(document.bounds.maxY)
+              expect(document.pinnedHeaders.allSatisfy { $0.isHidden }, "complete native titles at the top do not gain duplicate pinned titles")
+              preferences.theme = "light"
+              applyPanelPreferences()
+              let ios = featureBoxes["ios"]!
+              let iosTitle = ios.convert(ios.titleRect, to: document)
+              scrollToTop(iosTitle.midY)
+              guard let iosHeader = visibleHeader(for: ios) else {
+                  fatalError("a half-clipped group title gains its complete pinned title through clip bounds notifications")
+              }
+              expect(iosHeader.titleField.stringValue == ios.title, "pinned title names the partially clipped group")
+              expect(abs(iosHeader.frame.maxY - document.visibleRect.maxY) < 0.5, "pinned title follows the actual viewport top")
+              expect(document.visibleRect.insetBy(dx: -0.5, dy: -0.5).contains(iosHeader.frame), "a pinned title stays inside its visual column and viewport")
+              for box in [ios, featureBoxes["flutter"]!] {
+                  let toolbar = box.groupToolbar!
+                  let header = visibleHeader(for: box)!
+                  let controls = groupControls.first { $0.group.identifier == box.groupIdentifier }!
+                  expect(toolbar === originalToolbars[box.groupIdentifier] && toolbar.superview === header, "pinning moves the actual group toolbar without copying its controls")
+                  expect(header.bounds.contains(toolbar.frame) && !toolbar.frame.intersects(header.titleField.frame), "the complete original toolbar fits below the pinned title")
+                  for button in [controls.select, controls.clear] {
+                      expect(header.bounds.contains(button.convert(button.bounds, to: header)) && !button.isEnabled, "pinned group buttons remain complete and disabled during the active worker")
+                      expect(button.target === self && button.identifier?.rawValue == box.groupIdentifier, "pinned group buttons preserve their target and stable group identifier")
+                  }
+                  expect(controls.select.action == #selector(selectGroupClicked(_:)) && controls.clear.action == #selector(clearGroupClicked(_:)), "pinning preserves the original group selection actions")
+                  expect(header.bounds.contains(controls.summary.convert(controls.summary.bounds, to: header)), "the complete dynamic selection count remains inside the pinned toolbar")
+              }
+              let flutter = featureBoxes["flutter"]!
+              guard let flutterHeader = visibleHeader(for: flutter) else {
+                  fatalError("the tall right column retains its own independent Flutter context")
+              }
+              expect(flutterHeader.frame.minX >= flutter.frame.minX && flutterHeader.frame.maxX <= flutter.frame.maxX + 0.5, "right-column pinned title stays inside the Flutter card width")
+              expect(!iosHeader.frame.intersects(flutterHeader.frame), "the two visible column titles never overlap")
+              writePreview(name: "simplified-light-pinned-group-titles")
+              // 小视口让相邻分组边界也能通过真实滚动到达，覆盖标题推出过程。
+              split.setPosition(minimumUpperPaneHeight, ofDividerAt: 0)
+              scrollToTop(ios.frame.midY)
+              expect(visibleHeader(for: ios) === iosHeader, "scrolling within a card reuses its pinned header")
+              for language in ManagerPanelPreferences.languages where language != "system" {
+                  preferences.language = language
+                  for theme in ["light", "dark", "system"] {
+                      preferences.theme = theme
+                      applyPanelPreferences()
+                      expect(visibleHeader(for: ios)?.titleField.stringValue == ios.title, "visible pinned title follows each language and theme without stale text")
+                      verifyLocalizedBounds(iosHeader.titleField, context: "\(language) pinned group title")
+                      let toolbar = ios.groupToolbar!
+                      expect(iosHeader.bounds.contains(toolbar.frame), "localized group actions and counts remain inside the pinned header")
+                      for controls in groupControls where controls.group.identifier == "ios" {
+                          verifyLocalizedBounds(controls.summary, context: "\(language) pinned group count")
+                      }
+                      expect(checkedIdentifiers() == originalSelections && logTextView!.string == originalLog && worker === originalWorker && featureStates == originalStates, "scrolling and pinned-title localization preserve the live task, selection and log")
+                      if language == "bo" && theme == "dark" {
+                          writePreview(name: "tibetan-dark-pinned-group-titles", dark: true)
+                      }
+                  }
+              }
+              scrollToTop(ios.frame.minY + 6)
+              guard let pushedHeader = visibleHeader(for: ios) else {
+                  fatalError("the outgoing group retains its context until its bottom reaches the viewport top")
+              }
+              expect(pushedHeader.frame.minY >= ios.frame.minY - 0.5 && pushedHeader.frame.maxY > document.visibleRect.maxY, "the outgoing pinned title is pushed off at its own card boundary")
+              let simulators = featureBoxes["simulators"]!
+              let nextTitle = simulators.convert(simulators.titleRect, to: document)
+              scrollToTop(simulators.frame.maxY + 1)
+              expect(visibleHeader(for: ios) == nil && visibleHeader(for: simulators) == nil, "the next complete native title is not covered by the outgoing pinned title")
+              scrollToTop(nextTitle.midY)
+              expect(visibleHeader(for: ios) == nil && visibleHeader(for: simulators)?.titleField.stringValue == simulators.title, "crossing the next title switches context to that group")
+              expect(ios.groupToolbar?.superview === ios.contentView && ios.groupToolbar?.frame == originalToolbarFrames["ios"], "switching pinned groups restores the preceding toolbar's original parent and frame")
+              scrollToTop(document.bounds.maxY)
+              for (identifier, box) in featureBoxes {
+                  expect(box.groupToolbar === originalToolbars[identifier] && box.groupToolbar?.superview === box.contentView && box.groupToolbar?.frame == originalToolbarFrames[identifier], "returning to native titles restores every original toolbar without replacement")
+              }
+              expect(checkboxes.allSatisfy { !$0.button.isEnabled }, "scrolling never unlocks feature selection while a worker runs")
+              print("Native clipped-title pinning, column boundaries and localized live-state preservation passed")
+          }
+
           func verifyGroupReordering() {
               let stored = preferences.defaults.object(forKey: "featureGroupColumns.v1")
               defer {
@@ -435,6 +566,7 @@ class PanelPreferencesTests < Minitest::Test
               let document = featureDocument!
               let originalBoxes = featureBoxes
               let originalButtons = checkboxes.map { $0.button }
+              verifyPinnedGroupActions()
               selectAllClicked()
               let expectedPlan = FeatureOption.all.map { $0.identifier }
               logTextView!.string = "unchanged worker output\n"
@@ -444,6 +576,7 @@ class PanelPreferencesTests < Minitest::Test
               featureStates["path_copier"] = "running"
               refreshSelectionState()
               let currentWorker = worker
+              verifyPinnedGroupHeaders()
               let drag = IsolatedGroupDraggingInfo()
               drag.draggingSource = featureBoxes["git"]!
               drag.draggingDestinationWindow = window
@@ -509,9 +642,15 @@ class PanelPreferencesTests < Minitest::Test
               let cleanup = cleanupBuildProductsButton!
               let cleanNow = cleanupNowButton!
               let header = headerView!
+              cleanup.performClick(nil)
+              expect(cleanup.state == .on && cleanupBuildProducts, "the isolated Applications layout fixture accepts an explicit cleanup choice")
+              cleanup.performClick(nil)
+              expect(cleanup.state == .off && !cleanupBuildProducts, "the user can cancel post-install cleanup")
               for language in ManagerPanelPreferences.languages where language != "system" {
                   preferences.language = language
+                  refreshSelectionState()
                   applyPanelPreferences()
+                  expect(cleanup.state == .off && !cleanupBuildProducts, "language changes and selection refresh preserve manual cleanup cancellation")
                   expect(abs(location.frame.midY - cleanup.frame.midY) < 0.5, "deployment checkboxes share one vertically centered row")
                   expect(abs(cleanup.frame.minX - location.frame.maxX - 16) < 0.5, "automatic cleanup follows the actual localized title with a 16 point gap")
                   for control in [location, cleanup] {
@@ -533,18 +672,20 @@ class PanelPreferencesTests < Minitest::Test
               for control in [location, cleanup, cleanNow] {
                   expect(!privacy.frame.intersects(control.frame), "privacy authorization never overlaps the deployment and cleanup row")
               }
+              cleanup.performClick(nil)
+              expect(cleanup.state == .on && cleanupBuildProducts, "cleanup can be selected again before switching operations")
               actionControl!.selectedSegment = 1
               actionChanged()
-              expect(cleanup.isHidden && !cleanNow.isHidden, "uninstall retains independent cleanup and hides automatic cleanup")
+              expect(cleanup.isHidden && cleanup.state == .on && cleanupBuildProducts && !cleanNow.isHidden, "uninstall retains independent cleanup and the automatic cleanup preference")
               expect(abs(cleanNow.frame.minX - installButton!.frame.maxX - 10) < 0.5, "uninstall also places independent cleanup to the right of its main action")
               location.state = .off
               installLocationChanged()
-              expect(cleanup.isHidden && cleanNow.isHidden, "build-directory route keeps both cleanup controls hidden")
+              expect(cleanup.isHidden && !cleanNow.isHidden && !cleanNow.isEnabled, "build-directory route keeps independent cleanup visible with its execution guard")
               location.state = .on
               installLocationChanged()
               actionControl!.selectedSegment = 0
               actionChanged()
-              expect(!cleanup.isHidden && !cleanNow.isHidden && abs(cleanNow.frame.minX - installButton!.frame.maxX - 10) < 0.5, "returning to Applications install keeps cleanup beside the main action")
+              expect(!cleanup.isHidden && cleanup.state == .off && !cleanupBuildProducts && !cleanNow.isHidden && abs(cleanNow.frame.minX - installButton!.frame.maxX - 10) < 0.5, "returning to Applications install keeps the independent action without restoring cancelled automatic cleanup")
               preferences.language = "zh-Hans"
           }
 

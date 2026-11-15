@@ -35,6 +35,7 @@
 - 容器管理资源由相邻 `【MacOS】联合App管理.zsh/【MacOS】联合App管理.zsh` 的 `jobs_prepare_combined_manager_resources` 函数补齐。全容器互斥锁覆盖资源准备、宿主变化与签名；安装先签外层再登记子扩展，提交仅验证既有签名；卸载集合变化后重新签外层。递归验证但不深度重签子宿主，避免改掉子扩展权限。事务备份在应用程序根的隐藏目录，不进入外层签名内容。
 - `jobs_deployment_retire_other_copies` 只注销其它位置的启用登记并保留其文件，使切换失败可恢复原位置。卸载只注销精确 App / appex 路径，不使用同 Bundle ID 的全局禁用。
 - 并发改动导致目标或事务目录身份发生变化时，停止清理并保留备份；日志指出实际路径。进程异常终止可能留下互斥锁，应先核对事务与备份再处理。
+- 管理 App 图标使用本仓现有 `MacOS@Extension/icon.png`，未引入外部素材。由系统 `sips` 与 `iconutil` 生成的多尺寸 [JobsFinderManager.icns](./Resources/JobsFinderManager.icns) 随本部署库交付；联合 App 更新时复制到包内并设置 `CFBundleIconFile`，运行不依赖原图片位置或网络。资源路径从函数库的实际文件位置解析，兼容中文、空格和目录整体搬迁，不依赖启动工作目录或 UTF-8 语言环境，也不修改现有语言环境。图标缺失或含链接时，错误会同时列出准确的源图标与目标资源路径，并停止本次部署。
 
 ## 二、<span id="interfaces">管理器接口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -53,7 +54,7 @@
 | `jobs_deployment_rollback` | 任一步失败或 worker 异常退出时调用，恢复旧文件和原启用位置；恢复失败保留备份并返回非零。 |
 | `jobs_deployment_uninstall` | `appPath appID extName extID`：应用程序模式核验、精确注销并删除所选自有 App；构建模式不操作，由原管理器继续卸载。 |
 | `jobs_deployment_cleanup_build_products` | `builtApp derivedRoot appID extName extID`：成功提交后，额外核验精确启用位置、完整部署签名、构建来源无残留登记或运行进程，才清除此轮明确的 DerivedData。默认不调用。 |
-| `jobs_deployment_cleanup_existing_build_products` | 参数同上：独立清理已安装联合 App 对应的历史构建根，不要求本轮安装凭据；仍强校验 nested 宿主及外层签名、准确启用登记、来源无登记或进程和路径边界；源目录不存在或为空时不操作。 |
+| `jobs_deployment_cleanup_existing_build_products` | 参数同上：独立清理所选模块的历史构建根，不要求本轮安装凭据。已安装模块仍校验联合 App 内宿主及外层签名、准确启用登记；已卸载模块校验构建 App 身份，并确认来源没有登记或运行引用后再清理。两条分支均保留路径边界和搬移后的复核；源目录不存在或为空时不操作。 |
 
 `appID` 与 `extID` 必须为调用管理器维护的固定 `com.jobs.*` 身份，`extName` 必须是单个 `.appex` 文件名，不能由任意用户输入推导。诊断与来源 / 目标日志写标准错误，进入管理器已有会话日志；函数库不单独创建日志文件。管理器负责命令行 `--install-location build|applications` 的解析、GUI 勾选、默认空选和按钮确认。
 
@@ -67,7 +68,7 @@
 
 仅用户额外选择构建清理时，在 `commit` 后调用清理接口。它只接受 `work/<原宿主名>DerivedData` 或单包 `work/DerivedData`，且 `builtApp` 必须正好在该根的 `Build/Products/Debug` 或 `Release` 下。全 `work`、源码根、应用程序目录、链接父级和未经本次提交验证的来源一律拒绝。清理先同盘搬移锁定旧目录、再复查登记和进程，避免删除期间新建的同名构建目录；状态变化时保留或恢复来源。清理失败返回非零，应提示“已安装，构建清理失败”并保留安装结果，不回滚联合 App，不宣称清理成功；没有这次额外选择时保留构建产物。
 
-独立清理入口使用 `jobs_deployment_cleanup_existing_build_products`：先验证已装联合 App 和来源状态，再临时复用相同安全删除内核，最后还原调用者原有凭据。它不构建、不安装、不登记、不结束进程、不改已安装 App，也不扩大到兄弟单元；自动安装清理接口仍保留“必须本次成功提交”的限制。
+独立清理入口使用 `jobs_deployment_cleanup_existing_build_products`：已安装模块继续验证联合 App、签名、准确启用登记和来源状态，临时复用相同安全删除内核，最后还原调用者原有凭据。对应子 App 已卸载时，不再因安装副本缺失直接报错；只有构建 App 身份、路径范围和来源无登记、无运行引用均通过后，才清理该模块的残留 DerivedData。卸载后分支同时检查 PlugInKit、LaunchServices、进程路径及 `lsof` 打开文件 / 工作目录，校验前后和暂存后复核目录身份。查询失败、来源仍被使用、链接或身份不匹配均保留目录；搬移后状态变化时保留或恢复来源。它不构建、不安装、不注销登记、不结束进程、不改已安装 App，也不扩大到兄弟单元；自动安装清理接口仍保留“必须本次成功提交”的限制。
 
 ## 三、<span id="validation">隔离验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 

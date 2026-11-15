@@ -251,7 +251,7 @@ class SingleFeatureManagerTests < Minitest::Test
   MANAGERS = Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).sort.freeze
 
   def test_every_feature_has_one_parseable_manager_and_no_paired_entry
-    assert_equal 32, MANAGERS.length
+    assert_equal 33, MANAGERS.length
     assert_empty Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】安装*Finder扩展.command'))
     assert_empty Dir.glob(File.join(ROOT, 'Jobs*', '【MacOS】卸载*Finder扩展.command'))
     MANAGERS.each do |path|
@@ -414,7 +414,7 @@ end
   end
 
   def stubbed(path)
-    if %w[JobsFileCreator JobsFileHasher].any? { |name| path.include?("/#{name}/") }
+    if %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator].any? { |name| path.include?("/#{name}/") }
       return definitions(path) + <<~'ZSH'
         open_management_panel() { print -r -- OPEN_GUI; }
         run_worker() { print -r -- "BUSINESS=$MANAGER_ACTION"; }

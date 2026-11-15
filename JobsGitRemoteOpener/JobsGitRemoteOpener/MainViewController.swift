@@ -37,7 +37,7 @@ private extension MainViewController {
         titleLabel.textColor = .labelColor
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let detailLabel = NSTextField(wrappingLabelWithString: "运行 App 后会自动启用 Finder 扩展。右键 Git 仓库文件夹即可在一级右键菜单区域看到“打开 Git 远程地址”，并用系统默认浏览器打开 remote 对应网页。")
+        let detailLabel = NSTextField(wrappingLabelWithString: "右键 Git 仓库文件夹，选择“打开 Git 远程地址”。只有一个 remote 时直接打开默认浏览器；多个 remote 时在 Terminal 中用 fzf 选择，取消不会打开网页。")
         detailLabel.font = .systemFont(ofSize: 15)
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.translatesAutoresizingMaskIntoConstraints = false

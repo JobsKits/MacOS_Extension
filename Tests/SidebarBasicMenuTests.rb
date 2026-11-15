@@ -257,7 +257,8 @@ class SidebarBasicMenuTests < Minitest::Test
       source_path = File.join(directory, 'main.swift')
       binary_path = File.join(directory, 'sidebar-basic-menu-tests')
       sources = EXTENSIONS.each_with_index.map { |(path, _), index| isolated_source(path, index) }
-      File.write(source_path, [swift_stubs, *sources, swift_checks].join("\n"))
+      request = File.read(File.join(ROOT, 'JobsGitRemoteOpener/JobsGitRemoteOpener/GitRemoteOpenRequest.swift'))
+      File.write(source_path, [swift_stubs, request, *sources, swift_checks].join("\n"))
 
       output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
       assert status.success?, output
@@ -268,7 +269,149 @@ class SidebarBasicMenuTests < Minitest::Test
     end
   end
 
+  def test_remote_host_deduplicates_url_delivery_and_preserves_manual_startup
+    Dir.mktmpdir('jobs-remote-host-') do |directory|
+      source_path = File.join(directory, 'main.swift')
+      binary_path = File.join(directory, 'remote-host-tests')
+      request = File.read(File.join(ROOT, 'JobsGitRemoteOpener/JobsGitRemoteOpener/GitRemoteOpenRequest.swift'))
+      host = File.read(File.join(ROOT, 'JobsGitRemoteOpener/JobsGitRemoteOpener/AppDelegate.swift'))
+      host = host.gsub(/^@main\s*$/, '')
+      host = host.gsub('private extension AppDelegate {', 'fileprivate extension AppDelegate {')
+      host = host.gsub('@objc private func', '@objc fileprivate func')
+      host = host.sub(': NSObject, NSApplicationDelegate {', ': NSObject {')
+      host = host.sub('URL(fileURLWithPath: "/tmp/JobsGitRemoteOpener.log")', 'URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("host.log")')
+      host = host.sub("        scheduleFinderRefreshIfNeeded()\n", '')
+      host = host.gsub('NSAppleEventManager.shared()', 'TestAppleEventManager.shared()')
+      host = host.gsub(/\bNSApplication\b/, 'TestApplication')
+      host = host.gsub(/\bNSWindow\b/, 'TestWindow')
+      host = host.gsub(/\bNSAlert\b/, 'TestAlert')
+      host = host.gsub(/\bNSApp\b/, 'TestApplication.shared')
+      File.write(source_path, [remote_host_stubs, request, host, remote_host_checks].join("\n"))
+      output, status = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source_path, '-o', binary_path)
+      assert status.success?, output
+      output, status = Open3.capture2e(binary_path, directory)
+      assert status.success?, output
+      assert_match(/PASS: \d+ remote host assertions/, output)
+      puts output.lines.grep(/^PASS:/)
+    end
+  end
+
   private
+
+  def remote_host_stubs
+    <<~'SWIFT'
+      import AppKit
+      enum HostEffects {
+          static var opened: [URL] = []
+          static var windows = 0
+          static var alerts: [String] = []
+          static var terminated = 0
+          static var failBrowser = false
+          static var browserWasBackground = false
+      }
+      final class TestApplication: NSObject {
+          static let shared = TestApplication()
+          func activate(ignoringOtherApps: Bool) {}
+          func terminate(_ sender: Any?) { HostEffects.terminated += 1 }
+      }
+      final class TestAppleEventManager {
+          static let instance = TestAppleEventManager()
+          static func shared() -> TestAppleEventManager { instance }
+          var registrations = 0
+          func setEventHandler(_ handler: Any, andSelector: Selector, forEventClass: AEEventClass, andEventID: AEEventID) {
+              registrations += 1
+          }
+      }
+      final class MainViewController { var view = "view" }
+      final class TestWindow {
+          struct StyleMask: OptionSet {
+              let rawValue: Int
+              static let titled = StyleMask(rawValue: 1)
+              static let closable = StyleMask(rawValue: 2)
+              static let miniaturizable = StyleMask(rawValue: 4)
+          }
+          enum Backing { case buffered }
+          var title = ""
+          var contentViewController: MainViewController?
+          var isVisible = false
+          init(contentRect: NSRect, styleMask: StyleMask, backing: Backing, defer: Bool) {
+              HostEffects.windows += 1
+          }
+          func center() {}
+          func makeKeyAndOrderFront(_ sender: Any?) { isVisible = true }
+      }
+      final class TestAlert {
+          enum Style { case warning }
+          var alertStyle = Style.warning
+          var messageText = ""
+          var informativeText = ""
+          func addButton(withTitle: String) {}
+          func runModal() { HostEffects.alerts.append(informativeText) }
+      }
+      struct GitRemoteBrowserOpener {
+          func open(from url: URL) throws {
+              HostEffects.browserWasBackground = !Thread.isMainThread
+              HostEffects.opened.append(url)
+              if HostEffects.failBrowser {
+                  throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "browser failed"])
+              }
+          }
+      }
+    SWIFT
+  end
+
+  def remote_host_checks
+    <<~'SWIFT'
+      var assertions = 0
+      func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+          assertions += 1
+          guard condition() else { fatalError(message) }
+      }
+      func wait(_ duration: TimeInterval = 0.3) {
+          let deadline = Date().addingTimeInterval(duration)
+          while Date() < deadline {
+              _ = RunLoop.current.run(mode: .default, before: deadline)
+          }
+      }
+      let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+      let request = GitRemoteOpenRequest.url(for: root)!
+      let notification = Notification(name: Notification.Name("test-launch"))
+      let host = AppDelegate()
+      host.applicationWillFinishLaunching(notification)
+      expect(TestAppleEventManager.shared().registrations == 1, "Register the AppleEvent URL receiver before launch finishes")
+      host.applicationDidFinishLaunching(notification)
+      host.application(TestApplication.shared, open: [request])
+      let event = NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass), eventID: AEEventID(kAEGetURL), targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+      event.setParam(NSAppleEventDescriptor(string: request.absoluteString), forKeyword: keyDirectObject)
+      host.handleOpenURL(event, withReplyEvent: NSAppleEventDescriptor.null())
+      wait()
+      expect(HostEffects.opened == [root], "Two URL delivery callbacks dispatch one browser operation")
+      expect(HostEffects.browserWasBackground, "Resolve and dispatch outside the main thread")
+      expect(HostEffects.windows == 0, "URL cold launch never creates the management window")
+      expect(HostEffects.alerts.isEmpty, "Valid URL dispatch has no error prompt")
+      host.application(TestApplication.shared, open: [])
+      host.application(TestApplication.shared, open: [request, request])
+      host.application(TestApplication.shared, open: [URL(string: "jobsgitremoteopener://open?path=relative")!])
+      expect(HostEffects.alerts.count == 3, "Empty, multiple and malformed requests are rejected")
+      expect(HostEffects.opened.count == 1, "Rejected requests do not start browser operations")
+      let other = root.appendingPathComponent("another folder 中文", isDirectory: true)
+      try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+      HostEffects.failBrowser = true
+      host.application(TestApplication.shared, open: [GitRemoteOpenRequest.url(for: other)!])
+      wait()
+      expect(HostEffects.alerts.last == "browser failed", "Background failure reaches the main-thread prompt")
+      HostEffects.failBrowser = false
+      wait(0.8)
+      expect(HostEffects.terminated == 1, "Completed URL-only host exits after dispatch")
+      let manualHost = AppDelegate()
+      manualHost.applicationDidFinishLaunching(notification)
+      wait()
+      expect(HostEffects.windows == 1, "Manual app startup keeps the management window")
+      expect(manualHost.applicationShouldHandleReopen(TestApplication.shared, hasVisibleWindows: true), "Manual reopen is accepted")
+      expect(HostEffects.windows == 1, "Reopen reuses the existing management window")
+      print("PASS: \(assertions) remote host assertions")
+    SWIFT
+  end
 
   def isolated_source(path, index)
     source = File.read(File.join(ROOT, path))
@@ -332,12 +475,14 @@ class SidebarBasicMenuTests < Minitest::Test
           static var opened: [URL] = []
           static var copied: [String] = []
           static var failures = 0
+          static var openSucceeds = true
           static let remoteURL = URL(string: "https://example.test/jobs/repository")!
           static func reset() {
               inputs = []
               opened = []
               copied = []
               failures = 0
+              openSucceeds = true
           }
       }
       final class PathClipboardWriter {
@@ -361,7 +506,10 @@ class SidebarBasicMenuTests < Minitest::Test
           static let shared = NSWorkspace()
           @discardableResult func open(_ url: URL) -> Bool {
               TestActions.opened.append(url)
-              return true
+              if let request = GitRemoteOpenRequest(url: url) {
+                  TestActions.inputs.append(request.projectURL)
+              }
+              return TestActions.openSucceeds
           }
       }
     SWIFT
@@ -387,7 +535,9 @@ class SidebarBasicMenuTests < Minitest::Test
           expect(TestActions.inputs == [expected], "Action must use the intended context URL")
           expect(TestActions.failures == 0, "Valid target must dispatch successfully")
           if index == 2 {
-              expect(TestActions.opened == [TestActions.remoteURL], "Remote opener uses workspace replacement")
+              expect(TestActions.opened.count == 1, "Remote opener dispatches one host request")
+              expect(TestActions.opened.first?.scheme == "jobsgitremoteopener", "Remote opener routes through its host")
+              expect(TestActions.opened.first.flatMap(GitRemoteOpenRequest.init(url:))?.projectURL == expected, "Host request preserves the intended context URL")
               expect(TestActions.copied.isEmpty, "Open action must not copy")
           } else {
               let value = index == 0 ? expected.path : TestActions.remoteURL.absoluteString
@@ -458,7 +608,11 @@ class SidebarBasicMenuTests < Minitest::Test
               expect(menu.items.map(\\.title) == [title], "Items preserve the existing title")
               TestActions.reset()
               click(menu)
-              expectDispatch(selection, index: index)
+              if index == 2 && selection == regularFile {
+                  expectDispatch(root, index: index)
+              } else {
+                  expectDispatch(selection, index: index)
+              }
           }
           for selection: [URL]? in [nil, [], [folderA, folderB]] {
               controller.selected = selection
@@ -468,6 +622,66 @@ class SidebarBasicMenuTests < Minitest::Test
           for kind in [FIMenuKind.contextualMenuForContainer, .toolbarItemMenu] {
               expect(finder.menu(for: kind) == nil, "Container and toolbar do not gain folder actions")
           }
+          if index == 2 {
+              controller.targeted = folderB
+              let sidebar = finder.menu(for: .contextualMenuForSidebar)!
+              TestActions.reset()
+              TestActions.openSucceeds = false
+              click(sidebar)
+              expect(TestActions.opened.count == 1, "Failed host launch is attempted once")
+              expect(TestActions.failures == 1, "Failed host launch reports an error")
+              expect(TestActions.copied.isEmpty, "Failed host launch never copies a remote")
+          }
+      }
+      let special = root.appendingPathComponent("引号 ' & ?# + 中文", isDirectory: true)
+      try FileManager.default.createDirectory(at: special, withIntermediateDirectories: true)
+      let validRequest = GitRemoteOpenRequest.url(for: special)!
+      expect(GitRemoteOpenRequest(url: validRequest)?.projectURL == special, "Request round trip preserves path punctuation and Unicode")
+      for invalid in [regularFile, nonLocal.url!, root.appendingPathComponent("absent"), URL(string: "https://example.test/path")!] {
+          expect(GitRemoteOpenRequest.url(for: invalid) == nil, "Invalid local directory cannot form a host request")
+      }
+      let linkedFolder = root.appendingPathComponent("linked-folder")
+      try FileManager.default.createSymbolicLink(at: linkedFolder, withDestinationURL: folderB)
+      expect(GitRemoteOpenRequest.url(for: linkedFolder) == nil, "Symbolic links are rejected by the folder contract")
+      let package = root.appendingPathComponent("Example.app", isDirectory: true)
+      try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+      expect(GitRemoteOpenRequest.url(for: package) == nil, "Application packages are rejected by the folder contract")
+      let validComponents = URLComponents(url: validRequest, resolvingAgainstBaseURL: false)!
+      var malformed: [URLComponents] = []
+      var candidate = validComponents
+      candidate.queryItems!.append(URLQueryItem(name: "path", value: folderA.path))
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.queryItems!.append(URLQueryItem(name: "unexpected", value: "true"))
+      malformed.append(candidate)
+      for path in ["", "relative/path", "bad\\0path", regularFile.path, linkedFolder.path, package.path, root.appendingPathComponent("missing").path] {
+          candidate = validComponents
+          candidate.queryItems = [URLQueryItem(name: "path", value: path)]
+          malformed.append(candidate)
+      }
+      candidate = validComponents
+      candidate.scheme = "unexpected"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.host = "other"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.path = "/extra"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.fragment = "unexpected"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.user = "user"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.password = "password"
+      malformed.append(candidate)
+      candidate = validComponents
+      candidate.port = 1234
+      malformed.append(candidate)
+      for components in malformed {
+          expect(components.url.flatMap(GitRemoteOpenRequest.init(url:)) == nil, "Malformed or stale host request is rejected")
       }
       print("PASS: \\(assertionCount) basic sidebar menu assertions")
     SWIFT

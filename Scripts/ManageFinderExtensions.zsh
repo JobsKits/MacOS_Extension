@@ -69,46 +69,169 @@ jobs_terminal_style_run() {
     jobs_style_exit_status=0
     jobs_style_esc=$(printf '\033')
     jobs_style_bel=$(printf '\007')
-    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    # 完整颜色帧有界重发；仅退出恢复容忍帧外回车和明确方向键。
     jobs_terminal_style_query() {
         jobs_style_query_key=$1
-        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
         jobs_style_reply=''
-        for jobs_style_attempt in 1 2 3; do
-            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
-            jobs_style_reply=$jobs_style_reply$jobs_style_piece
-            case $jobs_style_reply in
-                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
-                '') ;;
-                "$jobs_style_esc"*) ;;
-                *) break ;;
-            esac
-        done
-        case $jobs_style_reply in
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
-                ;;
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
-                ;;
-            *) return 1 ;;
-        esac
-        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
-            NF != 3 { exit 1 }
-            {
-                for (i = 1; i <= 3; i++) {
-                    h = tolower($i)
-                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
-                    n = 0
-                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
-                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
-                }
-                printf "%d/%d/%d", value[1], value[2], value[3]
+        jobs_style_query_buffer=''
+        jobs_style_query_target_reply=''
+        jobs_style_query_target_normalized=''
+        jobs_style_query_target_rgb=''
+        jobs_style_query_st="${jobs_style_esc}\\"
+        jobs_style_query_stale_count=0
+        jobs_style_query_phase=${2:-strict}
+        jobs_style_query_cr=$(printf '\r')
+        jobs_style_query_lf=$(printf '\n.')
+        jobs_style_query_lf=${jobs_style_query_lf%.}
+        jobs_style_query_failure='未收到目标颜色的完整答复（最多 3 次查询，每次约 2 秒）'
+        for jobs_style_query_round in 1 2 3; do
+            printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || {
+                jobs_style_query_failure='无法向原终端发送配色查询'
+                return 1
             }
-        ') || return 1
-        [ -n "$jobs_style_normalized" ]
+            for jobs_style_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                # 哨兵保留末尾换行，不能把只有回车的键盘输入误当成无答复。
+                jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty; printf '.')
+                jobs_style_piece=${jobs_style_piece%.}
+                jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
+                while [ -n "$jobs_style_query_buffer" ]; do
+                    # 仅退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ]; then
+                        jobs_style_query_control_sequence=''
+                        jobs_style_query_control_partial=0
+                        case $jobs_style_query_buffer in
+                            "$jobs_style_query_cr"*) jobs_style_query_control_sequence=$jobs_style_query_cr ;;
+                            "$jobs_style_query_lf"*) jobs_style_query_control_sequence=$jobs_style_query_lf ;;
+                        esac
+                        if [ -z "$jobs_style_query_control_sequence" ]; then
+                            for jobs_style_query_direction in A B C D; do
+                                for jobs_style_query_control_candidate in \
+                                    "${jobs_style_esc}[${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}O${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;2${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;3${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;4${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;5${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;6${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;7${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;8${jobs_style_query_direction}"; do
+                                    case $jobs_style_query_buffer in
+                                        "$jobs_style_query_control_candidate"*)
+                                            jobs_style_query_control_sequence=$jobs_style_query_control_candidate
+                                            break 2
+                                            ;;
+                                    esac
+                                    case $jobs_style_query_control_candidate in
+                                        "$jobs_style_query_buffer"*) jobs_style_query_control_partial=1 ;;
+                                    esac
+                                done
+                            done
+                        fi
+                        if [ -n "$jobs_style_query_control_sequence" ]; then
+                            jobs_style_cleanup_control_keys=$(( ${jobs_style_cleanup_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_cleanup_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='退出恢复期间已识别控制键超过 64 个，已停止自动恢复'
+                                return 1
+                            fi
+                            jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
+                            continue
+                        fi
+                        if [ "$jobs_style_query_control_partial" = 1 ]; then
+                            break
+                        fi
+                    fi
+                    case $jobs_style_query_buffer in
+                        "$jobs_style_esc"|"$jobs_style_esc]") break ;;
+                        "$jobs_style_esc]"*) ;;
+                        *) jobs_style_query_failure='收到非配色查询输入，已停止读取'; return 1 ;;
+                    esac
+                    jobs_style_query_head=''
+                    jobs_style_query_terminator=''
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_bel"*)
+                            jobs_style_query_head=${jobs_style_query_buffer%%"$jobs_style_bel"*}
+                            jobs_style_query_terminator=$jobs_style_bel
+                            ;;
+                    esac
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_query_st"*)
+                            jobs_style_query_st_head=${jobs_style_query_buffer%%"$jobs_style_query_st"*}
+                            if [ -z "$jobs_style_query_terminator" ] ||
+                               [ "${#jobs_style_query_st_head}" -lt "${#jobs_style_query_head}" ]; then
+                                jobs_style_query_head=$jobs_style_query_st_head
+                                jobs_style_query_terminator=$jobs_style_query_st
+                            fi
+                            ;;
+                    esac
+                    [ -n "$jobs_style_query_terminator" ] || break
+                    jobs_style_query_frame=$jobs_style_query_head$jobs_style_query_terminator
+                    jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_frame"}
+                    jobs_style_query_body=${jobs_style_query_head#"$jobs_style_esc]"}
+                    case $jobs_style_query_body in
+                        *';rgb:'*) ;;
+                        *) jobs_style_query_failure='配色答复格式或 RGB 数据无效'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_key=${jobs_style_query_body%%';rgb:'*}
+                    case $jobs_style_query_frame_key in
+                        10|11|12|'4;'[0-9]|'4;1'[0-5]) ;;
+                        *) jobs_style_query_failure='收到不属于本次颜色协议的答复'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_rgb=${jobs_style_query_body#"$jobs_style_query_frame_key;rgb:"}
+                    jobs_style_query_frame_normalized=$(printf '%s\n' "$jobs_style_query_frame_rgb" | LC_ALL=C awk -F/ '
+                        BEGIN { valid = 1 }
+                        NR != 1 || NF != 3 { valid = 0; exit }
+                        {
+                            for (i = 1; i <= 3; i++) {
+                                h = tolower($i)
+                                if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) {
+                                    valid = 0
+                                    exit
+                                }
+                                n = 0
+                                for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                                value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                            }
+                        }
+                        END {
+                            if (!valid || NR != 1) exit 1
+                            printf "%d/%d/%d", value[1], value[2], value[3]
+                        }
+                    ')
+                    if [ -z "$jobs_style_query_frame_normalized" ]; then
+                        jobs_style_query_failure='配色答复格式或 RGB 数据无效'
+                        return 1
+                    fi
+                    if [ "$jobs_style_query_frame_key" = "$jobs_style_query_key" ]; then
+                        if [ -n "$jobs_style_query_target_reply" ] &&
+                           [ "$jobs_style_query_target_normalized" != "$jobs_style_query_frame_normalized" ]; then
+                            jobs_style_query_failure='同一颜色的重复答复不一致，已停止自动恢复'
+                            return 1
+                        fi
+                        jobs_style_query_target_reply=$jobs_style_query_frame
+                        jobs_style_query_target_normalized=$jobs_style_query_frame_normalized
+                        jobs_style_query_target_rgb=$jobs_style_query_frame_rgb
+                    else
+                        jobs_style_query_stale_count=$((jobs_style_query_stale_count + 1))
+                        if [ "$jobs_style_query_stale_count" -gt 128 ]; then
+                            jobs_style_query_failure='收到过多旧颜色答复，已停止读取'
+                            return 1
+                        fi
+                    fi
+                done
+                if [ -n "$jobs_style_query_target_reply" ] && [ -z "$jobs_style_query_buffer" ]; then
+                    jobs_style_reply=$jobs_style_query_target_reply
+                    jobs_style_normalized=$jobs_style_query_target_normalized
+                    jobs_style_rgb=$jobs_style_query_target_rgb
+                    return 0
+                fi
+            done
+            # 残缺帧不能通过重发拼成另一个答复，更不能被当成键盘空输入。
+            if [ -n "$jobs_style_query_buffer" ]; then
+                jobs_style_query_failure='配色答复帧不完整，已停止自动恢复'
+                return 1
+            fi
+        done
+        return 1
     }
     # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
     jobs_terminal_style_accepts_target() {
@@ -151,8 +274,10 @@ jobs_terminal_style_run() {
         fi
         if [ "$jobs_style_changed" = 1 ]; then
             jobs_style_cleanup_ok=0
+            jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
             jobs_style_conflicts=''
             jobs_style_restore_safe=''
+            jobs_style_cleanup_control_keys=0
             if [ "$jobs_style_applied_complete" = 1 ]; then
                 jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
                 if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
@@ -160,8 +285,9 @@ jobs_terminal_style_run() {
                     jobs_style_cleanup_ok=1
                     while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
                         [ -n "$jobs_style_key" ] || continue
-                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                        if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
                             jobs_style_cleanup_ok=0
+                            jobs_style_cleanup_issue="颜色项 $jobs_style_key：$jobs_style_query_failure"
                             break
                         fi
                         if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
@@ -172,7 +298,7 @@ jobs_terminal_style_run() {
                     done <<JOBS_STYLE_APPLIED
 $jobs_style_applied_rows
 JOBS_STYLE_APPLIED
-                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_cleanup_ok=0; jobs_style_cleanup_issue='无法恢复原终端输入模式'; }
                     jobs_style_query_active=0
                 fi
             fi
@@ -186,7 +312,7 @@ JOBS_STYLE_APPLIED
                     [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
                 fi
             else
-                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_cleanup_issue" "$jobs_style_recovery" >&2
                 [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
             fi
         fi
@@ -197,9 +323,9 @@ JOBS_STYLE_APPLIED
         exit "$jobs_style_result"
     }
     trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
-    trap 'jobs_style_exit_status=129; exit 129' HUP
-    trap 'jobs_style_exit_status=130; exit 130' INT
-    trap 'jobs_style_exit_status=143; exit 143' TERM
+    trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+    trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+    trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
     if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
         jobs_terminal_style_plain "$@"
     fi
@@ -275,9 +401,9 @@ JOBS_STYLE_ORIGINAL
             jobs_style_exit_status=1
             exit 1
         fi
-        trap 'jobs_style_exit_status=129; exit 129' HUP
-        trap 'jobs_style_exit_status=130; exit 130' INT
-        trap 'jobs_style_exit_status=143; exit 143' TERM
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
         printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
         jobs_terminal_style_plain "$@"
     fi
@@ -361,6 +487,8 @@ jobs_terminal_style_bootstrap "$0" "$@"
 #    多选完整组才合并，单个普通文件才拆分；两动作各自开关且保留兄弟配置。
 #    Scripts/ViewFileContent.zsh；只读普通单文件，终端内按阈值确认，不和打开所在目录混用。
 # 7、其它单元：FEATURE_PROJECT_DIR/SCHEME/APP/EXTENSION 各表决定工程与身份；
+#    command-shortcut-create → JobsCommandShortcutCreator；对 .command 目录右键生成同级相对路径转发脚本；
+#    Shared/CommandShortcutContext/Request → CommandShortcutController/Service；命名确认、排他创建、不执行源脚本。
 #    file-create → JobsFileCreator，FinderSync 仅接收桌面/普通目录背景，点击时复核目录；
 #    Shared/FileCreationRequest → 宿主 AppDelegate/FileCreationController → FileCreationService；
 #    原生输入文件名，排他创建空文件后 Finder 定位，不覆盖已有文件；无额外持久配置。
@@ -395,8 +523,9 @@ jobs_intro_style() {
     }
   '
 }
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
+SCRIPT_PATH="${${${funcsourcetrace[1]:-}%:*}:-$0}"
+SCRIPT_DIR="${SCRIPT_PATH:A:h}"
+SCRIPT_PATH="${SCRIPT_PATH:A}"
 WORKSPACE_DIR="${SCRIPT_DIR:h}"
 SCRIPT_BASENAME="【MacOS】🧩管理Finder扩展"
 LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
@@ -432,14 +561,14 @@ CLI_FEATURES=""
 MANAGER_NON_INTERACTIVE=0
 MANAGER_GUI_SESSION=0
 REMAINING_CONFIG_FEATURES=""
-JOBS_FINDER_INSTALL_LOCATION="build"
-JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=0
+JOBS_FINDER_INSTALL_LOCATION="${JOBS_FINDER_INSTALL_LOCATION:-}"
+JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-}"
 ROOT_DEPLOYMENT_ACTIVE=0
 JOBS_FINDER_STOP_REQUEST_FILE=""
 JOBS_FINDER_BLOCKED_FILE=""
 MANAGER_CONTROL_DIRECTORY=""
 
-FEATURE_KEYS=(project-tools path_copier file-create file-hash run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
+FEATURE_KEYS=(project-tools path_copier command-shortcut-create file-create file-hash run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -488,6 +617,14 @@ FEATURE_SCHEME[path_copier]="JobsPathCopier"
 FEATURE_APP_NAME[path_copier]="JobsPathCopier"
 FEATURE_EXTENSION_NAME[path_copier]="JobsPathCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[path_copier]="com.jobs.JobsPathCopier.FinderSyncExtension"
+
+FEATURE_TITLE[command-shortcut-create]="创建脚本快捷入口"
+FEATURE_PROJECT_DIR[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_SCHEME[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_APP_NAME[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_APP_ID[command-shortcut-create]="com.jobs.commandshortcutcreator"
+FEATURE_EXTENSION_NAME[command-shortcut-create]="JobsCommandShortcutCreatorFinderSync.appex"
+FEATURE_EXTENSION_ID[command-shortcut-create]="com.jobs.commandshortcutcreator.findersync"
 
 FEATURE_TITLE[file-create]="新建文件"
 FEATURE_PROJECT_DIR[file-create]="JobsFileCreator"
@@ -688,13 +825,15 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create file-hash run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier command-shortcut-create file-create file-hash run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote_copier]="project-tools"
 SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
+SELECTABLE_FUNCTION_TITLE[command-shortcut-create]="创建脚本快捷入口"
+SELECTABLE_FUNCTION_PROJECT_KEY[command-shortcut-create]="command-shortcut-create"
 SELECTABLE_FUNCTION_TITLE[file-create]="新建文件"
 SELECTABLE_FUNCTION_PROJECT_KEY[file-create]="file-create"
 SELECTABLE_FUNCTION_TITLE[file-hash]="查看文件指纹 Hash（SHA-256）"
@@ -1592,7 +1731,7 @@ open_host_for_extension_registration() {
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == file-create || "$key" == file-hash ]]; then
+  if [[ "$key" == command-shortcut-create || "$key" == file-create || "$key" == file-hash ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   if [[ "$key" == "run-authorize" || "$key" == "run-revoke" || "$key" == "ipa-resign" || "$key" == "hidden-files-toggle" || "$key" == "ios-tools" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "android-simulator-repair" || "$key" == "harmony-simulator-create" || "$key" == "harmony-simulator-repair" || "$key" == "git-proxy-configure" ]]; then
@@ -1678,6 +1817,7 @@ register_and_enable_feature() {
 # 解析管理参数；非交互只接受明确的操作和非空功能清单。
 parse_management_options() {
   local explicit_action=0
+  local install_location="$JOBS_FINDER_INSTALL_LOCATION" cleanup_build_products="$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS"
   while (( $# > 0 )); do
     case "$1" in
       --action|--scope|--features|--install-location|--stop-request-file)
@@ -1686,19 +1826,29 @@ parse_management_options() {
           --action) MANAGEMENT_ACTION="$2"; explicit_action=1 ;;
           --scope) FEATURE_SCOPE="$2" ;;
           --features) CLI_FEATURES="$2" ;;
-          --install-location) JOBS_FINDER_INSTALL_LOCATION="$2" ;;
+          --install-location) install_location="$2" ;;
           --stop-request-file) JOBS_FINDER_STOP_REQUEST_FILE="$2" ;;
         esac
         shift 2
         ;;
       --non-interactive) MANAGER_NON_INTERACTIVE=1; shift ;;
-      --cleanup-build-products) JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=1; shift ;;
+      --cleanup-build-products) cleanup_build_products=1; shift ;;
       --gui-session) MANAGER_GUI_SESSION=1; shift ;;
       *) print -u2 -- "未知参数：$1"; return 2 ;;
     esac
   done
+  # 仅面板首开默认勾选；后台请求及显式环境选择保持原值。
+  if (( ! MANAGER_NON_INTERACTIVE )); then
+    [[ -n "$install_location" ]] || install_location=applications
+    if [[ -z "$cleanup_build_products" && "$install_location" == applications && "$MANAGEMENT_ACTION" == install ]]; then
+      cleanup_build_products=1
+    fi
+  fi
+  JOBS_FINDER_INSTALL_LOCATION="${install_location:-build}"
+  JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="${cleanup_build_products:-0}"
   [[ "$MANAGEMENT_ACTION" == install || "$MANAGEMENT_ACTION" == uninstall || "$MANAGEMENT_ACTION" == cleanup ]] || return 2
   [[ "$JOBS_FINDER_INSTALL_LOCATION" == build || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '安装位置只能是 build 或 applications。'; return 2; }
+  [[ "$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS" == 0 || "$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS" == 1 ]] || { print -u2 '构建产物清理开关必须是 0 或 1。'; return 2; }
   [[ "$MANAGEMENT_ACTION" != cleanup || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '构建目录模式不能独立清理正在使用的产物。'; return 2; }
   if [[ -n "$JOBS_FINDER_STOP_REQUEST_FILE" ]]; then
     [[ "$MANAGEMENT_ACTION" == install && "$JOBS_FINDER_STOP_REQUEST_FILE" == /* && ! -L "$JOBS_FINDER_STOP_REQUEST_FILE" ]] || return 2

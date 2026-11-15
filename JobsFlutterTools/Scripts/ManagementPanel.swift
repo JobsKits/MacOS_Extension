@@ -33,6 +33,7 @@ struct FeatureOption {
         FeatureOption(identifier: "git_remote", title: "打开 Git 远程地址"),
         FeatureOption(identifier: "git_remote_copier", title: "复制 Git 远程地址"),
         FeatureOption(identifier: "path_copier", title: "复制绝对路径"),
+        FeatureOption(identifier: "command-shortcut-create", title: "创建脚本快捷入口"),
         FeatureOption(identifier: "file-create", title: "新建文件"),
         FeatureOption(identifier: "file-hash", title: "查看文件指纹 Hash（SHA-256）"),
         FeatureOption(identifier: "run-authorize", title: "授予执行权限（chmod +x）"),
@@ -144,7 +145,7 @@ struct FeatureGroup {
             "git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
         ]),
         FeatureGroup(identifier: "general", title: "文件与通用工具", identifiers: [
-            "path_copier", "file-create", "file-hash", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open", "file_content", "file_merge", "file_split",
+            "path_copier", "command-shortcut-create", "file-create", "file-hash", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open", "file_content", "file_merge", "file_split",
             "clean_build_artifacts", "codegraph_bootstrap"
         ]),
         FeatureGroup(identifier: "flutter", title: "Flutter 工具 · 子菜单功能", identifiers: FeatureOption.flutter.map { $0.identifier }),
@@ -298,6 +299,8 @@ private final class ManagerFeatureBox: NSBox,
 
     static let pasteboardType = NSPasteboard.PasteboardType("com.jobs.finderextensions.feature-group")
     var groupIdentifier = ""
+    var groupToolbar: NSView?
+    var groupToolbarFrame = NSRect.zero
     var canMove: () -> Bool = {
         return true
     }
@@ -333,10 +336,17 @@ private final class ManagerFeatureBox: NSBox,
             return
         }
         mouseDownEvent = nil
+        beginGroupDragging(with: event, from: self)
+    }
+
+    func beginGroupDragging(with event: NSEvent, from view: NSView) {
+        guard canMove() else {
+            return
+        }
         let item = NSPasteboardItem()
         item.setString(groupIdentifier, forType: Self.pasteboardType)
         let draggingItem = NSDraggingItem(pasteboardWriter: item)
-        let previewFrame = NSRect(x: 0, y: bounds.height - 42, width: min(bounds.width, 380), height: 42)
+        let previewFrame = NSRect(x: 0, y: view.bounds.height - 42, width: min(view.bounds.width, 380), height: 42)
         let image = NSImage(size: previewFrame.size)
         image.lockFocus()
         NSColor.controlBackgroundColor.setFill()
@@ -345,7 +355,7 @@ private final class ManagerFeatureBox: NSBox,
                                 withAttributes: [.font: titleFont, .foregroundColor: NSColor.labelColor])
         image.unlockFocus()
         draggingItem.setDraggingFrame(previewFrame, contents: image)
-        beginDraggingSession(with: [draggingItem], event: event, source: self)
+        view.beginDraggingSession(with: [draggingItem], event: event, source: self)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -357,11 +367,82 @@ private final class ManagerFeatureBox: NSBox,
     }
 }
 
+/// 滚过原始标题后保留当前分组上下文，拖动仍由原卡片承担。
+private final class ManagerFeaturePinnedHeader: NSView {
+
+    weak var sourceBox: ManagerFeatureBox? {
+        didSet {
+            if let previous = oldValue, previous !== sourceBox, let toolbar = previous.groupToolbar {
+                previous.contentView?.addSubview(toolbar)
+                toolbar.frame = previous.groupToolbarFrame
+            }
+            if let toolbar = sourceBox?.groupToolbar, toolbar.superview !== self {
+                addSubview(toolbar)
+            }
+        }
+    }
+    let titleField = NSTextField(labelWithString: "")
+    private var mouseDownEvent: NSEvent?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        titleField.textColor = .labelColor
+        titleField.setAccessibilityElement(false)
+        addSubview(titleField)
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+
+    override var isOpaque: Bool {
+        return true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        ("⋮⋮" as NSString).draw(at: NSPoint(x: bounds.width - 24, y: titleField.frame.minY),
+                               withAttributes: [.font: titleField.font!, .foregroundColor: NSColor.secondaryLabelColor])
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else {
+            return nil
+        }
+        return hit is NSButton ? hit : self
+    }
+
+    override func resetCursorRects() {
+        let titleArea = NSRect(x: 0, y: bounds.height - 28, width: bounds.width, height: 28)
+        addCursorRect(titleArea, cursor: sourceBox?.canMove() == true ? .openHand : .arrow)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        mouseDownEvent = sourceBox?.canMove() == true ? event : nil
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = mouseDownEvent,
+              hypot(event.locationInWindow.x - start.locationInWindow.x, event.locationInWindow.y - start.locationInWindow.y) >= 4 else {
+            return
+        }
+        mouseDownEvent = nil
+        sourceBox?.beginGroupDragging(with: event, from: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        mouseDownEvent = nil
+    }
+}
+
 /// 列表负责原生拖放和插入线；重排时复用已有卡片，不打断选择或后台状态。
 private final class ManagerFeatureList: NSView {
 
     var proposeDrop: ((String, NSPoint) -> NSRect?)?
     var acceptDrop: ((String, NSPoint) -> Bool)?
+    private(set) var pinnedHeaders: [ManagerFeaturePinnedHeader] = []
+    private var clipObservation: NSObjectProtocol?
     private var insertionFrame: NSRect? {
         didSet {
             needsDisplay = true
@@ -376,6 +457,73 @@ private final class ManagerFeatureList: NSView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         registerForDraggedTypes([ManagerFeatureBox.pasteboardType])
+    }
+
+    deinit {
+        if let clipObservation {
+            NotificationCenter.default.removeObserver(clipObservation)
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if let clipObservation {
+            NotificationCenter.default.removeObserver(clipObservation)
+        }
+        clipObservation = nil
+        guard let clip = superview as? NSClipView else {
+            return
+        }
+        clip.postsBoundsChangedNotifications = true
+        clipObservation = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+                                                               object: clip,
+                                                               queue: nil) { [weak self] _ in
+            self?.updatePinnedHeaders()
+        }
+        updatePinnedHeaders()
+    }
+
+    func updatePinnedHeaders() {
+        let boxes = subviews.compactMap { view in
+            return view as? ManagerFeatureBox
+        }
+        let columns = Dictionary(grouping: boxes) { box in
+            return box.frame.minX
+        }.sorted { lhs, rhs in
+            return lhs.key < rhs.key
+        }
+        while pinnedHeaders.count < columns.count {
+            let header = ManagerFeaturePinnedHeader(frame: .zero)
+            addSubview(header)
+            pinnedHeaders.append(header)
+        }
+        for header in pinnedHeaders {
+            header.isHidden = true
+            header.sourceBox = nil
+        }
+        let top = visibleRect.maxY
+        for (index, column) in columns.enumerated() {
+            guard let box = column.value.first(where: { box in
+                return box.frame.minY < top && box.convert(box.titleRect, to: self).maxY > top
+            }) else {
+                continue
+            }
+            let header = pinnedHeaders[index]
+            header.sourceBox = box
+            header.titleField.stringValue = box.title
+            header.titleField.font = box.titleFont
+            header.titleField.sizeToFit()
+            let titleHeight = max(28, header.titleField.frame.height + 8)
+            let toolbarHeight = box.groupToolbar?.frame.height ?? 0
+            let height = titleHeight + toolbarHeight + 4
+            // 下一组自然推走当前标题，避免吸顶条压住后一个分组。
+            let y = max(top - height, box.frame.minY)
+            header.frame = NSRect(x: box.frame.minX, y: y, width: box.frame.width, height: height)
+            header.titleField.setFrameOrigin(NSPoint(x: 7, y: toolbarHeight + 4 + (titleHeight - header.titleField.frame.height) / 2))
+            box.groupToolbar?.setFrameOrigin(NSPoint(x: 5, y: 4))
+            header.isHidden = false
+            header.needsDisplay = true
+        }
     }
 
     private func draggedIdentifier(_ sender: NSDraggingInfo) -> String? {
@@ -621,13 +769,13 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
         var action = "install"
         var scope: [String]?
         var managerPath: String?
-        var installLocation = "build"
-        var cleanupBuildProducts = false
+        var installLocation: String?
+        var cleanupBuildProducts = true
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
-            if argument == "--cleanup-build-products" {
-                cleanupBuildProducts = true
+            if argument == "--cleanup-build-products" || argument == "--no-cleanup-build-products" {
+                cleanupBuildProducts = argument == "--cleanup-build-products"
                 index += 1
                 continue
             }
@@ -666,11 +814,12 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
             }
             index += 1
         }
+        let location = installLocation ?? (managerPath == nil ? "build" : "applications")
         let controller = FeatureSelectionController(action: action,
                                                     scope: scope,
-                                                    installLocation: installLocation)
+                                                    installLocation: location)
         controller.managerPath = managerPath
-        controller.cleanupBuildProducts = cleanupBuildProducts && managerPath != nil && installLocation == "applications" && action == "install"
+        controller.cleanupBuildProducts = cleanupBuildProducts && managerPath != nil && location == "applications"
         return controller
     }
 
@@ -1145,6 +1294,7 @@ private extension FeatureSelectionController {
             }
             x += width + gap
         }
+        document.updatePinnedHeaders()
     }
 
     func featureGroupDropProposal(identifier: String,
@@ -1275,6 +1425,8 @@ private extension FeatureSelectionController {
         contentHeight -= spacing
         column.setFrameSize(NSSize(width: contentWidth, height: contentHeight))
         controls.setFrameOrigin(NSPoint(x: 0, y: contentHeight - controlsHeight))
+        box.groupToolbar = controls
+        box.groupToolbarFrame = controls.frame
         column.addSubview(controls)
         var y = controls.frame.minY - spacing
         for checkbox in optionButtons {
@@ -1918,17 +2070,21 @@ private extension FeatureSelectionController {
         return managerPath != nil && installLocation == "applications" && managementAction == "install"
     }
 
-    /// 清理只适用于成功安装到应用程序的操作，离开该组合即撤回勾选。
+    /// 卸载仅隐藏自动清理，保留本次选择供返回安装时恢复；构建目录仍撤回清理。
     func refreshCleanupBuildProductsOption() {
-        if !isCleanupOptionAvailable {
+        if managerPath == nil || installLocation != "applications" {
             cleanupBuildProducts = false
         }
         cleanupBuildProductsButton?.state = cleanupBuildProducts ? .on : .off
         cleanupBuildProductsButton?.isHidden = !isCleanupOptionAvailable
         cleanupBuildProductsButton?.isEnabled = isCleanupOptionAvailable && !isRunning
         let standaloneAvailable = managerPath != nil && installLocation == "applications"
-        cleanupNowButton?.isHidden = !standaloneAvailable
+        // 保留入口可发现性；构建目录仍执行原有禁用保护。
+        cleanupNowButton?.isHidden = managerPath == nil
         cleanupNowButton?.isEnabled = standaloneAvailable && !isRunning && !checkedIdentifiers().isEmpty
+        cleanupNowButton?.toolTip = standaloneAvailable
+            ? "只清理当前勾选功能的构建产物，不执行安装或卸载。"
+            : installLocationDescription
         cleanupNowButton?.layer?.opacity = cleanupNowButton?.isEnabled == true ? 1 : 0.55
         privacySettingsButton?.isHidden = !appManagementBlocked
         privacySettingsButton?.isEnabled = appManagementBlocked && !isRunning
@@ -2293,6 +2449,7 @@ final class ManagerPanelPreferences {
     private static let additionalTranslationsJSON = #"""
     {
       "bo": {
+        "Create script launcher": "སྒྲིག་ཡིག་འཕྲལ་འཇུག་བཟོ།",
         "Theme": "མངོན་ཚུལ།",
         "Language": "སྐད་ཡིག",
         "🎨 Theme": "🎨 མངོན་ཚུལ།",
@@ -2647,6 +2804,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}"
       },
       "ja": {
+        "Create script launcher": "スクリプト起動ファイルを作成",
         "Theme": "テーマ",
         "Language": "言語",
         "🎨 Theme": "🎨 テーマ",
@@ -3001,6 +3159,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}"
       },
       "fr": {
+        "Create script launcher": "Créer un lanceur de script",
         "Theme": "Thème",
         "Language": "Langue",
         "🎨 Theme": "🎨 Thème",
@@ -3355,6 +3514,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}"
       },
       "es": {
+        "Create script launcher": "Crear acceso al script",
         "Theme": "Tema",
         "Language": "Idioma",
         "🎨 Theme": "🎨 Tema",
@@ -3709,6 +3869,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Completados {1} / {2} ({3}% por elementos completados); {4} {5}"
       },
       "de": {
+        "Create script launcher": "Skriptstarter erstellen",
         "Theme": "Design",
         "Language": "Sprache",
         "🎨 Theme": "🎨 Design",
@@ -4063,6 +4224,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}"
       },
       "ru": {
+        "Create script launcher": "Создать ярлык скрипта",
         "Theme": "Тема",
         "Language": "Язык",
         "🎨 Theme": "🎨 Тема",
@@ -4417,6 +4579,7 @@ final class ManagerPanelPreferences {
         "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}"
       },
       "ko": {
+        "Create script launcher": "스크립트 실행 파일 만들기",
         "Theme": "테마",
         "Language": "언어",
         "🎨 Theme": "🎨 테마",
@@ -4867,6 +5030,7 @@ final class ManagerPanelPreferences {
     打开 Git 远程地址|Open Git remote URL
     复制 Git 远程地址|Copy Git remote URL
     复制绝对路径|Copy absolute path
+    创建脚本快捷入口|Create script launcher
     新建文件|Create file
     查看文件指纹 Hash（SHA-256）|View file fingerprint Hash (SHA-256)
     授予执行权限（chmod +x）|Grant execute permission (chmod +x)
@@ -5217,6 +5381,13 @@ private extension FeatureSelectionController {
     }
 
     func localizeView(_ view: NSView) {
+        // 吸顶副本直接跟随已经翻译的原卡片，避免重复绑定译文。
+        if let header = view as? ManagerFeaturePinnedHeader {
+            if let toolbar = header.sourceBox?.groupToolbar {
+                localizeView(toolbar)
+            }
+            return
+        }
         if let control = view as? NSControl, let font = control.font {
             let key = ObjectIdentifier(control)
             let original = originalPanelFonts[key] ?? font
@@ -5279,5 +5450,6 @@ private extension FeatureSelectionController {
         if let menu = NSApplication.shared.mainMenu {
             localizeMenu(menu)
         }
+        featureDocument?.updatePinnedHeaders()
     }
 }

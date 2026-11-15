@@ -779,6 +779,11 @@ struct TerminalOpener {
         fatalError("bootstrap must not open Terminal")
     }
 }
+struct GitRemoteBrowserOpener {
+    func open(from url: URL) throws {
+        fatalError("bootstrap must not open a remote")
+    }
+}
 struct GitRemoteResolver {
     func webURL(from url: URL) throws -> URL {
         fatalError("bootstrap must not resolve a remote")

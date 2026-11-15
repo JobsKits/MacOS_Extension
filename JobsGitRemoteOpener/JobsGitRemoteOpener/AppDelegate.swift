@@ -16,9 +16,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let finderRefreshRetryDelay: TimeInterval = 1.0
     private let finderRefreshRetryLimit = 12
     private var window: NSWindow?
+    private var hasReceivedOpenRequest = false
+    private var didFinishLaunching = false
+    private var pendingOperations = 0
+    private var idleGeneration = 0
+    private var recentRequests: [String: Date] = [:]
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleOpenURL(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         writeLog("applicationDidFinishLaunching begin")
+        didFinishLaunching = true
+        // 冷启动的 URL 先进入接收器，避免选择远程时弹出管理窗口。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, !self.hasReceivedOpenRequest else {
+                return
+            }
+            self.showManagementWindow()
+        }
+        scheduleExitIfIdle()
+        writeLog("applicationDidFinishLaunching end")
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.count == 1, let url = urls.first else {
+            rejectOpenRequest("无法识别 Git 远程打开请求，请重新右键选择一个文件夹。")
+            return
+        }
+        handleRequest(url)
+    }
+
+    @objc private func handleOpenURL(_ event: NSAppleEventDescriptor,
+                                    withReplyEvent reply: NSAppleEventDescriptor) {
+        guard let value = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: value) else {
+            rejectOpenRequest("无法识别 Git 远程打开请求，请重新右键。")
+            return
+        }
+        handleRequest(url)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                      hasVisibleWindows flag: Bool) -> Bool {
+        showManagementWindow()
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return pendingOperations == 0
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        return true
+    }
+}
+
+private extension AppDelegate {
+
+    func showManagementWindow() {
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         let viewController = MainViewController()
         _ = viewController.view
         writeLog("main view loaded")
@@ -36,19 +103,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.window = window
         NSApp.activate(ignoringOtherApps: true)
         scheduleFinderRefreshIfNeeded()
-        writeLog("applicationDidFinishLaunching end")
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+    func handleRequest(_ url: URL) {
+        hasReceivedOpenRequest = true
+        guard let request = GitRemoteOpenRequest(url: url) else {
+            rejectOpenRequest("当前文件夹已失效，或请求格式错误，请重新右键。")
+            return
+        }
+        // 两种系统 URL 回调可能重复交付同一次点击，只派发一次浏览器操作。
+        let now = Date()
+        recentRequests = recentRequests.filter { now.timeIntervalSince($0.value) < 1 }
+        let key = request.projectURL.path
+        guard recentRequests[key] == nil else {
+            return
+        }
+        recentRequests[key] = now
+        pendingOperations += 1
+        idleGeneration += 1
+        DispatchQueue.global(qos: .userInitiated).async {
+            var failure: String?
+            do {
+                try GitRemoteBrowserOpener().open(from: request.projectURL)
+            } catch {
+                failure = error.localizedDescription
+            }
+            let message = failure
+            DispatchQueue.main.async {
+                if let message {
+                    self.showRequestFailure(message)
+                }
+                self.pendingOperations -= 1
+                self.scheduleExitIfIdle()
+            }
+        }
     }
 
-    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-        true
+    func rejectOpenRequest(_ message: String) {
+        hasReceivedOpenRequest = true
+        showRequestFailure(message)
+        scheduleExitIfIdle()
     }
-}
 
-private extension AppDelegate {
+    func showRequestFailure(_ message: String) {
+        writeLog("remote open failed: \(message)")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Git 远程地址未打开"
+        alert.informativeText = message
+        alert.addButton(withTitle: "好")
+        alert.runModal()
+    }
+
+    func scheduleExitIfIdle() {
+        guard didFinishLaunching, hasReceivedOpenRequest,
+              pendingOperations == 0, window?.isVisible != true else {
+            return
+        }
+        idleGeneration += 1
+        let generation = idleGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, self.pendingOperations == 0,
+                  self.window?.isVisible != true, self.idleGeneration == generation else {
+                return
+            }
+            NSApp.terminate(nil)
+        }
+    }
+
     func scheduleFinderRefreshIfNeeded() {
         guard FileManager.default.fileExists(atPath: finderRefreshMarkerURL.path) else {
             writeLog("finder refresh marker missing")

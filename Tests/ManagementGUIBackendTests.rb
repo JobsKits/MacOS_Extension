@@ -257,6 +257,13 @@ class ManagementGUIBackendTests < Minitest::Test
     Open3.capture3(env, '/bin/zsh', '-c', source, 'fixture', *arguments)
   end
 
+  def prepare_gui_icon(scripts)
+    relative = '【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns'
+    target = File.join(scripts, relative)
+    FileUtils.mkdir_p(File.dirname(target))
+    FileUtils.cp(File.join(ROOT, 'Scripts', relative), target)
+  end
+
   def test_root_emits_success_and_failure_for_each_leaf_and_continues_after_failure
     %w[install uninstall].each do |operation|
       output, errors, result = execute(definitions(MANAGER) + <<~'ZSH', operation)
@@ -291,12 +298,12 @@ class ManagementGUIBackendTests < Minitest::Test
 
   def test_all_functional_entrypoints_open_gui_and_never_dispatch_business_by_default
     entries = Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh'))
-    assert_equal 31, entries.length
+    assert_equal 33, entries.length
     entries.each do |path|
-      boundaries = if path.include?('/JobsFileCreator/')
+      boundaries = if %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator].include?(File.basename(File.dirname(File.dirname(path))))
                      <<~'ZSH'
                        manager_main() { main "$@"; }
-                       open_management_panel() { print -r -- 'GUI=file-create'; }
+                       open_management_panel() { print -r -- 'GUI=single-package'; }
                        run_worker() { print -u2 unexpected-worker; return 97; }
                      ZSH
                    else
@@ -326,7 +333,7 @@ class ManagementGUIBackendTests < Minitest::Test
 
   def test_app_bundles_are_text_only_launchers_with_executable_relative_entrypoints
     apps = Dir.glob(File.join(ROOT, '**', '【MacOS】*Finder扩展.app'))
-    assert_equal 32, apps.length
+    assert_equal 34, apps.length
     apps.each do |app|
       launcher = File.join(app, 'Contents', 'MacOS', 'LaunchManager')
       assert File.executable?(launcher), app
@@ -348,6 +355,7 @@ class ManagementGUIBackendTests < Minitest::Test
     Dir.mktmpdir('jobs-gui-helper-') do |directory|
       scripts = File.join(directory, 'Scripts')
       FileUtils.mkdir_p(scripts)
+      prepare_gui_icon(scripts)
       FileUtils.mkdir_p(File.join(directory, 'work'))
       File.write(File.join(scripts, 'SelectFinderExtensionFeatures.swift'), '// fixture')
       panel = File.join(directory, 'work', 'SelectFinderExtensionFeatures')
@@ -360,7 +368,7 @@ class ManagementGUIBackendTests < Minitest::Test
         jobs_launch_finder_manager_gui "$1" 'git-pull,run-authorize' uninstall 1
       ZSH
       assert result.success?, errors
-      assert_equal ['--manager', worker, '--action', 'uninstall', '--install-location', 'build', '--scope', 'git-pull,run-authorize'], output.lines.map(&:chomp)
+      assert_equal ['--manager', worker, '--action', 'uninstall', '--install-location', 'build', '--no-cleanup-build-products', '--scope', 'git-pull,run-authorize'], output.lines.map(&:chomp)
     end
   end
   def test_actual_launchers_resolve_script_paths_inside_zsh_functions
@@ -383,7 +391,7 @@ class ManagementGUIBackendTests < Minitest::Test
 
   def test_original_command_entries_only_open_the_full_gui
     entries = Dir.glob(File.join(ROOT, '**', '【MacOS】*Finder扩展.app')).map { |app| app.sub(/\.app\z/, '.command') }
-    assert_equal 32, entries.count
+    assert_equal 34, entries.count
     entries.each do |entry|
       source = definitions(entry).gsub('/usr/bin/open', 'fake_open')
       output, errors, result = execute(source + <<~'ZSH', entry)
@@ -416,7 +424,7 @@ class ManagementGUIBackendTests < Minitest::Test
         FileUtils.cp(File.join(app, 'Contents/MacOS/LaunchManager'), launcher)
         output, result = Open3.capture2e('/bin/zsh', launcher, *arguments)
         assert result.success?, output
-        assert_equal ['--scope', expected_scope, '--action', 'install', '--install-location', 'build', '--gui-session'], output.lines.map(&:chomp), name
+        assert_equal ['--scope', expected_scope, '--action', 'install', '--install-location', 'applications', '--cleanup-build-products', '--gui-session'], output.lines.map(&:chomp), name
         source = definitions(launcher) + <<~'ZSH'
           launch_management_error() { print -u2 blocked; return 2; }
           ZSH_ARGZERO="$1"
@@ -434,6 +442,7 @@ class ManagementGUIBackendTests < Minitest::Test
   def test_bootstrap_compile_failure_uses_error_dialog_and_preserves_failure_status
     Dir.mktmpdir('jobs-panel-bootstrap-') do |directory|
       FileUtils.mkdir_p(File.join(directory, 'Scripts'))
+      prepare_gui_icon(File.join(directory, 'Scripts'))
       File.write(File.join(directory, 'Scripts', 'SelectFinderExtensionFeatures.swift'), '// fixture')
       helper = File.read(File.join(ROOT, 'Scripts', 'FinderManagerGUI.zsh')).gsub('/usr/bin/xcrun', 'fake_compiler')
       output, errors, result = execute(helper + <<~'ZSH', File.join(directory, 'Scripts', 'ManageFinderExtensions.zsh'), env: { 'TMPDIR' => "#{directory}/" })
@@ -455,6 +464,7 @@ class ManagementGUIBackendTests < Minitest::Test
     Dir.mktmpdir('jobs-panel-source-update-') do |directory|
       scripts = File.join(directory, 'Scripts')
       FileUtils.mkdir_p([scripts, File.join(directory, 'work')])
+      prepare_gui_icon(scripts)
       source = File.join(scripts, 'SelectFinderExtensionFeatures.swift')
       FileUtils.cp(File.join(ROOT, 'Scripts', 'SelectFinderExtensionFeatures.swift'), source)
       binary = File.join(directory, 'work', 'SelectFinderExtensionFeatures')
@@ -473,7 +483,7 @@ class ManagementGUIBackendTests < Minitest::Test
         jobs_launch_finder_manager_gui "$1" 'git-pull' install 1
       ZSH
       assert result.success?, errors
-      assert_equal ['REFRESHED-PANEL', '--manager', File.join(scripts, 'ManageFinderExtensions.zsh'), '--action', 'install', '--install-location', 'build', '--scope', 'git-pull'], output.lines.map(&:chomp)
+      assert_equal ['REFRESHED-PANEL', '--manager', File.join(scripts, 'ManageFinderExtensions.zsh'), '--action', 'install', '--install-location', 'build', '--no-cleanup-build-products', '--scope', 'git-pull'], output.lines.map(&:chomp)
       refute_includes File.read(binary), 'STALE-PANEL'
     end
   end

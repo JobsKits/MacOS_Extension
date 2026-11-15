@@ -51,6 +51,8 @@
 
 “📃 新建文件…”由独立的 [JobsFileCreator](./JobsFileCreator/README.md) 提供，仅在桌面和普通文件夹空白处显示。在总管理面板“文件与通用工具”中勾选“新建文件”，或打开[独立管理入口](./JobsFileCreator/【MacOS】管理新建文件Finder扩展.command)安装 / 卸载。点击菜单后在原生输入框输入文件名，默认 `未命名.txt`，可自定扩展名；确认后创建零字节文件并在 Finder 中选中，取消不创建。无效文件名明确提示，同名文件、目录及符号链接均拒绝覆盖。Windows 使用系统自带“新建”，不增加对应扩展。真实 Finder 菜单和创建交互须在安装后验收，构建与隔离测试不替代实机验收。
 
+“创建脚本快捷入口”由独立 [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md) 提供：对含同名普通脚本的 `.command` 文件夹右键，在原生窗口确认入口名称后，将可执行的 `.command` 转发脚本放在该文件夹同级。入口通过相对路径调用包内原脚本，传递全部参数和退出码；原脚本与 README 保留，创建时不运行源脚本。默认名称避开已占用的同名文件夹，已有文件、目录及链接均不覆盖。总面板“文件与通用工具”可独立安装 / 卸载；功能窗口和管理面板均支持十语言与白天 / 黑夜 / 跟随系统。
+
 IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 的目录，其余隐藏项（含 `.git`）算内容；普通文件、链接、多选不显示三个 IDE 入口。具体工程标记与工作区引用规则见 [IDE 说明](./JobsProjectTools/README.md)。
 
 新增的“📄 用终端查看文件内容”仅在选中一个普通文件时显示，通过 [JobsTerminalOpener](./JobsTerminalOpener/README.md) 在 Terminal 只读查看。默认超过 1 MiB（1,048,576 字节）先显示大小和阈值，输入精确 `YES` 后才读取全文；回车或输入结束取消，`Ctrl+C` 中止。阈值可通过 `JOBS_FILE_VIEWER_MAX_BYTES` 设置；二进制或未识别文本另需确认。安装时在通用工具组单独勾选，旧配置不会自动增加此动作。
@@ -60,7 +62,7 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 右键菜单在名称前使用功能对应的 emoji，不同功能不重复，同一功能的兼容入口和 Windows 入口保持一致。任意单个普通文件均显示“🔎 查看文件指纹 Hash（SHA-256）”“➕ 授予执行权限（chmod +x）”和“➖ 移除执行权限（chmod -x）”；权限操作可幂等点击，不受扩展名或格式限制，目录、目录包、符号链接、多选与空白处隐藏。
 
-31 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
+33 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
 
@@ -80,20 +82,20 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **85 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 11 个现行安装单元；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
+> **86 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 12 个现行安装单元；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
 
 | 功能分组 | 选项数 | 可逐项勾选的功能 |
 | --- | --- | --- |
 | IDE | 3 | 用 Android Studio / VSCode / Xcode 打开项目 |
 | Git | 6 | 拉取到最新、提交回退、打开远程地址、复制远程地址、动态代理、空白 Commit 并 Push |
-| 通用 | 12 | 复制绝对路径、新建文件、查看文件指纹 Hash、授予执行权限、移除执行权限、显示 / 隐藏文件、用终端打开、用终端查看文件内容、合并分卷、拆分文件、清理 Android / OpenHarmony 构建产物、更新代码地图 |
+| 通用 | 13 | 复制绝对路径、创建脚本快捷入口、新建文件、查看文件指纹 Hash、授予执行权限、移除执行权限、显示 / 隐藏文件、用终端打开、用终端查看文件内容、合并分卷、拆分文件、清理 Android / OpenHarmony 构建产物、更新代码地图 |
 | Flutter | 47 | Flutter开发相关辅助工具；一键配置、一键提取 / 导入、Gradle 分发 / 构建插件、Pub、私库迁移、Android 原生、Pods、SPM、OpenHarmony、原生库构建、平台资源、Web 依赖，以及运行、SDK、打包、体检、生成、修复和清理 |
 | iOS / CocoaPods | 12 | `Pod Install`、`Pod Update` 相邻，iOS 构建产物清理、其它 iOS 辅助工具及 IPA 免编译重签分别勾选 |
 | 模拟器 | 5 | 新建 iOS / Android / Harmony 模拟器、Android / Harmony 模拟器检测与修复 |
 
 “🧳 一键提取 Flutter 依赖”和“📥 一键导入 Flutter 依赖”位于提取 / 导入组首项，默认私库，支持 ZIP 及按内容识别改名的原始 Pub / Gradle 缓存。专用 Pub 私库叶子继续支持 Git、path、自建 hosted 包及间接依赖。完整预检后精确输入 `YES` 才导入，冲突不覆盖；不迁移机器凭据、不自动 `pub get`。底稿清单与范围见 [Flutter 私库迁移](./JobsFlutterTools/README.md#private-dependency-migration)。
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 32 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 11 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 33 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 12 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 [JobsIOSTools](./JobsIOSTools/README.md) 在“iOS / CocoaPods 辅助工具”子菜单提供以下十一项功能，全部业务资源随 App 打包；安装菜单本身不执行清理、依赖安装或工程改写。`Pod Install` 和 iOS 构建产物清理也在此子菜单内。
 
@@ -117,6 +119,7 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 
 | 右键入口 | 检查与执行结果 |
 | --- | --- |
+| [创建脚本快捷入口](./JobsCommandShortcutCreator/README.md) | 对 `.command` 文件夹生成同级相对路径 `.command` 入口；须有同名普通脚本，命名确认后排他创建并定位，不运行源脚本，不覆盖已有对象。 |
 | [📃 新建文件…](./JobsFileCreator/README.md) | 仅桌面和普通文件夹背景，原生输入框默认 `未命名.txt`，可自定扩展名；确认后创建零字节文件并由 Finder 定位，取消不写入，同名对象拒绝覆盖。 |
 | [🧩 合并分卷 / ✂️ 拆分文件](./JobsTerminalOpener/README.md#file-volumes) | 完整选中同组分卷才合并；单个普通文件才拆分，原件始终保留，已有结果拒绝覆盖。 |
 | [🔎 查看文件指纹 Hash（SHA-256）](./JobsFileHasher/README.md) | 任意单个普通文件；新 Terminal 显示路径与 SHA-256，成功后复制纯 64 位摘要。只读源文件，失败保留剪贴板；目录、符号链接、多选和空白隐藏。独立安装 / 卸载。 |
@@ -181,16 +184,16 @@ ruby ./Tests/DesktopFinderMenuTests.rb
 
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 藏文 / 英文 / 日文 / 法文 / 西班牙文 / 德文 / 俄罗斯文 / 韩文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
 
-**安装 / 卸载位置：** 面板提供“使用「应用程序」文件夹安装 / 卸载”复选框，默认不勾选。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
+**安装 / 卸载位置：** 面板提供“使用「应用程序」中的联合 App 安装 / 卸载”复选框，首次打开默认勾选，可手动取消。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
 
-**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示默认不勾选的“安装成功后清除此轮构建产物”。明确勾选后，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；构建目录路线及卸载模式隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
+**安装后清理：** 仅在“安装 / 更新”且勾选应用程序路线时，显示“安装成功后清除此轮构建产物”；首次打开默认勾选，可手动取消。保持勾选时，只有当前模块部署、登记和提交全部成功才清理本轮对应的 DerivedData；卸载模式隐藏但保留当前选择，返回安装时恢复；构建目录路线隐藏并清空该选项。失败安装保留构建产物，清理失败会提示并保留已安装功能；不会整目录清理所有 `work`、其它模块或源码。
 
 **联合 App 内置管理：** 打开 `Jobs自定义右键菜单.app` 可管理并卸载已安装功能，不要求保留原源码目录。安装 / 更新仍使用源码仓中的管理入口；App 内的管理会话独立于 App 本体，卸载最后一个模块时也能完成剩余步骤并保留结果日志。
 
 卸载按同一复选框选定的位置执行，所选位置没有 App 时保留另一位置及其功能配置；共享宿主仍有未卸载菜单时保留 App，最后一项移除后注销并删除该功能模块；联合 App 的最后一个模块移除后才删除外层 `Jobs自定义右键菜单.app`。切换位置安装会把登记切到新位置，构建目录中的另一份产物保留；所选功能的旧版顶层自有 App 在成功提交后收拢至联合 App，未知 App 不覆盖或删除。完整说明见[App 部署支持库](./Scripts/【MacOS】AppDeployment.zsh/README.md)。
 
 
-**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。独立清理按钮在构建目录和应用程序路线均显示；仅应用程序路线可在安装 / 卸载页签单独清理当前勾选功能，不要求重新安装，没有勾选或正在执行任务时禁用。“安装成功后清除此轮构建产物”复选框仅在应用程序安装模式出现，首次打开默认勾选，可手动取消。构建目录路线隐藏并清空自动清理复选框，独立清理按钮保持显示但禁用，避免清除正在使用的产物。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
 
 安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
 
@@ -238,10 +241,11 @@ ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
 | [JobsFlutterTools](./JobsFlutterTools/README.md) | `Flutter开发相关辅助工具` | 统一 Flutter 开发、体检、修复与清理维护；下列七个旧 Flutter 工程保留兼容源码，安装均转交本包。 | `./JobsFlutterTools/JobsFlutterTools.xcodeproj` |
 | [JobsProjectTools](./JobsProjectTools/README.md) | IDE 三项、Git操作六项 | 三个 IDE 一级入口，六项 Git 子菜单仅有效工作树普通文件夹显示。 | `./JobsProjectTools/JobsProjectTools.xcodeproj` |
 | [JobsIOSTools](./JobsIOSTools/README.md) | iOS / CocoaPods 十一项 | 统一 Pod Install、构建产物清理及九项工程工具；本地 Pod 编译自检仅同层 `*.podspec` 显示。 | `./JobsIOSTools/JobsIOSTools.xcodeproj` |
-| `./JobsGitRemoteOpener` | `打开 Git 远程地址` | 右键 Git 仓库文件夹，打开 `remote` 对应网页。 | `./JobsGitRemoteOpener/JobsGitRemoteOpener.xcodeproj` |
+| `./JobsGitRemoteOpener` | `打开 Git 远程地址` | 单 remote 直接打开；多个 remote 在 Terminal 用 [**fzf**](https://formulae.brew.sh/formula/fzf) 选择，取消不打开。 | `./JobsGitRemoteOpener/JobsGitRemoteOpener.xcodeproj` |
 | `./JobsGitRemoteCopier` | `复制 Git 远程地址` | 常规入口转交 Git 子菜单；旧源码保留远程地址解析与复制实现。 | `./JobsGitRemoteCopier/JobsGitRemoteCopier.xcodeproj` |
 | `./JobsPathCopier` | `复制绝对路径` | 右键任意一个本地文件或文件夹，把绝对路径写入剪贴板。 | `./JobsPathCopier/JobsPathCopier.xcodeproj` |
 | [JobsFileHasher](./JobsFileHasher/README.md) | `🔎 查看文件指纹 Hash（SHA-256）` | 新终端计算 SHA-256 并复制纯摘要；任意单个普通文件，独立安装 / 卸载。 | `./JobsFileHasher/JobsFileHasher.xcodeproj` |
+| [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md) | `创建脚本快捷入口` | 为同名 `.command` 脚本包生成同级转发脚本，独立安装 / 卸载。 | `./JobsCommandShortcutCreator/JobsCommandShortcutCreator.xcodeproj` |
 | [JobsFileCreator](./JobsFileCreator/README.md) | `📃 新建文件…` | 桌面和普通文件夹背景输入文件名，排他创建空文件并由 Finder 定位；可独立安装 / 卸载。 | `./JobsFileCreator/JobsFileCreator.xcodeproj` |
 | [JobsDesktopTools](./JobsDesktopTools/README.md) | 六项桌面功能聚合 | 三项新建连续、再两项修复及动态隐藏开关，逐叶选装；普通目录背景仅保留隐藏开关。 | `./JobsDesktopTools/JobsDesktopTools.xcodeproj` |
 | [JobsHiddenFilesToggler](./JobsHiddenFilesToggler/README.md) | `显示 / 隐藏文件` | 仅桌面及文件夹空白处，直接切换 Finder 隐藏文件显示并刷新。 | `./JobsHiddenFilesToggler/JobsHiddenFilesToggler.xcodeproj` |
@@ -383,6 +387,7 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
 ├── JobsGitRemoteOpener/  # 本仓普通源码目录
 ├── JobsPathCopier/  # 本仓普通源码目录
 ├── JobsFileHasher/  # 单文件 SHA-256 显示与复制
+├── JobsCommandShortcutCreator/  # 同级相对路径脚本快捷入口
 ├── JobsFileCreator/  # 桌面 / 普通文件夹背景新建空文件
 ├── JobsDesktopTools/      # 六项桌面功能统一排序、逐叶选装
 ├── JobsHiddenFilesToggler/  # 桌面 / 文件夹空白处切换隐藏文件显示
@@ -424,6 +429,7 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
   * [JobsGitRemoteCopier](./JobsGitRemoteCopier/README.md)、[JobsGitRemoteOpener](./JobsGitRemoteOpener/README.md)、[JobsPathCopier](./JobsPathCopier/README.md)、[JobsTerminalOpener](./JobsTerminalOpener/README.md)。
 * 三个 IDE 工程也由本仓统一管理，各自保留独立构建和安装能力：[JobsXcodeOpener](./JobsXcodeOpener/README.md)、[JobsVSCodeOpener](./JobsVSCodeOpener/README.md)、[JobsAndroidStudioOpener](./JobsAndroidStudioOpener/README.md)。
 * [JobsFileHasher](./JobsFileHasher/README.md)：独立单文件 SHA-256 菜单，新终端显示完整摘要并复制到剪贴板；不受扩展名限制，目录、多选及符号链接隐藏。管理面板单独勾选“查看文件指纹 Hash（SHA-256）”。
+* [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md)：独立“创建脚本快捷入口”菜单，针对 `.command` 同名脚本包生成同级可执行转发脚本；参数、退出码及目录整体移动后路径保持有效。
 * [JobsFileCreator](./JobsFileCreator/README.md)：独立“📃 新建文件…”菜单，在桌面和普通文件夹背景输入文件名后创建零字节文件；取消不写入，同名对象拒绝覆盖。管理入口与本包 README 平级，完整包可独立复制使用。
 * [JobsRunAuthorizer](./JobsRunAuthorizer/README.md)：任意单个普通文件的“➕ 授予执行权限（chmod +x）”入口；Terminal 确认后执行 `chmod +x`，不递归、不执行文件。一个管理入口直接放在该目录内，统一提供安装 / 更新与卸载。
 * [JobsRunAuthorizationRevoker](./JobsRunAuthorizationRevoker/README.md)：任意单个普通文件的“➖ 移除执行权限（chmod -x）”入口，Terminal 确认后执行 `chmod -x` 并复读权限，不运行文件；安装 / 卸载和日志独立。

@@ -35,9 +35,16 @@ jobs_manager_sign_gui_app() {
 jobs_manager_verify_gui_app() {
   /usr/bin/codesign --verify --deep --strict "$1"
 }
+# 图标随部署库打包，只接受本地普通 ICNS 文件，不读取外部链接资源。
+jobs_manager_gui_icon_is_valid() {
+  local icon="$1"
+  [[ -f "$icon" && -r "$icon" && ! -L "$icon" && "$icon" == *.icns &&
+     "$(/usr/bin/head -c 4 "$icon")" == icns ]]
+}
 # 在私有暂存目录内装配固定身份，签名成功前不触碰已有 App。
 jobs_manager_stage_gui_app() {
-  local binary="$1" app="$2" source_hash="$3"
+  local binary="$1" app="$2" source_hash="$3" icon="${4:-}" icon_hash="${5:-}"
+  [[ -z "$icon" ]] || jobs_manager_gui_icon_is_valid "$icon" || return 1
   /bin/mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" || return 1
   /bin/cp -p "$binary" "$app/Contents/MacOS/JobsFinderManager" &&
   /bin/chmod 755 "$app/Contents/MacOS/JobsFinderManager" || return 1
@@ -47,20 +54,37 @@ jobs_manager_stage_gui_app() {
 <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.jobs.finderextensions.managementpanel</string><key>CFBundleName</key><string>Jobs右键菜单管理面板</string><key>CFBundleDisplayName</key><string>Jobs右键菜单管理面板</string><key>CFBundleExecutable</key><string>JobsFinderManager</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>1</string><key>LSUIElement</key><true/><key>NSAppleEventsUsageDescription</key><string>用于按用户操作在终端查看扩展管理日志。</string></dict></plist>
 GUI_HOST_PLIST
   print -r -- "$source_hash" > "$app/Contents/Resources/BinarySource.sha256" || return 1
+  if [[ -n "$icon" ]]; then
+    /bin/cp -p "$icon" "$app/Contents/Resources/JobsFinderManager.icns" &&
+    /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string JobsFinderManager.icns' "$app/Contents/Info.plist" &&
+    print -r -- "$icon_hash" > "$app/Contents/Resources/IconSource.sha256" || return 1
+  fi
   jobs_manager_sign_gui_app "$app" >&2 && jobs_manager_verify_gui_app "$app" >&2
 }
 # 内容未变时保留稳定 App；新版本完整签名后才原子发布，失败恢复旧 App。
 jobs_manager_prepare_gui_app() {
-  local binary="$1" cache_dir="${2:A}" app="" source_hash="" stage="" lock="" result=0
+  local binary="$1" cache_dir="${2:A}" icon="${3:-}" app="" source_hash="" icon_hash="" icon_matches=1 stage="" lock="" result=0
   [[ -f "$binary" && -x "$binary" && ! -L "$binary" && -d "$cache_dir" && ! -L "$cache_dir" ]] || return 1
+  if [[ -n "$icon" ]]; then
+    jobs_manager_gui_icon_is_valid "$icon" || { print -u2 -r -- "管理面板图标缺失、无效或为链接：$icon"; return 1; }
+    icon_hash="$(/usr/bin/shasum -a 256 "$icon" | /usr/bin/awk '{print $1}')" || return 1
+    [[ ${#icon_hash} == 64 ]] || return 1
+  fi
   app="$cache_dir/Jobs右键菜单管理面板.app"
   if [[ -e "$app" || -L "$app" ]]; then
     jobs_manager_gui_app_is_owned "$app" || { print -u2 -r -- "拒绝覆盖非自有管理 App：$app"; return 1; }
   fi
   source_hash="$(/usr/bin/shasum -a 256 "$binary" | /usr/bin/awk '{print $1}')" || return 1
   [[ ${#source_hash} == 64 ]] || return 1
+  if [[ -n "$icon" ]]; then
+    [[ -f "$app/Contents/Resources/IconSource.sha256" && ! -L "$app/Contents/Resources/IconSource.sha256" &&
+       "$(<"$app/Contents/Resources/IconSource.sha256")" == "$icon_hash" &&
+       -f "$app/Contents/Resources/JobsFinderManager.icns" && ! -L "$app/Contents/Resources/JobsFinderManager.icns" &&
+       "$(/usr/bin/shasum -a 256 "$app/Contents/Resources/JobsFinderManager.icns" | /usr/bin/awk '{print $1}')" == "$icon_hash" &&
+       "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist" 2>/dev/null)" == JobsFinderManager.icns ]] || icon_matches=0
+  fi
   if [[ -f "$app/Contents/Resources/BinarySource.sha256" && ! -L "$app/Contents/Resources/BinarySource.sha256" &&
-        "$(<"$app/Contents/Resources/BinarySource.sha256")" == "$source_hash" ]] && jobs_manager_verify_gui_app "$app" 2>/dev/null; then
+        "$(<"$app/Contents/Resources/BinarySource.sha256")" == "$source_hash" && "$icon_matches" == 1 ]] && jobs_manager_verify_gui_app "$app" 2>/dev/null; then
     print -r -- "$app"
     return 0
   fi
@@ -69,7 +93,7 @@ jobs_manager_prepare_gui_app() {
   stage="$(/usr/bin/mktemp -d "$cache_dir/.JobsFinderManagerHost.XXXXXXXX")" || { /bin/rmdir "$lock"; return 1; }
   print -u2 -r -- "来源：本地面板缓存 $binary"
   print -u2 -r -- "目标：可授权原生管理 App $app"
-  jobs_manager_stage_gui_app "$binary" "$stage/Jobs右键菜单管理面板.app" "$source_hash" || result=$?
+  jobs_manager_stage_gui_app "$binary" "$stage/Jobs右键菜单管理面板.app" "$source_hash" "$icon" "$icon_hash" || result=$?
   if (( ! result )) && [[ -e "$app" || -L "$app" ]]; then
     jobs_manager_gui_app_is_owned "$app" && /bin/mv "$app" "$stage/previous.app" || result=1
   fi
@@ -101,6 +125,8 @@ jobs_launch_finder_manager_gui() {
     binary="$cache_dir/ManagementPanel"
   fi
   [[ -f "$source" ]] || { jobs_manager_launch_error '缺少随包的管理面板源码。' "$source"; return 1; }
+  local icon="$entry_dir/Scripts/【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns"
+  jobs_manager_gui_icon_is_valid "$icon" || { jobs_manager_launch_error '缺少有效的随包管理面板图标。' "$icon"; return 1; }
   if [[ ! -x "$binary" || "$source" -nt "$binary" ]]; then
     launch_log="$(/usr/bin/mktemp "${TMPDIR:-/tmp/}JobsFinderManagerLaunch.XXXXXXXX")" || return 1
     /bin/mkdir -p "${binary:h}" || { jobs_manager_launch_error '无法建立管理面板缓存目录。' "${binary:h}"; return 1; }
@@ -115,10 +141,14 @@ jobs_launch_finder_manager_gui() {
     /bin/mv -f "$temporary" "$binary" || { jobs_manager_launch_error '无法保存管理面板。' "$binary"; return 1; }
   fi
   local arguments=(--manager "$entry" --action "$action" --install-location "${JOBS_FINDER_INSTALL_LOCATION:-build}")
-  [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" != 1 ]] || arguments+=(--cleanup-build-products)
+  if [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" == 1 ]]; then
+    arguments+=(--cleanup-build-products)
+  else
+    arguments+=(--no-cleanup-build-products)
+  fi
   [[ -z "$scope" ]] || arguments+=(--scope "$scope")
   local host_app=""
-  host_app="$(jobs_manager_prepare_gui_app "$binary" "$cache_dir")" || {
+  host_app="$(jobs_manager_prepare_gui_app "$binary" "$cache_dir" "$icon")" || {
     jobs_manager_launch_error '无法准备可授权的管理面板 App，原缓存 App 已保留。' "$cache_dir"
     return 1
   }

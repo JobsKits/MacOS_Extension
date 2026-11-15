@@ -77,12 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     _ = try TerminalOpener().openTerminal(from: request.fileURL, action: .gitEmptyCommitPush)
                 }
             case .gitRemote:
-                let remote = try GitRemoteResolver().webURL(from: request.fileURL)
-                guard NSWorkspace.shared.open(remote) else {
-                    throw NSError(domain: "JobsProjectTools", code: 2,
-                                  userInfo: [NSLocalizedDescriptionKey: "浏览器未能打开 Git 远程地址。"])
+                launchInBackground {
+                    try GitRemoteBrowserOpener().open(from: request.fileURL)
                 }
-                finish()
             case .gitRemoteCopy:
                 let remote = try GitRemoteResolver().remoteURLString(from: request.fileURL)
                 NSPasteboard.general.clearContents()

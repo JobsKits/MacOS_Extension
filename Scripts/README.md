@@ -26,6 +26,8 @@
 
 本目录维护 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 扩展管理窗口及后台启动库。面板用 [**Swift**](https://www.swift.org/) 与 [**AppKit**](https://developer.apple.com/documentation/appkit) 展示选择、逐项执行状态和底部实时日志；通过后台 Shell 管理器完成构建、注册、启停及配置保存。推荐双击[无终端 App 入口](../【MacOS】🧩管理Finder扩展.app)。
 
+管理入口、原生面板和已安装联合 App 复用仓库现有 `icon.png`。多尺寸图标位于 [JobsFinderManager.icns](./【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns)，随部署库交付并在 App 中配置 `CFBundleIconFile`；面板单独校验图标内容，图标变化时更新缓存 App，签名失败保留旧版本。运行无需图片外链，也不依赖源码目录中的原 PNG。资源从管理脚本和部署库的实际位置定位，兼容中文、空格、目录搬迁及非 UTF-8 语言环境；不修改现有语言环境。图标缺失或含链接时，日志同时列出准确的源图标与目标资源路径并停止部署。
+
 **当前为 85 项可选功能、11 个现行安装工程（按选择器标识及管理器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。默认全部不勾选，顶部可切换“安装 / 更新”或“卸载”；切换保留当前全部功能勾选。没有勾选时执行按钮立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；默认左列放 IDE、Git、通用、iOS / CocoaPods 与模拟器，右列仅放 Flutter。按住分组标题可拖动卡片，在同列排序或跨列移动，并记住布局；窄窗合为单列，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
@@ -35,14 +37,14 @@
 
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 藏文 / 英文 / 日文 / 法文 / 西班牙文 / 德文 / 俄罗斯文 / 韩文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。 偏好保存在当前用户的 `com.jobs.finderextensions.managementpanel.preferences` 域：`theme` 为 `system` / `dark` / `light`，`language` 为 `system` / `zh-Hans` / `zh-Hant` / `bo` / `en` / `ja` / `fr` / `es` / `de` / `ru` / `ko`；不会写入工程或修改系统主题与语言。藏文使用系统 Kailasa / Kokonor 字体；长状态与执行汇总按窗口宽度换行，保留完整字符。七种新增语言的标准目录为 `ManagerPanelTranslations.json`，同内容嵌入 Swift 及随包快照，分发产物不依赖源码绝对路径。
 
-**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，默认 `build`。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
+**安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，非交互调用默认 `build`。GUI 首次打开默认使用应用程序中的联合 App，并勾选安装成功后清理；显式参数或环境设置优先，用户可在面板手动取消。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
 
-可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。默认不清理；UI 仅在应用程序安装模式显示清理选项，退出该组合就清空。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。非交互 worker 默认不清理；GUI 首次打开默认勾选应用程序路线与安装成功后清理，用户可手动取消。UI 仅在应用程序安装模式显示自动清理选项，切换到卸载时隐藏但保留当前清理选择，返回安装时恢复；切换至构建目录才清空，切回应用程序路线不恢复旧勾选。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
 
 安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
 
 
-**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。应用程序路线显示红底白字的“🧹 清除构建产物”按钮，安装 / 卸载页签均可单独清理当前勾选功能，不要求重新安装；没有勾选或正在执行任务时禁用。原“安装成功后清除此轮构建产物”复选框仍默认关闭，只在安装模式出现。构建目录路线隐藏两项清理控件。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
+**独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。独立清理按钮在构建目录和应用程序路线均显示；仅应用程序路线可在安装 / 卸载页签单独清理当前勾选功能，不要求重新安装，没有勾选或正在执行任务时禁用。“安装成功后清除此轮构建产物”复选框仅在应用程序安装模式出现，首次打开默认勾选，可手动取消。构建目录路线隐藏并清空自动清理复选框，独立清理按钮保持显示但禁用，避免清除正在使用的产物。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
 
 安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
 
@@ -89,6 +91,7 @@
 | 项目工具 | 复制 Git 远程地址 | `git_remote_copier` | `JobsProjectTools` |
 | 独立扩展 | 复制绝对路径 | `path_copier` | `JobsPathCopier` |
 | 独立扩展 | 查看文件指纹 Hash（SHA-256） | `file-hash` | [JobsFileHasher](../JobsFileHasher/README.md) |
+| 独立扩展 | 创建脚本快捷入口 | `command-shortcut-create` | [JobsCommandShortcutCreator](../JobsCommandShortcutCreator/README.md) |
 | 独立扩展 | 新建文件 | `file-create` | [JobsFileCreator](../JobsFileCreator/README.md) |
 | 独立扩展 | 授予执行权限（chmod +x） | `run-authorize` | `JobsRunAuthorizer` |
 | 独立扩展 | 移除执行权限（chmod -x） | `run-revoke` | `JobsRunAuthorizationRevoker` |
@@ -166,6 +169,8 @@ Flutter 子功能安装取现有配置与本次选择的并集，卸载只减去
 “显示 / 隐藏文件”是 `JobsDesktopTools` 聚合包中的独立叶，标识为 `hidden-files-toggle`，仅在系统桌面和任意文件夹空白处出现；点击直接反转当前用户 Finder 的显示偏好并刷新 Finder，不打开 Terminal。安装器通过 `--initialize-finder-extension` 初始化宿主，不切换显示状态；卸载仅移除菜单。详见 [独立功能说明](../JobsHiddenFilesToggler/README.md)。
 
 “🔎 查看文件指纹 Hash（SHA-256）”由独立 [JobsFileHasher](../JobsFileHasher/README.md) 承载，标识 `file-hash`；任意单个普通文件可用，新 Terminal 显示 SHA-256 并复制纯摘要，失败不改剪贴板；目录、符号链接、多选与空白隐藏。总面板及单项入口均可独立安装 / 卸载。
+
+“创建脚本快捷入口”由独立 `JobsCommandShortcutCreator` 承载，标识 `command-shortcut-create`，位于“文件与通用工具”。仅合法 `.command` 同名脚本包显示，名称确认后在同级排他创建相对路径转发脚本并由 Finder 定位；不执行源脚本，不覆盖已有对象。安装及卸载只管理本项扩展，业务窗口与面板支持十语及三种主题。详见[功能说明](../JobsCommandShortcutCreator/README.md)。
 
 “📃 新建文件…”由独立 `JobsFileCreator` 承载，标识 `file-create`，在“文件与通用工具”分组单独勾选；桌面和普通文件夹背景提供菜单，选中项、工具栏和侧边栏不显示。宿主弹出原生文件名输入框，默认 `未命名.txt`；确认后排他创建零字节文件并由 Finder 定位，取消不写入，遇到同名文件、目录或符号链接不覆盖。安装和初始化仅登记菜单，不创建文件；Windows 不增加该功能。详见[新建文件说明](../JobsFileCreator/README.md)。
 
@@ -260,7 +265,7 @@ install|xcode_opener,terminal_open
 uninstall|git-pull
 ```
 
-面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）、`--install-location build|applications`（默认构建目录）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed|not-installed|skipped<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。
+面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）、`--install-location build|applications`（管理面板默认应用程序路线；不启用后台管理的旧选择器默认构建目录）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed|not-installed|skipped<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。
 
 调用关系可用 [**Mermaid**](https://mermaid.js.org) 表示：
 

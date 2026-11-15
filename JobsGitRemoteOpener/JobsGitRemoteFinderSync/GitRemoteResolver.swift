@@ -8,6 +8,27 @@
 import Foundation
 
 struct GitRemoteResolver {
+    // 将明确选中的 remote 转成网页，不在这里隐式选择仓库。
+    func webURL(forRemoteURLString value: String) throws -> URL {
+        guard let url = try? webURL(fromRemoteURLString: value) else {
+            throw ResolverError.unsupportedRemoteURL("地址格式不正确")
+        }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              ["http", "https"].contains(components.scheme ?? ""),
+              let host = components.host, !host.isEmpty else {
+            throw ResolverError.unsupportedRemoteURL("地址格式不正确")
+        }
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        components.path = cleanRepositoryURLString(components.path)
+        guard let webURL = components.url else {
+            throw ResolverError.unsupportedRemoteURL("地址格式不正确")
+        }
+        return webURL
+    }
+
     func webURL(from folderURL: URL) throws -> URL {
         let repositoryURL = try repositoryRoot(startingAt: folderURL)
         let resolvedRemoteURLString: String
@@ -256,7 +277,8 @@ private extension GitRemoteResolver {
             }
         }
 
-        if let captures = capture(pattern: #"^[^@]+@([^:]+):(.+)$"#, in: remoteURL) {
+        if !remoteURL.contains("://"),
+           let captures = capture(pattern: #"^[^@]+@([^:]+):(.+)$"#, in: remoteURL) {
             let webURLString = cleanRepositoryURLString("https://\(captures[0])/\(captures[1])")
             if let webURL = URL(string: webURLString) {
                 return webURL

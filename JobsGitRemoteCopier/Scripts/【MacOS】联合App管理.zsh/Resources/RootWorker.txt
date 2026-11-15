@@ -35,6 +35,8 @@
 #    多选完整组才合并，单个普通文件才拆分；两动作各自开关且保留兄弟配置。
 #    Scripts/ViewFileContent.zsh；只读普通单文件，终端内按阈值确认，不和打开所在目录混用。
 # 7、其它单元：FEATURE_PROJECT_DIR/SCHEME/APP/EXTENSION 各表决定工程与身份；
+#    command-shortcut-create → JobsCommandShortcutCreator；对 .command 目录右键生成同级相对路径转发脚本；
+#    Shared/CommandShortcutContext/Request → CommandShortcutController/Service；命名确认、排他创建、不执行源脚本。
 #    file-create → JobsFileCreator，FinderSync 仅接收桌面/普通目录背景，点击时复核目录；
 #    Shared/FileCreationRequest → 宿主 AppDelegate/FileCreationController → FileCreationService；
 #    原生输入文件名，排他创建空文件后 Finder 定位，不覆盖已有文件；无额外持久配置。
@@ -69,8 +71,9 @@ jobs_intro_style() {
     }
   '
 }
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
+SCRIPT_PATH="${${${funcsourcetrace[1]:-}%:*}:-$0}"
+SCRIPT_DIR="${SCRIPT_PATH:A:h}"
+SCRIPT_PATH="${SCRIPT_PATH:A}"
 WORKSPACE_DIR="${SCRIPT_DIR:h}"
 SCRIPT_BASENAME="【MacOS】🧩管理Finder扩展"
 LOG_FILE="${TMPDIR:-/tmp/}${SCRIPT_BASENAME}.log"
@@ -106,14 +109,14 @@ CLI_FEATURES=""
 MANAGER_NON_INTERACTIVE=0
 MANAGER_GUI_SESSION=0
 REMAINING_CONFIG_FEATURES=""
-JOBS_FINDER_INSTALL_LOCATION="build"
-JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=0
+JOBS_FINDER_INSTALL_LOCATION="${JOBS_FINDER_INSTALL_LOCATION:-}"
+JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-}"
 ROOT_DEPLOYMENT_ACTIVE=0
 JOBS_FINDER_STOP_REQUEST_FILE=""
 JOBS_FINDER_BLOCKED_FILE=""
 MANAGER_CONTROL_DIRECTORY=""
 
-FEATURE_KEYS=(project-tools path_copier file-create file-hash run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
+FEATURE_KEYS=(project-tools path_copier command-shortcut-create file-create file-hash run-authorize run-revoke ipa-resign desktop-tools flutter-tools terminal_opener ios-tools)
 typeset -A FEATURE_TITLE
 typeset -A FEATURE_PROJECT_DIR
 typeset -A FEATURE_SCHEME
@@ -162,6 +165,14 @@ FEATURE_SCHEME[path_copier]="JobsPathCopier"
 FEATURE_APP_NAME[path_copier]="JobsPathCopier"
 FEATURE_EXTENSION_NAME[path_copier]="JobsPathCopyFinderSync.appex"
 FEATURE_EXTENSION_ID[path_copier]="com.jobs.JobsPathCopier.FinderSyncExtension"
+
+FEATURE_TITLE[command-shortcut-create]="创建脚本快捷入口"
+FEATURE_PROJECT_DIR[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_SCHEME[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_APP_NAME[command-shortcut-create]="JobsCommandShortcutCreator"
+FEATURE_APP_ID[command-shortcut-create]="com.jobs.commandshortcutcreator"
+FEATURE_EXTENSION_NAME[command-shortcut-create]="JobsCommandShortcutCreatorFinderSync.appex"
+FEATURE_EXTENSION_ID[command-shortcut-create]="com.jobs.commandshortcutcreator.findersync"
 
 FEATURE_TITLE[file-create]="新建文件"
 FEATURE_PROJECT_DIR[file-create]="JobsFileCreator"
@@ -362,13 +373,15 @@ FEATURE_EXTENSION_NAME[ios-tools]="JobsIOSToolsFinderSync.appex"
 FEATURE_EXTENSION_ID[ios-tools]="com.jobs.JobsIOSTools.FinderSyncExtension"
 
 IOS_FUNCTION_IDS=(ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-install ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts)
-SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier file-create file-hash run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
+SELECTABLE_FUNCTION_IDS=(android_studio_opener vscode_opener xcode_opener git-pull git-rollback git_remote git_remote_copier path_copier command-shortcut-create file-create file-hash run-authorize run-revoke ipa-resign hidden-files-toggle ios-simulator-create android-simulator-create harmony-simulator-create android-simulator-repair harmony-simulator-repair git-proxy-configure terminal_open file_content file_merge file_split pod_install clean_build_artifacts codegraph_bootstrap git_empty_commit_push ios-disable-sandbox ios-install-cocoapods ios-pods-source-github ios-extract-pods ios-pod-update ios-xcode-dependencies ios-pod-repo-update ios-pod-build-check ios-code-snippets ios-clean-build-artifacts flutter-project-setup flutter-run flutter-pub-get flutter-android-dependencies flutter-pods-dependencies flutter-spm-dependencies flutter-ohos-dependencies flutter-native-dependencies flutter-flutter-precache flutter-web-dependencies flutter-export-all-dependencies flutter-extract flutter-export-private-dependencies flutter-import-all-dependencies flutter-import-dependencies flutter-import-private-dependencies flutter-export-gradle-dependencies flutter-import-gradle-dependencies flutter-export-pods-dependencies flutter-import-pods-dependencies flutter-export-spm-dependencies flutter-import-spm-dependencies flutter-export-ohos-dependencies flutter-import-ohos-dependencies flutter-export-native-dependencies flutter-import-native-dependencies flutter-export-precache-dependencies flutter-import-precache-dependencies flutter-export-web-dependencies flutter-import-web-dependencies flutter-sdk-version flutter-sdk-manage flutter-ohos-sdk-manage flutter-java-manage flutter-gradle-download flutter-codegen flutter-package-ios flutter-package-android flutter-package-ohos flutter-native-doctor flutter-harmony-doctor flutter-repair-android flutter-repair-imports flutter-repair-namespace flutter-repair-package-imports flutter-clean-build-artifacts flutter-maintenance)
 SELECTABLE_FUNCTION_TITLE[git_remote]="打开 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote]="project-tools"
 SELECTABLE_FUNCTION_TITLE[git_remote_copier]="复制 Git 远程地址"
 SELECTABLE_FUNCTION_PROJECT_KEY[git_remote_copier]="project-tools"
 SELECTABLE_FUNCTION_TITLE[path_copier]="复制绝对路径"
 SELECTABLE_FUNCTION_PROJECT_KEY[path_copier]="path_copier"
+SELECTABLE_FUNCTION_TITLE[command-shortcut-create]="创建脚本快捷入口"
+SELECTABLE_FUNCTION_PROJECT_KEY[command-shortcut-create]="command-shortcut-create"
 SELECTABLE_FUNCTION_TITLE[file-create]="新建文件"
 SELECTABLE_FUNCTION_PROJECT_KEY[file-create]="file-create"
 SELECTABLE_FUNCTION_TITLE[file-hash]="查看文件指纹 Hash（SHA-256）"
@@ -1266,7 +1279,7 @@ open_host_for_extension_registration() {
   local app_path="$2"
   local open_arguments=(-gj "$app_path")
 
-  if [[ "$key" == file-create || "$key" == file-hash ]]; then
+  if [[ "$key" == command-shortcut-create || "$key" == file-create || "$key" == file-hash ]]; then
     open_arguments+=(--args --initialize-finder-extension)
   fi
   if [[ "$key" == "run-authorize" || "$key" == "run-revoke" || "$key" == "ipa-resign" || "$key" == "hidden-files-toggle" || "$key" == "ios-tools" || "$key" == "ios-simulator-create" || "$key" == "android-simulator-create" || "$key" == "android-simulator-repair" || "$key" == "harmony-simulator-create" || "$key" == "harmony-simulator-repair" || "$key" == "git-proxy-configure" ]]; then
@@ -1352,6 +1365,7 @@ register_and_enable_feature() {
 # 解析管理参数；非交互只接受明确的操作和非空功能清单。
 parse_management_options() {
   local explicit_action=0
+  local install_location="$JOBS_FINDER_INSTALL_LOCATION" cleanup_build_products="$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS"
   while (( $# > 0 )); do
     case "$1" in
       --action|--scope|--features|--install-location|--stop-request-file)
@@ -1360,19 +1374,29 @@ parse_management_options() {
           --action) MANAGEMENT_ACTION="$2"; explicit_action=1 ;;
           --scope) FEATURE_SCOPE="$2" ;;
           --features) CLI_FEATURES="$2" ;;
-          --install-location) JOBS_FINDER_INSTALL_LOCATION="$2" ;;
+          --install-location) install_location="$2" ;;
           --stop-request-file) JOBS_FINDER_STOP_REQUEST_FILE="$2" ;;
         esac
         shift 2
         ;;
       --non-interactive) MANAGER_NON_INTERACTIVE=1; shift ;;
-      --cleanup-build-products) JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=1; shift ;;
+      --cleanup-build-products) cleanup_build_products=1; shift ;;
       --gui-session) MANAGER_GUI_SESSION=1; shift ;;
       *) print -u2 -- "未知参数：$1"; return 2 ;;
     esac
   done
+  # 仅面板首开默认勾选；后台请求及显式环境选择保持原值。
+  if (( ! MANAGER_NON_INTERACTIVE )); then
+    [[ -n "$install_location" ]] || install_location=applications
+    if [[ -z "$cleanup_build_products" && "$install_location" == applications && "$MANAGEMENT_ACTION" == install ]]; then
+      cleanup_build_products=1
+    fi
+  fi
+  JOBS_FINDER_INSTALL_LOCATION="${install_location:-build}"
+  JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="${cleanup_build_products:-0}"
   [[ "$MANAGEMENT_ACTION" == install || "$MANAGEMENT_ACTION" == uninstall || "$MANAGEMENT_ACTION" == cleanup ]] || return 2
   [[ "$JOBS_FINDER_INSTALL_LOCATION" == build || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '安装位置只能是 build 或 applications。'; return 2; }
+  [[ "$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS" == 0 || "$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS" == 1 ]] || { print -u2 '构建产物清理开关必须是 0 或 1。'; return 2; }
   [[ "$MANAGEMENT_ACTION" != cleanup || "$JOBS_FINDER_INSTALL_LOCATION" == applications ]] || { print -u2 '构建目录模式不能独立清理正在使用的产物。'; return 2; }
   if [[ -n "$JOBS_FINDER_STOP_REQUEST_FILE" ]]; then
     [[ "$MANAGEMENT_ACTION" == install && "$JOBS_FINDER_STOP_REQUEST_FILE" == /* && ! -L "$JOBS_FINDER_STOP_REQUEST_FILE" ]] || return 2

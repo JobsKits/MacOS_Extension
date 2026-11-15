@@ -32,6 +32,7 @@
 		01B000000000000000000030 /* SourcetreeApplication.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000030 /* SourcetreeApplication.swift */; };
 		01B000000000000000000031 /* SourcetreeProjectOpener.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000031 /* SourcetreeProjectOpener.swift */; };
 		01B000000000000000000032 /* main.swift */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000032 /* main.swift */; };
+		01B000000000000000000033 /* GitRemoteBrowserOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000033; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +89,7 @@
 		01A000000000000000000030 /* SourcetreeApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/SourcetreeApplication.swift"; sourceTree = SOURCE_ROOT; };
 		01A000000000000000000031 /* SourcetreeProjectOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcetreeProjectOpener.swift; sourceTree = "<group>"; };
 		01A000000000000000000032 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		01A000000000000000000033 /* GitRemoteBrowserOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../JobsGitRemoteOpener/JobsGitRemoteOpener/GitRemoteBrowserOpener.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -117,6 +119,7 @@
 				01G000000000000000000012 /* JobsProjectToolsFinderSync */,
 				01A000000000000000000017 /* GitFolderValidator.swift */,
 				01A000000000000000000018 /* GitRemoteResolver.swift */,
+				01A000000000000000000033 /* GitRemoteBrowserOpener.swift */,
 				01A000000000000000000019 /* GitPullTerminalLauncher.swift */,
 				01A000000000000000000020 /* PullGitRepository.zsh */,
 				01A000000000000000000021 /* ProjectOpener.swift */,
@@ -276,6 +279,7 @@
 				01B000000000000000000016 /* FlutterProjectValidator.swift in Sources */,
 				01B000000000000000000017 /* GitFolderValidator.swift in Sources */,
 				01B000000000000000000018 /* GitRemoteResolver.swift in Sources */,
+				01B000000000000000000033 /* GitRemoteBrowserOpener.swift */,
 				01B000000000000000000019 /* GitPullTerminalLauncher.swift */,
 				01B000000000000000000027 /* GitRollbackTerminalLauncher.swift */,
 				01B000000000000000000021 /* ProjectOpener.swift in Sources */,

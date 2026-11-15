@@ -285,11 +285,42 @@ class AppDeploymentTests < Minitest::Test
       [[ -d "$DEPLOYED/Contents/PlugIns/$EXTENSION" && -d "$JOBS_DEPLOYMENT_TRANSACTION_DIR" ]] || exit 3
       jobs_deployment_commit || exit 4
       [[ -z "$JOBS_DEPLOYMENT_TRANSACTION_DIR" ]] || exit 5
+      [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$CONTAINER/Contents/Info.plist")" == JobsFinderManager.icns ]] || exit 6
     ZSH
+    assert_equal File.binread(File.join(File.dirname(LIBRARY), 'Resources/JobsFinderManager.icns')), File.binread(File.join(@container, 'Contents/Resources/JobsFinderManager.icns'))
     assert_equal 'new', File.read(resource(@deployed))
     assert_equal File.binread(resource(@built)), File.binread(resource(@deployed))
     assert File.directory?(@derived), '默认不请求清理时必须保留构建产物'
     assert_empty Dir.glob(File.join(@applications, '.JobsFinderDeployment.*'))
+  end
+
+  def test_non_utf8_locale_keeps_raw_library_paths_and_prepares_complete_manager_resources
+    package = File.join(@root, '搬迁 % 中文 空格', 'JobsPathCopier')
+    scripts = File.join(package, 'Scripts')
+    FileUtils.mkdir_p(scripts)
+    %w[【MacOS】AppDeployment.zsh 【MacOS】联合App管理.zsh].each do |name|
+      FileUtils.cp_r(File.join(File.dirname(File.dirname(LIBRARY)), name), scripts)
+    end
+    File.write(File.join(scripts, 'ManageExtension.zsh'), "# isolated management entry\n")
+    library = File.join(scripts, '【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh')
+    script = <<~'ZSH'
+      load_library() { source "$1"; }
+      load_library "$1" || exit 90
+      [[ "$JOBS_DEPLOYMENT_MODULE_DIRECTORY" == "${1:A:h}" ]] || exit 1
+      jobs_deployment_prepare_container || exit 2
+      [[ "${JOBS_COMBINED_MANAGER_LIBRARY_SOURCE:A}" == "${1:h:h}/【MacOS】联合App管理.zsh/【MacOS】联合App管理.zsh" ]] || exit 3
+      [[ "$LC_ALL" == C && "$LANG" == C ]] || exit 4
+    ZSH
+    output, error, result = Open3.capture3(
+      { 'LC_ALL' => 'C', 'LANG' => 'C', 'JOBS_FINDER_APPLICATIONS_DIR' => @applications },
+      '/bin/zsh', '-fuc', script, 'locale-fixture', library
+    )
+    assert result.success?, "exit=#{result.exitstatus}\n#{output}\n#{error}"
+    resources = File.join(@container, 'Contents/Resources')
+    assert_equal File.binread(File.join(File.dirname(library), 'Resources/JobsFinderManager.icns')),
+                 File.binread(File.join(resources, 'JobsFinderManager.icns'))
+    assert File.file?(File.join(resources, 'ManagerRoot/JobsPathCopier/Scripts/ManageExtension.zsh'))
+    assert File.file?(File.join(resources, 'ManagerRoot/Scripts/SelectFinderExtensionFeatures.swift'))
   end
 
   def test_deployed_bundle_keeps_resources_after_source_is_removed
@@ -974,7 +1005,228 @@ class AppDeploymentTests < Minitest::Test
     ZSH
   end
 
+  def test_independent_cleanup_after_uninstall_removes_only_unused_build_products
+    sibling = File.join(File.dirname(@derived), 'JobsOtherDerivedData')
+    FileUtils.mkdir_p(sibling)
+    File.write(File.join(sibling, 'keep'), 'other build')
+    shell(<<~'ZSH')
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && jobs_deployment_commit || exit 1
+      jobs_deployment_uninstall "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 2
+      [[ ! -e "$CONTAINER" && -d "$BUILT" ]] || exit 3
+    ZSH
+    calls = File.binread(File.join(@root, 'calls'))
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      [[ ! -e "$DERIVED" && ! -e "$CONTAINER" ]] || exit 2
+      (( ${#JOBS_DEPLOYMENT_COMMITTED_RECEIPT[@]} == 0 )) || exit 3
+    ZSH
+    assert_equal calls, File.binread(File.join(@root, 'calls')), '清理不得重新登记或卸载 App'
+    assert_equal 'other build', File.read(File.join(sibling, 'keep'))
+    assert_empty Dir.glob(File.join(File.dirname(@derived), '.JobsFinderCleanup.*'))
+  end
+
+  def test_unused_cleanup_preserves_another_installed_module_and_its_registration
+    other = File.join(@container, 'Contents/Applications/JobsOther.app')
+    make_app(other, 'installed other', app_id: 'com.jobs.other')
+    File.write(File.join(@root, 'registered.txt'), File.join(other, 'Contents/PlugIns', EXTENSION) + "\n")
+    File.write(File.join(@root, 'host-registered.txt'), other + "\n")
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      [[ ! -e "$DERIVED" && -d "$CONTAINER/Contents/Applications/JobsOther.app" && ! -e "$CALLS" ]] || exit 2
+    ZSH
+    assert_equal 'installed other', File.read(resource(other))
+    assert_equal other + "\n", File.read(File.join(@root, 'host-registered.txt'))
+  end
+
+  def test_unused_cleanup_preserves_sources_with_extension_or_host_registration
+    unused_cleanup_shell(<<~'ZSH')
+      print -r -- "$BUILT/Contents/PlugIns/$EXTENSION" > "$TEST_ROOT/registered.txt"
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      [[ -d "$BUILT" ]] || exit 2
+      /bin/rm "$TEST_ROOT/registered.txt"
+      print -r -- "$BUILT" > "$TEST_ROOT/host-registered.txt"
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 3
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 4
+    ZSH
+    assert_equal 'new', File.read(resource(@built))
+  end
+
+  def test_unused_cleanup_preserves_source_when_registration_or_process_queries_fail
+    unused_cleanup_shell(<<~'ZSH')
+      functions[jobs_registered_fixture]="$functions[jobs_deployment_registered_extension_paths]"
+      functions[jobs_hosts_fixture]="$functions[jobs_deployment_dump_host_registrations]"
+      jobs_deployment_registered_extension_paths() { return 19; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      functions[jobs_deployment_registered_extension_paths]="$functions[jobs_registered_fixture]"
+      jobs_deployment_dump_host_registrations() { return 20; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 2
+      jobs_deployment_dump_host_registrations() { print -r -- 'unknown LaunchServices output'; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 3
+      functions[jobs_deployment_dump_host_registrations]="$functions[jobs_hosts_fixture]"
+      jobs_deployment_source_is_running() { return 2; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 4
+      jobs_deployment_source_is_running() { return 0; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 5
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 6
+    ZSH
+    assert_equal 'new', File.read(resource(@built))
+    assert_empty Dir.glob(File.join(File.dirname(@derived), '.JobsFinderCleanup.*'))
+  end
+
+  def test_unused_cleanup_restores_source_when_a_process_or_registration_appears_after_move
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_source_is_running() { [[ ! -d "$DERIVED" ]]; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      [[ -d "$BUILT" ]] || exit 2
+      jobs_deployment_source_is_running() { return 1; }
+      jobs_deployment_registered_extension_paths() {
+        [[ -d "$DERIVED" ]] || print -r -- "$BUILT/Contents/PlugIns/$EXTENSION"
+        return 0
+      }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 3
+      [[ -d "$BUILT" ]] || exit 4
+      jobs_deployment_registered_extension_paths() {
+        local moved_root=""
+        for moved_root in "${DERIVED:h}"/.JobsFinderCleanup.*/DerivedData(N); do
+          print -r -- "$moved_root/Build/Products/Debug/JobsFixture.app/Contents/PlugIns/$EXTENSION"
+        done
+      }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 5
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 6
+    ZSH
+    assert_equal 'new', File.read(resource(@built))
+    assert_empty Dir.glob(File.join(File.dirname(@derived), '.JobsFinderCleanup.*'))
+  end
+
+  def test_unused_cleanup_rejects_wrong_bundle_identity_and_missing_build_app
+    make_app(@built, 'unknown', app_id: 'com.example.unowned')
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      [[ -d "$BUILT" ]] || exit 2
+    ZSH
+    FileUtils.remove_entry(@built)
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      [[ -d "$DERIVED" && ! -e "$CALLS" ]] || exit 2
+    ZSH
+  end
+
+  def test_unused_cleanup_rejects_linked_targets_and_derived_roots
+    unused_cleanup_shell(<<~'ZSH')
+      /bin/ln -s "$BUILT" "$DEPLOYED" || exit 1
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 2
+      [[ -L "$DEPLOYED" && -d "$BUILT" ]] || exit 3
+      /bin/rm "$DEPLOYED"
+      parent_dir="${DERIVED:h}"
+      /bin/mv "$parent_dir" "$parent_dir.moved"
+      /bin/ln -s "$parent_dir.moved" "$parent_dir"
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 4
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 5
+      /bin/rm "$parent_dir"
+      /bin/mv "$parent_dir.moved" "$parent_dir"
+      /bin/mv "$DERIVED" "$DERIVED.moved"
+      /bin/ln -s "$DERIVED.moved" "$DERIVED"
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 6
+      [[ -L "$DERIVED" && -d "$BUILT" ]] || exit 7
+    ZSH
+  end
+
+  def test_unused_cleanup_preserves_version_metadata_and_rejects_unrelated_scope
+    unused_cleanup_shell(<<~'ZSH')
+      for protected in .git .hg .svn; do
+        /bin/mkdir "$DERIVED/$protected"
+        jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+        [[ -d "$BUILT" && -d "$DERIVED/$protected" ]] || exit 2
+        /bin/rmdir "$DERIVED/$protected"
+      done
+      for rejected in "$TEST_ROOT" "${DERIVED:h}" "$CONTAINER" /; do
+        jobs_deployment_cleanup_existing_build_products "$BUILT" "$rejected" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 3
+      done
+      JOBS_FINDER_INSTALL_LOCATION=build
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 4
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 5
+    ZSH
+    assert_equal 'new', File.read(resource(@built))
+  end
+
+  def test_open_file_query_distinguishes_idle_open_file_and_working_directory
+    directory = File.join(@root, 'lsof 引用目录')
+    FileUtils.mkdir_p(directory)
+    held_file = File.join(directory, 'held.txt')
+    File.write(held_file, 'held')
+    shell(<<~'ZSH')
+      query_result=0
+      jobs_deployment_source_has_open_files "$TEST_ROOT/lsof 引用目录" || query_result=$?
+      [[ "$query_result" == 1 ]] || exit 1
+    ZSH
+    File.open(held_file, 'r') do
+      shell('jobs_deployment_source_has_open_files "$TEST_ROOT/lsof 引用目录" || exit 1')
+    end
+    Open3.popen3('/bin/zsh', '-f', '-c', 'cd -- "$1" || exit 1; print -r READY; IFS= read -r answer', 'held-cwd', directory) do |input, output, error, waiter|
+      begin
+        assert_equal "READY\n", output.gets
+        shell('jobs_deployment_source_has_open_files "$TEST_ROOT/lsof 引用目录" || exit 1')
+      ensure
+        input.close
+        waiter.value
+      end
+    end
+  end
+
+  def test_open_file_query_reports_missing_or_invalid_directory_as_failure
+    shell(<<~'ZSH')
+      for invalid_root in "$TEST_ROOT/missing" "$BUILT/Contents/Resources/业务.zsh"; do
+        query_result=0
+        jobs_deployment_source_has_open_files "$invalid_root" || query_result=$?
+        [[ "$query_result" == 2 ]] || exit 1
+      done
+    ZSH
+  end
+
+  def test_unused_cleanup_preserves_source_with_open_files_or_failed_query
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_source_has_open_files() { return 2; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      jobs_deployment_source_has_open_files() { return 0; }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 2
+      [[ -d "$BUILT" && ! -e "$CALLS" ]] || exit 3
+    ZSH
+    assert_equal 'new', File.read(resource(@built))
+    assert_empty Dir.glob(File.join(File.dirname(@derived), '.JobsFinderCleanup.*'))
+  end
+
+  def test_unused_cleanup_preserves_original_and_replacement_when_source_changes_during_validation
+    unused_cleanup_shell(<<~'ZSH')
+      jobs_deployment_cleanup_unused_source_ready() {
+        /bin/mv -- "$DERIVED" "$DERIVED.original" || return 1
+        /bin/mkdir -- "$DERIVED" || return 1
+        print -r -- 'concurrent replacement' > "$DERIVED/keep.txt"
+      }
+      jobs_deployment_cleanup_existing_build_products "$BUILT" "$DERIVED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" && exit 1
+      [[ -d "$DERIVED.original/Build/Products/Debug/JobsFixture.app" && -f "$DERIVED/keep.txt" && ! -e "$CALLS" ]] || exit 2
+    ZSH
+    assert_equal 'new', File.read(resource(@built.sub(@derived, @derived + '.original')))
+    assert_equal 'concurrent replacement', File.read(File.join(@derived, 'keep.txt')).strip
+    assert_empty Dir.glob(File.join(File.dirname(@derived), '.JobsFinderCleanup.*'))
+  end
+
   private
+
+  # 提供可控的有效 LS 记录，避免查询或改写真实系统登记。
+  def unused_cleanup_shell(body)
+    shell(<<~'ZSH' + body)
+      jobs_deployment_source_has_open_files() { return 1; }
+      jobs_deployment_dump_host_registrations() {
+        local candidate=""
+        printf '%s\n' 'bundle id: unrelated (0x1)' 'path: /Applications/JobsUnrelated.app (0x1)' '----------------------------------------'
+        if [[ -f "$TEST_ROOT/host-registered.txt" ]]; then
+          while IFS= read -r candidate; do
+            printf '%s\n' 'bundle id: fixture (0x2)' "path: $candidate (0x2)" '----------------------------------------'
+          done < "$TEST_ROOT/host-registered.txt"
+        fi
+      }
+    ZSH
+  end
 
   def make_container
     FileUtils.mkdir_p(File.join(@container, 'Contents/Applications'))

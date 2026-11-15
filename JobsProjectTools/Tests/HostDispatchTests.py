@@ -680,7 +680,7 @@ for relative in ['JobsProjectTools/Shared/GitRepositoryValidator.swift',
                  'JobsGitRollback/JobsGitRollbackShared/GitRollbackMenuContext/GitRollbackMenuContext.swift']:
     sources.append((root / relative).read_text())
 stubs = '''import AppKit
-enum Launches { static var rollback = 0; static var pull = 0; static var proxy = 0; static var commit = 0; static var sourcetree = 0 }
+enum Launches { static var remote = 0; static var rollback = 0; static var pull = 0; static var proxy = 0; static var commit = 0; static var sourcetree = 0 }
 enum SourcetreeApplication { static func installedURL() -> URL? { URL(fileURLWithPath: "/Applications/Sourcetree.app") } }
 struct SourcetreeProjectOpener {
  func open(at url: URL, completion: @escaping () -> Void) throws { Launches.sourcetree += 1; completion() }
@@ -695,6 +695,7 @@ struct TerminalOpener {
  enum Action { case gitEmptyCommitPush }
  func openTerminal(from url: URL, action: Action) throws -> URL { Launches.commit += 1; return url }
 }
+struct GitRemoteBrowserOpener { func open(from url: URL) throws { Launches.remote += 1 } }
 struct GitRemoteResolver {
  func webURL(from url: URL) throws -> URL { URL(string: "https://example.invalid/")! }
  func remoteURLString(from url: URL) throws -> String { "https://example.invalid/" }
@@ -717,12 +718,13 @@ func wait() {
  let until = Date().addingTimeInterval(0.2)
  while Date() < until { _ = RunLoop.current.run(mode: .default, before: until) }
 }
-for action in [ProjectMenuAction.gitSourcetree, .gitRollback, .gitPull, .gitProxy, .gitEmptyCommitPush] {
+for action in [ProjectMenuAction.gitRemote, .gitSourcetree, .gitRollback, .gitPull, .gitProxy, .gitEmptyCommitPush] {
  let url = ProjectMenuRequest(action: action, fileURL: root).url!
  host.handle(url)
  host.handle(url)
  wait()
 }
+expect(Launches.remote == 1, "duplicate remote-open URL dispatched once")
 expect(Launches.rollback == 1, "duplicate rollback URL dispatched once")
 expect(Launches.sourcetree == 0, "retired Sourcetree URL is rejected even with legacy enabled configuration")
 expect(Launches.pull == 1, "duplicate pull URL dispatched once")

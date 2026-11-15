@@ -248,6 +248,7 @@ require 'digest'
 class GUIHostIdentityTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
   HELPER = File.join(ROOT, 'Scripts/FinderManagerGUI.zsh')
+  ICON = File.join(ROOT, 'Scripts/【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns')
 
   def fixture
     Dir.mktmpdir('jobs-gui-host-') do |directory|
@@ -255,6 +256,8 @@ class GUIHostIdentityTests < Minitest::Test
       package = File.join(directory, 'package 中文')
       cache = File.join(directory, 'external cache')
       FileUtils.mkdir_p([File.join(package, 'Scripts'), cache])
+      FileUtils.mkdir_p(File.dirname(source_icon(package)))
+      FileUtils.cp(ICON, source_icon(package))
       File.write(File.join(package, 'Scripts/SelectFinderExtensionFeatures.swift'), '// fixture source')
       entry = File.join(package, 'Scripts/ManageFinderExtensions.zsh')
       File.write(entry, '# never executed')
@@ -289,6 +292,28 @@ class GUIHostIdentityTests < Minitest::Test
     Open3.capture3({ 'JOBS_FINDER_MANAGER_CACHE_DIR' => cache, 'JOBS_FINDER_INSTALL_LOCATION' => 'applications', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '0' }, '/bin/zsh', '-f', '-c', code, 'fixture', entry)
   end
 
+  def source_icon(package)
+    File.join(package, 'Scripts/【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns')
+  end
+
+  def change_icon_representation_order(path)
+    contents = File.binread(path)
+    assert_equal 'icns', contents[0, 4]
+    assert_equal contents.bytesize, contents[4, 4].unpack1('N')
+    chunks = []
+    offset = 8
+    while offset < contents.bytesize
+      length = contents[offset + 4, 4].unpack1('N')
+      assert_operator length, :>=, 8
+      chunks << contents[offset, length]
+      offset += length
+    end
+    assert_operator chunks.size, :>, 1
+    changed = contents[0, 8] + chunks.reverse.join
+    refute_equal contents, changed
+    File.binwrite(path, changed)
+  end
+
   def test_native_host_has_stable_identity_standard_signature_and_reuses_identical_binary
     fixture do |_directory, package, cache, entry, binary|
       output, errors, result = launch(cache, entry)
@@ -298,8 +323,8 @@ class GUIHostIdentityTests < Minitest::Test
       assert_includes output, "BUNDLE=#{app}"
       assert_includes output, "EXECUTABLE=#{executable}"
       assert_includes output, "RESPONSIBLE=#{app}"
-      assert_equal ['--manager', entry, '--action', 'uninstall', '--install-location', 'applications', '--scope', 'path_copier,file-create'], output.lines.grep(/^ARG=/).map { |line| line.chomp.delete_prefix('ARG=') }
-      values = { 'CFBundleIdentifier' => 'com.jobs.finderextensions.managementpanel', 'CFBundleName' => 'Jobs右键菜单管理面板', 'CFBundleDisplayName' => 'Jobs右键菜单管理面板', 'CFBundleExecutable' => 'JobsFinderManager' }
+      assert_equal ['--manager', entry, '--action', 'uninstall', '--install-location', 'applications', '--no-cleanup-build-products', '--scope', 'path_copier,file-create'], output.lines.grep(/^ARG=/).map { |line| line.chomp.delete_prefix('ARG=') }
+      values = { 'CFBundleIdentifier' => 'com.jobs.finderextensions.managementpanel', 'CFBundleName' => 'Jobs右键菜单管理面板', 'CFBundleDisplayName' => 'Jobs右键菜单管理面板', 'CFBundleExecutable' => 'JobsFinderManager', 'CFBundleIconFile' => 'JobsFinderManager.icns' }
       values.each do |key, value|
         actual, result = Open3.capture2e('/usr/libexec/PlistBuddy', '-c', "Print :#{key}", File.join(app, 'Contents/Info.plist'))
         assert result.success?, actual
@@ -312,6 +337,8 @@ class GUIHostIdentityTests < Minitest::Test
       assert_includes actual, 'Signature=adhoc'
       assert_includes actual, 'Identifier=com.jobs.finderextensions.managementpanel'
       assert_equal Digest::SHA256.file(binary).hexdigest, File.read(File.join(app, 'Contents/Resources/BinarySource.sha256')).strip
+      assert_equal File.binread(source_icon(package)), File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      assert_equal Digest::SHA256.file(source_icon(package)).hexdigest, File.read(File.join(app, 'Contents/Resources/IconSource.sha256')).strip
       inode = File.stat(executable).ino
       modified = File.mtime(executable)
       output, errors, result = launch(cache, entry)
@@ -319,6 +346,87 @@ class GUIHostIdentityTests < Minitest::Test
       assert_equal inode, File.stat(executable).ino, 'unchanged native binary keeps the existing App'
       assert_equal modified, File.mtime(executable)
       refute File.exist?(File.join(package, 'work')), 'bundle source remains read only with an external cache'
+      assert_empty Dir.glob(File.join(cache, '.JobsFinderManagerHost.*'))
+    end
+  end
+
+  def test_icon_only_change_rebuilds_host_without_changing_binary
+    fixture do |_directory, package, cache, entry, binary|
+      _, errors, result = launch(cache, entry)
+      assert result.success?, errors
+      app = File.join(cache, 'Jobs右键菜单管理面板.app')
+      icon = source_icon(package)
+      old_app = File.stat(app).ino
+      binary_hash = Digest::SHA256.file(binary).hexdigest
+      change_icon_representation_order(icon)
+      output, errors, result = launch(cache, entry)
+      assert result.success?, output + errors
+      refute_equal old_app, File.stat(app).ino, 'an icon update replaces the cache App even when the binary is unchanged'
+      assert_equal binary_hash, Digest::SHA256.file(binary).hexdigest
+      assert_includes output, 'VERSION=original'
+      assert_equal binary_hash, File.read(File.join(app, 'Contents/Resources/BinarySource.sha256')).strip
+      assert_equal File.binread(icon), File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      assert_equal Digest::SHA256.file(icon).hexdigest, File.read(File.join(app, 'Contents/Resources/IconSource.sha256')).strip
+      assert_empty Dir.glob(File.join(cache, '.JobsFinderManagerHost.*'))
+    end
+  end
+
+  def test_legacy_host_without_icon_is_upgraded_on_launch
+    fixture do |_directory, package, cache, entry, binary|
+      code = File.read(HELPER) + "\njobs_manager_prepare_gui_app \"$1\" \"$2\"\n"
+      _, errors, result = Open3.capture3('/bin/zsh', '-f', '-c', code, 'fixture', binary, cache)
+      assert result.success?, errors
+      app = File.join(cache, 'Jobs右键菜单管理面板.app')
+      refute File.exist?(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      _, errors, result = launch(cache, entry)
+      assert result.success?, errors
+      assert_equal File.binread(source_icon(package)), File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      actual, verified = Open3.capture2e('/usr/bin/codesign', '--verify', '--deep', '--strict', app)
+      assert verified.success?, actual
+    end
+  end
+
+  def test_missing_invalid_or_linked_icon_preserves_existing_host
+    fixture do |_directory, package, cache, entry, _binary|
+      _, errors, result = launch(cache, entry)
+      assert result.success?, errors
+      app = File.join(cache, 'Jobs右键菜单管理面板.app')
+      icon = source_icon(package)
+      original = File.binread(icon)
+      previous_app = File.stat(app).ino
+      FileUtils.rm(icon)
+      [nil, 'invalid icon', :link].each do |variant|
+        FileUtils.rm_f(icon)
+        File.binwrite(icon, variant) if variant.is_a?(String)
+        File.symlink(ICON, icon) if variant == :link
+        _, errors, result = launch(cache, entry)
+        refute result.success?, variant.inspect
+        assert_includes errors, '缺少有效的随包管理面板图标'
+        assert_equal previous_app, File.stat(app).ino
+        assert_equal original, File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      end
+      assert_empty Dir.glob(File.join(cache, '.JobsFinderManagerHost.*'))
+    end
+  end
+
+  def test_icon_update_signing_failure_preserves_previous_host
+    fixture do |_directory, package, cache, entry, binary|
+      _, errors, result = launch(cache, entry)
+      assert result.success?, errors
+      app = File.join(cache, 'Jobs右键菜单管理面板.app')
+      old_icon = File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      previous_app = File.stat(app).ino
+      change_icon_representation_order(source_icon(package))
+      code = File.read(HELPER) + <<~'ZSH'
+        jobs_manager_sign_gui_app() { print -u2 simulated-icon-signing-failure; return 23; }
+        jobs_manager_prepare_gui_app "$1" "$2" "$3"
+      ZSH
+      _, errors, result = Open3.capture3('/bin/zsh', '-f', '-c', code, 'fixture', binary, cache, source_icon(package))
+      assert_equal 23, result.exitstatus, errors
+      assert_equal previous_app, File.stat(app).ino
+      assert_equal old_icon, File.binread(File.join(app, 'Contents/Resources/JobsFinderManager.icns'))
+      actual, verified = Open3.capture2e('/usr/bin/codesign', '--verify', '--deep', '--strict', app)
+      assert verified.success?, actual
       assert_empty Dir.glob(File.join(cache, '.JobsFinderManagerHost.*'))
     end
   end

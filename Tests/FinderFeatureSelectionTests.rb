@@ -347,7 +347,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               buildWindow(screenSize: NSSize(width: 1440, height: 900))
               let all = FeatureOption.all.map { $0.identifier }
               let grouped = FeatureGroup.all.flatMap { $0.identifiers }
-              expect(FeatureOption.flutter.count == 47 && all.count == 85, "all leaf actions include file creation, viewer, merge and split")
+              expect(FeatureOption.flutter.count == 47 && all.count == 86, "all leaf actions include file creation, viewer, merge and split")
               expect(!all.contains("git-sourcetree"), "retired Sourcetree entry is absent from management choices")
               let privateActions = ["flutter-export-private-dependencies", "flutter-import-private-dependencies"]
               expect(privateActions.allSatisfy { action in all.filter { $0 == action }.count == 1 }, "private export and import each occur exactly once")
@@ -360,6 +360,8 @@ class FinderFeatureSelectionTests < Minitest::Test
               expect(Set(grouped) == Set(all) && grouped.count == all.count, "every function in exactly one group")
               let general = groupControls.first { $0.group.identifier == "general" }!
               expect(general.group.identifiers.contains("file-create"), "file creation belongs to file and general tools")
+              expect(general.group.identifiers.contains("command-shortcut-create"), "command launcher belongs to file and general tools")
+              expect(FeatureOption.independent.filter { $0.identifier == "command-shortcut-create" }.map { $0.title } == ["创建脚本快捷入口"], "command launcher is one independent action")
               expect(FeatureOption.independent.filter { $0.identifier == "file-create" }.map { $0.title } == ["新建文件"], "file creation remains an independent action exactly once")
               expect(checkedIdentifiers().isEmpty, "management starts with no implicit selection")
               expect(selectAllButton?.isEnabled == true && clearButton?.isEnabled == false && installButton?.isEnabled == false, "initial empty selection disables execution")
@@ -404,7 +406,7 @@ class FinderFeatureSelectionTests < Minitest::Test
               expect(checkedIdentifiers() == all, "global select restores all groups")
               let flutter = groupControls.first { $0.group.identifier == "flutter" }!
               flutter.clear.performClick(nil)
-              expect(checkedIdentifiers().count == 38, "Flutter clear changes all leaf actions only")
+              expect(checkedIdentifiers().count == all.count - FeatureOption.flutter.count, "Flutter clear changes all leaf actions only")
               checkboxes.first { $0.option.identifier == "flutter-package-android" }!.button.performClick(nil)
               expect(flutter.summary.stringValue == "已选 1 / 47", "one Flutter submenu can be installed")
               print("group controls and function identifiers passed")

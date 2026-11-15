@@ -248,7 +248,7 @@ class CombinedManagerResourcesTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
   LIBRARY = '【MacOS】联合App管理.zsh'
   DEPLOYMENT = '【MacOS】AppDeployment.zsh'
-  PACKAGES = %w[JobsProjectTools JobsPathCopier JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools].freeze
+  PACKAGES = %w[JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools].freeze
 
   def fixture
     Dir.mktmpdir('jobs-combined-manager-') do |directory|
@@ -301,6 +301,24 @@ class CombinedManagerResourcesTests < Minitest::Test
     end
   end
 
+  def test_relative_source_path_remains_usable_after_changing_working_directory_in_c_locale
+    fixture do |directory, source, app|
+      script = <<~'ZSH'
+        builtin cd -- "$1" || exit 1
+        source ./【MacOS】联合App管理.zsh || exit 2
+        builtin cd -- "$2" || exit 3
+        jobs_prepare_combined_manager_resources "$3" || exit 4
+        [[ "$LC_ALL" == C ]] || exit 5
+      ZSH
+      output, errors, status = Open3.capture3(
+        { 'LC_ALL' => 'C', 'LANG' => 'C' }, '/bin/zsh', '-fuc', script, 'relative-source-fixture',
+        File.join(source, 'Scripts', LIBRARY), directory, app
+      )
+      assert status.success?, "exit=#{status.exitstatus}\n#{output}\n#{errors}"
+      assert File.file?(File.join(app, 'Contents/Resources/ManagerRoot/Scripts/ManageFinderExtensions.zsh'))
+    end
+  end
+
   def test_entry_locates_resources_after_source_removal_and_uses_external_gui_cache
     fixture do |directory, source, app|
       output, errors, status = prepare(source, app)
@@ -314,6 +332,7 @@ class CombinedManagerResourcesTests < Minitest::Test
       File.write(worker, <<~'ZSH')
         print -r -- "BUILT=${JOBS_FINDER_BUILT_APP_PATH-unset}" > "$CAPTURE"
         print -r -- "CACHE=$JOBS_FINDER_MANAGER_CACHE_DIR" >> "$CAPTURE"
+        print -r -- "LOCALE=$LC_ALL" >> "$CAPTURE"
         printf 'ENTRY:%s\n' "$@" >> "$CAPTURE"
         source "${0:A:h}/FinderManagerGUI.zsh"
         jobs_launch_finder_manager_gui "${0:A}" '' uninstall 1
@@ -323,11 +342,12 @@ class CombinedManagerResourcesTests < Minitest::Test
       File.chmod(0o755, binary)
       File.utime(Time.now + 60, Time.now + 60, binary)
       FileUtils.mv(source, source + '.unavailable')
-      environment = { 'HOME' => home, 'CAPTURE' => capture, 'JOBS_FINDER_BUILT_APP_PATH' => '/developer/source/build/Old.app', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '1' }
+      environment = { 'HOME' => home, 'CAPTURE' => capture, 'LC_ALL' => 'C', 'LANG' => 'C', 'JOBS_FINDER_BUILT_APP_PATH' => '/developer/source/build/Old.app', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '1' }
       output, errors, status = Open3.capture3(environment, '/bin/zsh', File.join(resources, 'ManageInstalledExtensions.zsh'))
       assert status.success?, output + errors
       contents = File.read(capture)
       assert_includes contents, 'BUILT=unset'
+      assert_includes contents, 'LOCALE=C'
       assert_includes contents, "CACHE=#{cache}"
       assert_includes contents, "ENTRY:--action\nENTRY:uninstall\nENTRY:--install-location\nENTRY:applications\nENTRY:--gui-session"
       snapshot_worker = contents[/GUI:--manager\nGUI:([^\n]+)/, 1]
@@ -364,12 +384,12 @@ class CombinedManagerResourcesTests < Minitest::Test
           /bin/sleep 0.02
         done
         entries=("${0:A:h:h}"/Jobs*/Scripts/ManageExtension.zsh(N))
-        (( ${#entries} == 11 )) || exit 91
+        (( ${#entries} == 12 )) || exit 91
         for entry in "${entries[@]}"; do
           [[ -f "$entry" && -r "$entry" ]] || exit 92
         done
         [[ -r "${0:A:h}/SelectFinderExtensionFeatures.swift" && -r "${0:A:h}/FinderManagerGUI.zsh" ]] || exit 93
-        print -r -- 'all eleven management units remained readable' > "$COMPLETED"
+        print -r -- 'all twelve management units remained readable' > "$COMPLETED"
         exit "${FINAL_STATUS:-0}"
       ZSH
       environment = { 'HOME' => directory, 'TMPDIR' => session_root, 'CAPTURE' => capture, 'RELEASE' => release, 'COMPLETED' => completed }
@@ -388,7 +408,7 @@ class CombinedManagerResourcesTests < Minitest::Test
         File.write(release, 'continue')
         result = waiter.value
         assert result.success?, output.read + error.read
-        assert_equal 'all eleven management units remained readable', File.read(completed).strip
+        assert_equal 'all twelve management units remained readable', File.read(completed).strip
         refute File.exist?(snapshot), 'normal completion removes its private snapshot'
         assert_equal 'preserved', File.read(sentinel)
         assert_empty Dir.glob(File.join(session_root, 'JobsFinderManagerSession.*'))
