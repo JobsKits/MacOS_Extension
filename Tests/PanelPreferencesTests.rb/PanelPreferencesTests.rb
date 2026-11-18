@@ -772,7 +772,11 @@ class PanelPreferencesTests < Minitest::Test
                   let expected: NSAppearance.Name? = theme == "dark" ? .darkAqua : (theme == "light" ? .aqua : nil)
                   expect(window!.appearance?.name == expected, "each theme applies native window appearance")
                   expect(logTextView!.string == originalLog && first.state == .on, "theme changes preserve raw log and selection")
-                  expect(logTextView!.textColor == .textColor && logTextView!.backgroundColor == .textBackgroundColor, "existing log uses semantic text and background colors")
+                  let darkLog = window!.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                  let logColors = ManagerLogPalette(dark: darkLog)
+                  expect(logTextView!.textColor == logColors.foreground(.normal) &&
+                         logTextView!.backgroundColor == logColors.background,
+                         "existing log uses the complete palette for the selected theme")
               }
               var systemLanguage = "zh-TW"
               preferences.systemLanguages = { [systemLanguage] }
@@ -882,8 +886,8 @@ class PanelPreferencesTests < Minitest::Test
     source = File.binread(File.join(ROOT, 'Scripts/SelectFinderExtensionFeatures.swift'))
     panels = Dir[File.join(ROOT, '*/Scripts/ManagementPanel.swift')]
     snapshots = Dir[File.join(ROOT, '{,*/}Scripts/【MacOS】联合App管理.zsh/Resources/PanelSource.txt')]
-    assert_equal 11, panels.length
-    assert_equal 33, snapshots.length
+    assert_equal 14, panels.length
+    assert_equal 36, snapshots.length
     (panels + snapshots).each do |path|
       assert_equal source, File.binread(path), path
     end
@@ -899,7 +903,7 @@ class PanelPreferencesTests < Minitest::Test
     assert_equal catalog, JSON.parse(embedded[1])
     tokens = ->(value) { value.scan(/\{\d+\}/).sort }
     catalog.each do |language, entries|
-      assert_equal 352, entries.length, "complete shared catalog: #{language}"
+      assert_equal 362, entries.length, "complete shared catalog: #{language}"
       entries.each do |english, translated|
         refute_empty translated, "nonempty translation: #{language} / #{english}"
         assert_equal tokens.call(english), tokens.call(translated), "preserved tokens: #{language} / #{english}"

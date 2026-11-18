@@ -23,6 +23,10 @@
 在 [**macOS Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 桌面和文件夹空白处提供 **📃 新建文件…**，输入文件名即可创建空白文件。由 Jobs 维护，作为独立安装单元 `file-create` 接入总管理面板。Windows 使用系统已有的新建菜单。
 
 
+**本轮可运行成品：** [JobsFileCreator.app](../work/FixedDesktopMenu-20261118/JobsFileCreator.app) 与[源码 / 产物回执](../work/FixedDesktopMenu-20261118/receipt.json)对应，包含双架构宿主、FinderSync 与业务资源；仅完成隔离构建，安装和真实菜单验收另列。
+
+**固定顺序背景菜单：** 使用应用程序中的联合 App 安装时，安装事务会维护包内 `Contents/Resources/DesktopMenu.json`，由唯一的展示扩展按“新建文件 → 新建 iOS / Android / Harmony 模拟器 → Android / Harmony 模拟器检测与修复 → 显示 / 隐藏文件 → 更新开发环境（update）→ 磁盘剩余”生成完整菜单；只显示已安装且适用的功能，原独立宿主、叶开关与安装 / 卸载边界保留。普通文件夹背景按同一顺序显示新建文件、文件显示开关和磁盘剩余。跨模块固定顺序需要将这四个模块均更新到支持该清单的版本；独立构建目录路线继续使用各功能原菜单。系统手动停用当前展示扩展会暂时隐藏整组背景菜单，重新启用该扩展或从面板安装 / 更新可恢复；管理面板卸载模块时自动重选展示扩展。文件、多选和侧边栏继续沿用本功能原资格。清单损坏、身份变化和过期点击均不会派发业务。详见[右键菜单顺序资产盘点](../../项目相关报告/右键菜单顺序资产盘点.md)。
+
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
 
 **安装 / 卸载位置：** 面板提供“使用「应用程序」中的联合 App 安装 / 卸载”复选框，首次打开默认勾选，可手动取消。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
@@ -149,9 +153,9 @@ xcodebuild \
   -derivedDataPath ./work/DerivedData \
   build
 
-ruby ./Tests/FileCreationTests.rb
-ruby ./Tests/FinderDispatchTests.rb
-ruby ./Tests/InstallerTests.rb
+ruby Tests/FileCreationTests.rb/FileCreationTests.rb
+ruby Tests/FinderDispatchTests.rb/FinderDispatchTests.rb
+ruby Tests/InstallerTests.rb/InstallerTests.rb
 ```
 
 测试使用临时目录和边界替身，覆盖目录上下文、特殊字符传输、请求拒绝、排他创建、同名文件 / 目录 / 链接保护、并发竞争、取消和失败重试，以及生产委托入口。Finder 生产菜单回归先复制其支持的菜单属性、清空 `representedObject` 后再触发 action，覆盖右键后切换窗口、多份菜单并存、重复及淘汰 tag 拒绝、菜单目录失效、按搬迁后的路径定位宿主、拒绝其它 App 身份、禁止默认 scheme 处理器回退及异步启动失败。安装回归复制 worker 到临时目录并硬替换系统写命令，覆盖参数拒绝、安装顺序、构建失败、互斥锁、跳过刷新、精确卸载和独立复制后的 GUI 范围。源码构建与隔离测试不等于真实 Finder 右键验收；系统扩展开关、受保护目录授权和实际输入框交互需在本机安装后核验。

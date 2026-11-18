@@ -31,11 +31,16 @@ final class FinderSync: FIFinderSync {
             recordMenuDiagnostic(menuKind, reason: "no-candidate")
             return nil
         }
-        guard validator.isFlutterProject(at: projectURL) else {
+        let isProject = validator.isFlutterProject(at: projectURL)
+        guard isProject || (menuKind == .contextualMenuForItems && validator.runProjectURL(for: projectURL) != nil) else {
             recordMenuDiagnostic(menuKind, candidate: projectURL, valid: false, reason: "non-flutter")
             return nil
         }
-        let enabled = FlutterFeatureConfiguration.enabledFeatures()
+        var enabled = FlutterFeatureConfiguration.enabledFeatures()
+        // 文件入口只提供运行，工程维护动作仍只接受项目根目录。
+        if !isProject {
+            enabled = enabled.intersection([.run])
+        }
         let configuredCount = enabled.count
         guard !enabled.isEmpty else {
             recordMenuDiagnostic(menuKind, candidate: projectURL, valid: true, enabled: configuredCount,
@@ -46,7 +51,11 @@ final class FinderSync: FIFinderSync {
         let development = NSMenu(title: "🦋 Flutter开发相关辅助工具")
         for action in [FlutterToolsAction.projectSetup, .run] {
             if enabled.contains(action) {
-                development.addItem(makeItem(action, menuKind))
+                let item = makeItem(action, menuKind)
+                if !isProject && action == .run {
+                    item.title = FlutterProjectValidator.demoMenuTitle()
+                }
+                development.addItem(item)
             }
         }
         addGroup(title: "📥 拉取Flutter项目工程相关依赖",
@@ -97,9 +106,14 @@ final class FinderSync: FIFinderSync {
                  enabled: enabled,
                  kind: menuKind,
                  to: development)
-        let parent = NSMenuItem(title: development.title, action: nil, keyEquivalent: "")
-        parent.submenu = development
-        menu.addItem(parent)
+        if let item = singleActionItem(in: development) {
+            item.menu?.removeItem(item)
+            menu.addItem(item)
+        } else {
+            let parent = NSMenuItem(title: development.title, action: nil, keyEquivalent: "")
+            parent.submenu = development
+            menu.addItem(parent)
+        }
         recordMenuDiagnostic(menuKind, candidate: projectURL, valid: true, enabled: configuredCount,
                              available: enabled.count, returned: leafCount(in: menu), reason: "returned")
         return menu
@@ -115,6 +129,17 @@ final class FinderSync: FIFinderSync {
             "enabledCount": enabled, "availableCount": available,
             "returnedLeafCount": returned, "reason": reason
         ])
+    }
+
+    /// 唯一动作直接放在父菜单，保留原叶子的目标、图标和校验路径。
+    private func singleActionItem(in menu: NSMenu) -> NSMenuItem? {
+        guard menu.items.count == 1, let item = menu.items.first else {
+            return nil
+        }
+        if let submenu = item.submenu {
+            return singleActionItem(in: submenu)
+        }
+        return item.action == nil ? nil : item
     }
 
     private func leafCount(in menu: NSMenu) -> Int {
@@ -709,7 +734,7 @@ final class FinderSync: FIFinderSync {
         // Finder 转发菜单动作时不依赖 representedObject，重新查询本次菜单上下文。
         guard FlutterFeatureConfiguration.permits(action, enabled: FlutterFeatureConfiguration.enabledFeatures()),
               let projectURL = candidateURL(for: menuKind),
-              validator.isFlutterProject(at: projectURL) else {
+              (action == .run ? validator.runProjectURL(for: projectURL) != nil : validator.isFlutterProject(at: projectURL)) else {
             showFailure("当前菜单上下文已失效，或文件夹不再是可识别的 Flutter 项目，请关闭菜单后重新右键。")
             return
         }

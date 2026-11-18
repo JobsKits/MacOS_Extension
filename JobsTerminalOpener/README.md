@@ -102,7 +102,7 @@
   "/实际路径/镜像.iso@2of2"
 ```
 
-`split <文件路径> --limit-bytes <正整数字节>` 可直接指定上限，仍保留首屏回车确认，用于命令行和隔离回归。无交互终端拒绝运行；不会安装或升级依赖，也不会修改 Shell 配置。部署前可运行 `ruby Tests/FileVolumesTests.rb`：只使用临时夹具检查真实流式往返、完整组资格、源件保留、独占发布冲突及 Swift 私有载体。当前已完成源码类型检查与隔离回归，真实 Finder 菜单须重新管理安装后验收。
+`split <文件路径> --limit-bytes <正整数字节>` 可直接指定上限，仍保留首屏回车确认，用于命令行和隔离回归。无交互终端拒绝运行；不会安装或升级依赖，也不会修改 Shell 配置。部署前可运行 `ruby Tests/FileVolumesTests.rb/FileVolumesTests.rb`：只使用临时夹具检查真实流式往返、完整组资格、源件保留、独占发布冲突及 Swift 私有载体。当前已完成源码类型检查与隔离回归，真实 Finder 菜单须重新管理安装后验收。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">二、环境先决条件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -213,7 +213,7 @@ cd -- '/path/to/iOS project' && pod install
 传输回归编译真实 Swift 实现，使用注入调度器和交互 zsh 伪终端，验证 Pod 直接发送单行命令、特殊路径与原生交互；代码地图及空白 Commit 继续验证私有载体权限、调度失败与受控中断清理。不会打开真实 Terminal 或执行真实 Pod 操作：
 
 ```shell
-ruby ./Tests/TerminalRequestTransportTests.rb
+ruby Tests/TerminalRequestTransportTests.rb/TerminalRequestTransportTests.rb
 ```
 
 `./Tests/DependencyProjectValidatorTests.swift` 与共享验证器一起编译，可独立核对 `Podfile` 普通文件与 `*.xcodeproj` 目录包两个条件的存在组合、大小写、类型和同层限制，以及不要求已有 workspace：
@@ -249,7 +249,7 @@ swiftc \
 隔离回归从 Swift 中提取真实命令，用伪终端和临时假工具检查确认、安装链、特殊路径、失败停止及地图状态；不会执行真实安装或给用户项目建图：
 
 ```shell
-ruby ./Tests/CodeGraphDependencyCommandTests.rb
+ruby Tests/CodeGraphDependencyCommandTests.rb/CodeGraphDependencyCommandTests.rb
 ```
 
 ## <span id="jobs-toc-heading-12" data-jobs-toc="v2">五、排查说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -328,9 +328,9 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
 
 ## 六、<span id="install-uninstall">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理用终端打开Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理用终端打开Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -392,14 +392,14 @@ ruby ./Tests/CodeGraphDependencyCommandTests.rb
     ├── CleanBuildArtifacts.zsh
     ├── FileVolumes.zsh
     ├── ViewFileContent.zsh
-    └── EnableFinderExtension.zsh
+    └── 【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh
 ```
 
 * `JobsTerminalOpener/` 保存宿主 APP；`JobsTerminalFinderSync/` 保存 Finder 扩展与菜单逻辑；`JobsTerminalOpener.xcodeproj/` 保存工程和构建阶段配置。
 * `JobsTerminalShared/` 保存九项功能选择与依赖项目识别的共享实现。
 * `Scripts/` 保存构建后自动注册入口；工程根只保留一个裸露管理脚本，统一提供独立安装 / 更新与卸载。
 
-### <span id="jobs-toc-heading-16" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-16" data-jobs-toc="v2">[EnableFinderExtension.zsh](./Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在 Xcode 构建后注册、启用 JobsTerminalOpener 扩展并刷新 Finder。
 
@@ -442,7 +442,7 @@ Finder 与宿主使用共享的 `buildArtifactProjectKind(at:)` 识别，终端�
 
 执行前列出识别类型、工程路径和实际存在的产物，输入 `CLEAN` 才删除；其它输入取消。请先停止构建。保留源码、锁文件、Pods、`oh_modules`、`node_modules`、`entry/libs/flutter.har` 等依赖包、Gradle / Hvigor 工具配置、FVM SDK、签名、其它工程的 DerivedData 和全局共享缓存。自定义输出路径不推断、不删除；扫描模块时不进入依赖目录及嵌套独立 Gradle / Git / Flutter / 鸿蒙应用工程。清理目标或父路径是链接时停止，产物内部的符号链接只移除链接本身。
 
-可单独运行 `zsh Scripts/CleanBuildArtifacts.zsh /工程路径 --detect` 获取工程类型（未知类型返回非零退出码）；`--dry-run` 只预览；省略选项进入确认；`--yes` 供明确授权的无人值守调用。追加 `--android-openharmony` 限定两平台范围，可与前述任一模式组合；该范围拒绝原生 iOS 工程。无需安装 Flutter / Gradle / CocoaPods / DevEco Studio，不执行项目提供的脚本。
+可单独运行 `zsh Scripts/【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh /工程路径 --detect` 获取工程类型（未知类型返回非零退出码）；`--dry-run` 只预览；省略选项进入确认；`--yes` 供明确授权的无人值守调用。追加 `--android-openharmony` 限定两平台范围，可与前述任一模式组合；该范围拒绝原生 iOS 工程。无需安装 Flutter / Gradle / CocoaPods / DevEco Studio，不执行项目提供的脚本。
 
 鸿蒙工程标记参考华为的[工程级 build-profile.json5](https://developer.huawei.com/consumer/cn/doc/doccenter-deveco-studio/ide-hmos-hvigor-build-profile-app)，构建命令与目录边界参考 [Hvigor 命令行](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-hvigor-commandline)。本功能使用保守目录白名单，不调用 Hvigor。
 
@@ -451,7 +451,7 @@ Finder 与宿主使用共享的 `buildArtifactProjectKind(at:)` 识别，终端�
 当前只支持上面四类；普通 Dart、Java Gradle、纯 macOS Xcode、旧式鸿蒙 Gradle 或无法识别的目录均不显示入口，也不做通用 `build/` 删除。新增工程支持应按以下接口接入，不能只新增一个菜单标题：
 
 1. 在 `JobsTerminalShared/DependencyProjectValidator.swift` 的 `BuildArtifactProjectKind` 增加类型和 `menuTitle`，在 `buildArtifactProjectKind(at:)` 增加只读识别规则，明确当前层标记和识别优先级。该接口返回 `nil` 即隐藏入口，同时让宿主拒绝执行。
-2. 在 `Scripts/CleanBuildArtifacts.zsh` 增加对应 `jobs_clean_<类型>` 检测与候选目录收集函数，接入 `jobs_clean_main` 的类型分支和删除前复检。候选路径统一进入 `candidates`，继续使用 `jobs_clean_validate`、预览和 `CLEAN` 确认；禁止未知类型兜底和猜测全局缓存归属。`--detect` 返回值必须与 Swift 类型的 `rawValue` 一致。
+2. 在 `./Scripts/【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh` 增加对应 `jobs_clean_<类型>` 检测与候选目录收集函数，接入 `jobs_clean_main` 的类型分支和删除前复检。候选路径统一进入 `candidates`，继续使用 `jobs_clean_validate`、预览和 `CLEAN` 确认；禁止未知类型兜底和猜测全局缓存归属。`--detect` 返回值必须与 Swift 类型的 `rawValue` 一致。
 3. 补充菜单标题、检测一致性、清理范围、依赖保留、嵌套工程和符号链接测试，再更新此处识别依据及白名单。若新增 Flutter 平台，还需说明“Flutter 根目录整体清理”和“平台目录单独清理”的区别。
 
-回归：`ruby Tests/BuildArtifactCleanerTests.rb`（包含真实 Swift 检测器与脚本的一致性检查）、`ruby Tests/TerminalRequestTransportTests.rb`，以及仓库根目录的 `ruby Tests/DesktopFinderMenuTests.rb`。测试只操作临时夹具，覆盖三种工程的统一标题、Flutter 两平台与完整清理范围、OpenHarmony 原生 / Flutter 平台、多模块、类型优先级、未知工程隐藏、iOS 保护、取消、特殊路径、链接保护和重复执行。清理脚本支持四类工程，自包含副本打包到统一工具内。
+回归：`ruby Tests/BuildArtifactCleanerTests.rb/BuildArtifactCleanerTests.rb`（包含真实 Swift 检测器与脚本的一致性检查）、`ruby Tests/TerminalRequestTransportTests.rb/TerminalRequestTransportTests.rb`，以及仓库根目录的 `ruby Tests/DesktopFinderMenuTests.rb`。测试只操作临时夹具，覆盖三种工程的统一标题、Flutter 两平台与完整清理范围、OpenHarmony 原生 / Flutter 平台、多模块、类型优先级、未知工程隐藏、iOS 保护、取消、特殊路径、链接保护和重复执行。清理脚本支持四类工程，自包含副本打包到统一工具内。

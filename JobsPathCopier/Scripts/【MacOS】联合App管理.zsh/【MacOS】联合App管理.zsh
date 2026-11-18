@@ -7,6 +7,39 @@
 # shell: zsh
 
 # 使用原始来源路径，避免 C locale 下提示符展开转义中文包名。
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
 typeset -g JOBS_COMBINED_MANAGER_LIBRARY_SOURCE="${${${${funcsourcetrace[1]:-}%:*}:-$0}:A}"
 # 拒绝链接资源，复制不会读取容器外文件或写入其它位置。
 jobs_combined_manager_check_tree() {
@@ -17,13 +50,14 @@ jobs_combined_manager_check_tree() {
 }
 # 仅复制管理入口和部署库，业务 Tools 与工程源码不进入联合管理器。
 jobs_combined_manager_copy_package() {
-  local package="$1" target="$2" script="" deployment="$1/Scripts/【MacOS】AppDeployment.zsh"
-  [[ -f "$package/Scripts/ManageExtension.zsh" && ! -L "$package/Scripts/ManageExtension.zsh" ]] || return 1
+  local package="$1" target="$2" script="" source_script="" deployment="$1/Scripts/【MacOS】AppDeployment.zsh"
+  [[ -f "$(jobs_layout_file "$package/Scripts/ManageExtension.zsh")" && ! -L "$(jobs_layout_file "$package/Scripts/ManageExtension.zsh")" ]] || return 1
   /bin/mkdir -p "$target/Scripts" || return 1
   for script in ManageExtension.zsh ManageProjectTools.zsh ManageDesktopTools.zsh; do
-    [[ -e "$package/Scripts/$script" || -L "$package/Scripts/$script" ]] || continue
-    [[ -f "$package/Scripts/$script" && ! -L "$package/Scripts/$script" ]] || return 1
-    /bin/cp -p "$package/Scripts/$script" "$target/Scripts/$script" || return 1
+    source_script="$(jobs_layout_file "$package/Scripts/$script")"
+    [[ -e "$source_script" || -L "$source_script" ]] || continue
+    [[ -f "$source_script" && ! -L "$source_script" ]] || return 1
+    /bin/cp -p "$source_script" "$target/Scripts/$script" || return 1
   done
   jobs_combined_manager_check_tree "$deployment" || return 1
   [[ ! -e "$target/Scripts/【MacOS】AppDeployment.zsh" ]] || /bin/rm -r -- "$target/Scripts/【MacOS】AppDeployment.zsh" || return 1
@@ -32,7 +66,7 @@ jobs_combined_manager_copy_package() {
 # 身份匹配后将新资源准备在同卷暂存区，再替换 ManagerRoot；失败恢复原目录。
 jobs_prepare_combined_manager_resources() {
   local container="$1" library_dir="${JOBS_COMBINED_MANAGER_LIBRARY_SOURCE:A:h}" source_root="" resources="" stage="" target="" package="" snapshot="" result=0
-  local packages=(JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
+  local packages=(JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsFileVisibility JobsSendTo JobsDiskSpaceInfo JobsEnvironmentUpdater JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools)
   [[ "$container" == /* && -d "$container" && ! -L "$container" && "${container:A}" == "$container" &&
      "${container:t}" == Jobs自定义右键菜单.app && ! -L "$container/Contents" &&
      -f "$container/Contents/Info.plist" && ! -L "$container/Contents/Info.plist" &&
@@ -60,13 +94,13 @@ jobs_prepare_combined_manager_resources() {
     /bin/cp -R "$target/." "$stage/ManagerRoot/" || result=1
   fi
   if (( ! result )); then
-    /bin/cp "$library_dir/Resources/RootWorker.txt" "$stage/ManagerRoot/Scripts/ManageFinderExtensions.zsh" &&
+    /bin/cp "$library_dir/Resources/RootWorker.txt" "$(jobs_layout_file "$stage/ManagerRoot/Scripts/ManageFinderExtensions.zsh")" &&
     /bin/cp "$library_dir/Resources/PanelSource.txt" "$stage/ManagerRoot/Scripts/SelectFinderExtensionFeatures.swift" &&
-    /bin/cp "$library_dir/Resources/GuiBootstrap.txt" "$stage/ManagerRoot/Scripts/FinderManagerGUI.zsh" &&
+    /bin/cp "$library_dir/Resources/GuiBootstrap.txt" "$(jobs_layout_file "$stage/ManagerRoot/Scripts/FinderManagerGUI.zsh")" &&
     print -r -- com.jobs.finderextensions.manager > "$stage/ManagerRoot/.jobs-combined-manager" || result=1
   fi
   if (( ! result )); then
-    if [[ -f "$source_root/Scripts/ManageFinderExtensions.zsh" ]]; then
+    if [[ -f "$(jobs_layout_file "$source_root/Scripts/ManageFinderExtensions.zsh")" ]]; then
       for package in "${packages[@]}"; do
         [[ -d "$source_root/$package" ]] || continue
         jobs_combined_manager_copy_package "$source_root/$package" "$stage/ManagerRoot/$package" || { result=1; break; }
@@ -128,6 +162,7 @@ jobs_combined_session_prepare() {
   export JOBS_FINDER_INSTALL_LOCATION=applications
   export JOBS_FINDER_CLEANUP_BUILD_PRODUCTS=0
   export JOBS_FINDER_MANAGER_CACHE_DIR="${HOME}/Library/Caches/JobsFinderExtensions/Management"
+  export JOBS_FINDER_GUI_WAIT=1
 }
 # 等待本次面板及其 worker 结束后，退出清理只作用于私有快照。
 jobs_combined_session_run() {

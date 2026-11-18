@@ -1,0 +1,38 @@
+# <span id="前言">联合 App 内置管理资源</span>
+
+![Jobs出品，必属精品](https://picsum.photos/1500/400)
+
+[toc]
+
+---
+
+> [【MacOS】联合App管理.zsh](./【MacOS】联合App管理.zsh) 是部署流程调用的函数库，为 `Jobs自定义右键菜单.app` 装配管理资源。打开联合 App 默认进入「应用程序」路线的卸载面板；源码目录移走后仍能管理已装功能。此函数库不构建、不登记、不卸载扩展。
+
+**面板偏好：** 内置管理面板右上角同样提供“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 藏文 / 英文 / 日文 / 法文 / 西班牙文 / 德文 / 俄罗斯文 / 韩文 / 跟随系统”，默认跟随系统，选择即时生效并保存在当前用户偏好中，与源码总面板和随包面板共用。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。主题跟随原生系统外观；系统语言在区域变化通知或窗口重新激活时重新读取。切换保留功能勾选、执行任务和已有日志；后台工具原始日志保留原文。 功能卡片可拖动排序或跨列移动并保存布局，默认右列仅放 Flutter；与源码及随包面板共用布局偏好。
+
+## 一、管理资源与边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+调用 `jobs_prepare_combined_manager_resources 容器绝对路径`。仅接受名称 `Jobs自定义右键菜单.app`、固定身份 `com.jobs.finderextensions.manager` 且无链接跳转的容器，先在同卷暂存，再替换 `Contents/Resources/ManagerRoot`；准备失败保留原管理目录。
+
+全仓部署带入十个实际安装单元的管理脚本与部署库；单包部署只带入本包，并合并保留其它已安装单元的管理文件。不会复制业务 `Tools`、工程源码或开发机路径。资源入口 `Contents/Resources/ManageInstalledExtensions.zsh` 从自身位置定位；原生面板编译缓存写到用户的 `Library/Caches/JobsFinderExtensions/Management`，不修改 App 内文件。缺少工程源码时安装 / 更新会明确失败，卸载不要求工程源码。
+
+## 二、生成资源快照同步 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+`Resources/RootWorker.txt`、`PanelSource.txt`、`GuiBootstrap.txt` 是标准根管理器、面板和启动支持库的文本快照，不另行维护业务逻辑。每次标准源变更后刷新对应快照，再将完整同名函数库包同步到功能包；应在标准源最终修改后检查逐字节一致，不能把旧快照反向覆盖标准源。
+
+在仓库根目录更新快照：
+
+```shell
+cp Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh Scripts/【MacOS】联合App管理.zsh/Resources/RootWorker.txt
+cp Scripts/SelectFinderExtensionFeatures.swift Scripts/【MacOS】联合App管理.zsh/Resources/PanelSource.txt
+cp Scripts/【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh Scripts/【MacOS】联合App管理.zsh/Resources/GuiBootstrap.txt
+```
+
+## 三、隔离验证 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+[CombinedManagerResourcesTests.rb](../../../Tests/CombinedManagerResourcesTests.rb/CombinedManagerResourcesTests.rb) 使用临时伪 App 与假 GUI 缓存，覆盖完整装配、单包合并、源码移走后入口和缓存定位、链接 / 非自有容器拒绝及失败保留旧资源；不打开真实面板、不执行安装、清理或系统登记。
+
+
+**面板生命周期等待：** 私有管理快照在本次会话导出JOBS_FINDER_GUI_WAIT=1，由GUI引导器通过LaunchServices独立启动面板并等待其真正退出；随后才清理当前快照。普通公开App启动壳可及时退出，同时保留卸载自身后继续执行与查看日志所需资源。纯同步调用的stdout／退出码不变，不把open已派发视为后台安装完成。
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

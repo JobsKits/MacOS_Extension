@@ -185,10 +185,60 @@ JOBS_CONTAINER_LAUNCHER
   jobs_deployment_validate_container "$container_app" || return 1
   jobs_deployment_prepare_container_resources "$container_app"
 }
+# 只收录支持同一展示协议的完整宿主；清单随联合 App 搬移，不记录开发机路径。
+jobs_deployment_refresh_desktop_menu() {
+  local container_app="$1" resources="${1}/Contents/Resources" manifest="${1}/Contents/Resources/DesktopMenu.json"
+  local module="" candidate="" app_id="" extension_name="" extension_id="" protocol="" temporary="" result=0
+  local -a providers=()
+  jobs_deployment_validate_container "$container_app" || return $?
+  [[ ( ! -e "$resources" || -d "$resources" ) && ! -L "$resources" && "$resources" == "${resources:A}" &&
+     ! -L "$manifest" && ( ! -e "$manifest" || -f "$manifest" ) ]] || {
+    jobs_deployment_error '桌面菜单清单或资源目录不是普通文件 / 目录。'; return 1
+  }
+  for module in JobsFileCreator JobsDesktopTools JobsEnvironmentUpdater JobsDiskSpaceInfo; do
+    candidate="$container_app/Contents/Applications/${module}.app"
+    [[ -e "$candidate" || -L "$candidate" ]] || continue
+    [[ -d "$candidate" && ! -L "$candidate" && "$candidate" == "${candidate:A}" &&
+       -f "$candidate/Contents/Info.plist" && ! -L "$candidate/Contents/Info.plist" ]] || {
+      jobs_deployment_error "桌面菜单宿主路径不可核验：$candidate"; return 1
+    }
+    protocol="$(/usr/libexec/PlistBuddy -c 'Print :JobsOrderedDesktopMenuVersion' "$candidate/Contents/Info.plist" 2>/dev/null)"
+    [[ "$protocol" == 1 ]] || continue
+    case "$module" in
+      JobsFileCreator) app_id=com.jobs.filecreator; extension_name=JobsFileCreatorFinderSync.appex; extension_id=com.jobs.filecreator.findersync ;;
+      JobsDesktopTools) app_id=com.jobs.desktoptools; extension_name=JobsDesktopToolsFinderSync.appex; extension_id=com.jobs.desktoptools.findersync ;;
+      JobsEnvironmentUpdater) app_id=com.jobs.environmentupdater; extension_name=JobsEnvironmentUpdaterFinderSync.appex; extension_id=com.jobs.environmentupdater.findersync ;;
+      JobsDiskSpaceInfo) app_id=com.jobs.diskspaceinfo; extension_name=JobsDiskSpaceInfoFinderSync.appex; extension_id=com.jobs.diskspaceinfo.findersync ;;
+    esac
+    jobs_deployment_validate_app "$candidate" "$app_id" "$extension_name" "$extension_id" || return $?
+    providers+=("$module")
+  done
+  if (( ! ${#providers} )); then
+    [[ ! -e "$manifest" ]] || /bin/rm -- "$manifest" || return $?
+    return 0
+  fi
+  /bin/mkdir -p -- "$resources" || return $?
+  temporary="$(/usr/bin/mktemp "$resources/.DesktopMenu.XXXXXXXX")" || return $?
+  {
+    print -rn -- '{"schemaVersion":1,"owner":"'"${providers[1]}"'","providers":['
+    local separator=""
+    for module in "${providers[@]}"; do
+      print -rn -- "$separator\"$module\""
+      separator=,
+    done
+    print -r -- ']}'
+  } > "$temporary" || result=$?
+  (( result )) || /usr/bin/plutil -convert binary1 -o /dev/null "$temporary" || result=$?
+  (( result )) || /bin/chmod 644 "$temporary" || result=$?
+  (( result )) || /bin/mv -f -- "$temporary" "$manifest" || result=$?
+  [[ ! -e "$temporary" ]] || /bin/rm -- "$temporary" || result=$?
+  return "$result"
+}
 # 每次宿主集合变化仅重签外层，验证可递归检查，但绝不深度重签子宿主。
 jobs_deployment_sign_container() {
   local container_app="$1" signing_output="" result=0 error_result=0
   jobs_deployment_validate_container "$container_app" || return 1
+  jobs_deployment_refresh_desktop_menu "$container_app" || return $?
   signing_output="$(jobs_deployment_codesign_container "$container_app" 2>&1)" || result=$?
   [[ -z "$signing_output" ]] || print -u2 -r -- "$signing_output"
   if (( result )); then
@@ -313,15 +363,150 @@ jobs_deployment_enabled_extension_paths() {
     /Path = / { if (enabled) { sub(/^.*Path = /, ""); print } }
   '
 }
+# 将可替换时钟与等待隔离，所有安装单元共用同一稳定观察窗口。
+jobs_deployment_registration_now() {
+  print -r -- "$SECONDS"
+}
+# 观察期间仅等待，不结束系统守护进程或其它扩展。
+jobs_deployment_registration_pause() {
+  /bin/sleep 1
+}
+# 只重新登记已经校验的当前宿主路径。
+jobs_deployment_registration_register_host() {
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$1"
+}
+# 磁盘宿主初始化不执行清理；其它宿主保持既有启动策略。
+jobs_deployment_registration_initialize_host() {
+  [[ "$3" == com.jobs.diskspaceinfo.findersync ]] || return 0
+  /usr/bin/open -gj "$1" --args --initialize-finder-extension
+}
+# 只补回本轮目标appex，不枚举或注销其它插件。
+jobs_deployment_registration_add_extension() {
+  /usr/bin/pluginkit -a "$1/Contents/PlugIns/$2"
+}
+# 只恢复本轮选中的扩展ID，不修改其它插件的启用状态。
+jobs_deployment_registration_enable_extension() {
+  /usr/bin/pluginkit -e use -i "$3"
+}
+# 每次系统写入前复核目标节点，避免接管并发替换的宿主。
+jobs_deployment_repair_registration() {
+  local selected_app="$1" app_id="$2" extension_name="$3" extension_id="$4" expected_identity="$5" deadline="${6:-}" operation="" current_time=""
+  jobs_deployment_validate_app "$selected_app" "$app_id" "$extension_name" "$extension_id" || return $?
+  jobs_deployment_verify_signature "$selected_app" || return $?
+  for operation in jobs_deployment_registration_register_host jobs_deployment_registration_initialize_host jobs_deployment_registration_add_extension jobs_deployment_registration_enable_extension; do
+    if [[ -n "$deadline" ]]; then
+      current_time="$(jobs_deployment_registration_now)" || return $?
+      [[ "$deadline" == <-> && "$current_time" == <-> ]] || return 2
+      (( current_time <= deadline )) || { jobs_deployment_error '登记恢复已超过本轮总时限，未继续写入系统登记。'; return 1; }
+    fi
+    [[ ! -L "$selected_app" && "$(/usr/bin/stat -f '%d:%i' "$selected_app" 2>/dev/null)" == "$expected_identity" ]] || {
+      jobs_deployment_error "登记恢复前宿主已被替换，停止：$selected_app"; return 1
+    }
+    "$operation" "$selected_app" "$extension_name" "$extension_id" || return $?
+  done
+}
+# 清理与刷新后的共享后验；每个ID最多恢复两次，连续稳定才认定安装完成。
+jobs_deployment_verify_registrations() {
+  emulate -L zsh
+  local stable_seconds="$1" maximum_seconds="$2" maximum_repairs="$3"
+  shift 3
+  local -a plan=("$@")
+  local -A repair_counts=() repaired_at=()
+  local selected_app="" app_id="" extension_name="" extension_id="" expected_identity="" paths="" candidate="" started="" now="" stable_since="" progress_at=""
+  local -i offset=0 code=0 all_ready=0 matched=0 foreign=0
+  [[ "$stable_seconds" == <-> && "$maximum_seconds" == <-> && "$maximum_repairs" == <-> ]] || return 2
+  (( stable_seconds > 0 && maximum_seconds >= stable_seconds && maximum_repairs > 0 && ${#plan} > 0 && ${#plan} % 5 == 0 )) || return 2
+  for (( offset=1; offset <= ${#plan}; offset+=5 )); do
+    jobs_deployment_validate_app "${plan[$offset]}" "${plan[$((offset+1))]}" "${plan[$((offset+2))]}" "${plan[$((offset+3))]}" || return $?
+    jobs_deployment_verify_signature "${plan[$offset]}" || return $?
+  done
+  started="$(jobs_deployment_registration_now)" || return $?
+  [[ "$started" == <-> ]] || return 2
+  progress_at="$started"
+  print -u2 -r -- "安装后登记核验：本轮共 $((${#plan} / 5)) 个安装单元；需连续稳定 ${stable_seconds} 秒。"
+  while true; do
+    now="$(jobs_deployment_registration_now)" || return $?
+    [[ "$now" == <-> ]] && (( now >= started )) || return 2
+    (( now - started <= maximum_seconds )) || { jobs_deployment_error '安装后登记核验超过本轮总时限，不能报告安装成功。'; return 1; }
+    all_ready=1
+    for (( offset=1; offset <= ${#plan}; offset+=5 )); do
+      selected_app="${plan[$offset]}"
+      app_id="${plan[$((offset+1))]}"
+      extension_name="${plan[$((offset+2))]}"
+      extension_id="${plan[$((offset+3))]}"
+      expected_identity="${plan[$((offset+4))]}"
+      [[ ! -L "$selected_app" && "$(/usr/bin/stat -f '%d:%i' "$selected_app" 2>/dev/null)" == "$expected_identity" ]] || {
+        jobs_deployment_error "登记核验期间宿主节点已变化，停止：$selected_app"; return 1
+      }
+      code=0
+      paths="$(jobs_deployment_enabled_extension_paths "$extension_id")" || code=$?
+      (( code == 0 )) || { jobs_deployment_error "无法可靠读取当前扩展登记，停止恢复：$extension_id（退出码 $code）"; return "$code"; }
+      matched=0
+      foreign=0
+      while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        if [[ "$candidate" == "$selected_app/Contents/PlugIns/$extension_name" ]]; then
+          matched=1
+        else
+          foreign=1
+        fi
+      done <<< "$paths"
+      (( ! foreign )) || { jobs_deployment_error "另一位置正在启用同ID扩展，未覆盖并发选择：$extension_id"; return 1; }
+      if (( ! matched )); then
+        all_ready=0
+        stable_since=""
+        if [[ -n "${repaired_at[$extension_id]:-}" ]] && (( now - repaired_at[$extension_id] < 5 )); then
+          continue
+        fi
+        (( now - started < maximum_seconds )) || { jobs_deployment_error '登记观察已超过总时限，未继续写入系统登记。'; return 1; }
+        (( ${repair_counts[$extension_id]:-0} < maximum_repairs )) || {
+          jobs_deployment_error "扩展登记仍未稳定，已达到本轮恢复上限：$extension_id"; return 1
+        }
+        repair_counts[$extension_id]=$(( ${repair_counts[$extension_id]:-0} + 1 ))
+        print -u2 -r -- "安装后登记核验：目标登记缺失，定向恢复 $extension_id（${repair_counts[$extension_id]}/$maximum_repairs）。"
+        jobs_deployment_repair_registration "$selected_app" "$app_id" "$extension_name" "$extension_id" "$expected_identity" "$((started + maximum_seconds))" || return $?
+        now="$(jobs_deployment_registration_now)" || return $?
+        [[ "$now" == <-> ]] && (( now >= started )) || return 2
+        (( now - started <= maximum_seconds )) || { jobs_deployment_error '登记恢复后已超过总时限，未继续处理后续安装单元。'; return 1; }
+        repaired_at[$extension_id]="$now"
+      fi
+    done
+    now="$(jobs_deployment_registration_now)" || return $?
+    [[ "$now" == <-> ]] && (( now >= started )) || return 2
+    (( now - started <= maximum_seconds )) || { jobs_deployment_error '安装后登记核验超过本轮总时限，不能报告安装成功。'; return 1; }
+    if (( all_ready )); then
+      [[ -n "$stable_since" ]] || stable_since="$now"
+      if (( now - stable_since >= stable_seconds )); then
+        for (( offset=1; offset <= ${#plan}; offset+=5 )); do
+          jobs_deployment_verify_signature "${plan[$offset]}" || return $?
+        done
+        now="$(jobs_deployment_registration_now)" || return $?
+        [[ "$now" == <-> ]] && (( now >= started )) || return 2
+        (( now - started <= maximum_seconds )) || { jobs_deployment_error '最终签名核验后已超过本轮总时限，不能报告安装成功。'; return 1; }
+        print -u2 -r -- "安装后登记核验通过：本轮全部精确目标已连续稳定 ${stable_seconds} 秒。"
+        return 0
+      fi
+    fi
+    (( now - started < maximum_seconds )) || { jobs_deployment_error '安装后登记核验超过本轮总时限，不能报告安装成功。'; return 1; }
+    if (( now - progress_at >= 10 )); then
+      print -u2 -r -- "安装后登记核验：已观察 $((now - started)) 秒，继续核对本轮精确目标。"
+      progress_at="$now"
+    fi
+    jobs_deployment_registration_pause || return $?
+  done
+}
 # 注销只针对当前精确路径，不使用会影响同 ID 其它位置的全局 ignore。
 jobs_deployment_unregister_app() {
   local selected_app="$1" extension_name="$2" extension_bundle="$1/Contents/PlugIns/$2"
-  local remove_result=0 metadata="" candidate=""
+  local remove_result=0 query_result=0 metadata="" candidate=""
   jobs_deployment_remove_extension_path "$extension_bundle" || remove_result=$?
+  case "$remove_result" in 129|130|143) return "$remove_result" ;; esac
   if (( remove_result )); then
-    metadata="$(jobs_deployment_registered_extension_paths_for_bundle "$extension_bundle")" || {
+    metadata="$(jobs_deployment_registered_extension_paths_for_bundle "$extension_bundle")" || query_result=$?
+    case "$query_result" in 129|130|143) return "$query_result" ;; esac
+    if (( query_result != 0 )); then
       jobs_deployment_error "注销失败且无法复核登记：$extension_bundle"; return "$remove_result"
-    }
+    fi
     while IFS= read -r candidate; do
       [[ "$candidate" != "$extension_bundle" ]] || {
         jobs_deployment_error "注销失败且精确路径仍登记：$extension_bundle"; return "$remove_result"
@@ -409,7 +594,7 @@ jobs_deployment_remove_extension_path() {
 # 复核失败注销时仅查询该 Bundle ID 的记录，不把查询失败当成已移除。
 jobs_deployment_registered_extension_paths_for_bundle() {
   local extension_id=""
-  extension_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null)" || return 1
+  extension_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null)" || return $?
   [[ "$extension_id" == com.jobs.* ]] || return 1
   jobs_deployment_registered_extension_paths "$extension_id"
 }
@@ -485,7 +670,15 @@ jobs_deployment_backup_legacy_top_level_app() {
   /bin/mv -- "$legacy_app" "$JOBS_DEPLOYMENT_TRANSACTION_DIR/legacy.app" || return $?
   print -u2 -r -- "ℹ 已将本次旧顶层宿主收拢到联合 App，提交前保留备份：$legacy_app"
 }
-# 所有登记与配置保存成功后丢弃旧 App 备份。
+# 删除旧事务副本前精确撤销其登记，避免旧节点异步整理撤回新插件。
+jobs_deployment_retire_transaction_previous_app() {
+  local previous_app="$JOBS_DEPLOYMENT_TRANSACTION_DIR/previous.app"
+  [[ -e "$previous_app" || -L "$previous_app" ]] || return 0
+  jobs_deployment_validate_transaction || return $?
+  jobs_deployment_validate_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_APP_ID" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" || return $?
+  jobs_deployment_unregister_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME"
+}
+# 提交已核验的文件事务，旧节点撤销后才删除其备份。
 jobs_deployment_commit() {
   local receipt=("$JOBS_DEPLOYMENT_TRANSACTION_SOURCE" "$JOBS_DEPLOYMENT_TRANSACTION_TARGET" "$JOBS_DEPLOYMENT_TRANSACTION_APP_ID" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" "$JOBS_DEPLOYMENT_TARGET_IDENTITY")
   if [[ "$JOBS_DEPLOYMENT_REGISTRATION_ONLY" == 1 ]]; then
@@ -501,6 +694,7 @@ jobs_deployment_commit() {
   }
   [[ "$JOBS_DEPLOYMENT_PREPARED_REGISTRATION" == 1 ]] || { jobs_deployment_error '尚未在扩展登记前准备联合 App 签名，拒绝提交。'; return 1; }
   jobs_deployment_verify_signature "${JOBS_DEPLOYMENT_TRANSACTION_TARGET:h:h:h}" || return $?
+  jobs_deployment_retire_transaction_previous_app || return $?
   jobs_deployment_backup_legacy_top_level_app || return $?
   jobs_deployment_release_transaction || return $?
   JOBS_DEPLOYMENT_COMMITTED_RECEIPT=("${receipt[@]}")
@@ -545,6 +739,12 @@ jobs_deployment_rollback() {
     /bin/mv -- "$JOBS_DEPLOYMENT_TRANSACTION_DIR/legacy.app" "$JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH" || return $?
     JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH=""
   fi
+  # 恢复清单和外层签名后再恢复登记，避免注册到尚未一致的容器。
+  jobs_deployment_remove_empty_container || return $?
+  local remaining_container="$(jobs_deployment_container_path)" || return $?
+  if [[ -d "$remaining_container" ]]; then
+    jobs_deployment_sign_container "$remaining_container" || return $?
+  fi
   for previous_app in "${JOBS_DEPLOYMENT_PREVIOUS_APPS[@]}"; do
     jobs_deployment_validate_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_APP_ID" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" || return 1
     jobs_deployment_register_restored_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" || result=1
@@ -552,11 +752,6 @@ jobs_deployment_rollback() {
   if (( result )); then
     jobs_deployment_error "原文件已恢复，但登记恢复未全部成功；保留事务：$JOBS_DEPLOYMENT_TRANSACTION_DIR"
     return 1
-  fi
-  jobs_deployment_remove_empty_container || return $?
-  local remaining_container="$(jobs_deployment_container_path)" || return $?
-  if [[ -d "$remaining_container" ]]; then
-    jobs_deployment_sign_container "$remaining_container" || return $?
   fi
   jobs_deployment_release_transaction
 }
@@ -814,7 +1009,7 @@ jobs_deployment_cleanup_build_products() {
     return 1
   fi
   print -u2 -r -- "🧹 本轮构建产物：$derived_root；已安装联合 App：$selected_app"
-  /bin/rm -r -- "$moved_root" || { jobs_deployment_error "清理未完整完成，剩余产物：$quarantine"; return 1; }
+  /bin/rm -r -- "$moved_root" || { result=$?; jobs_deployment_error "清理未完整完成，剩余产物：$quarantine"; return "$result"; }
   /bin/rmdir -- "$quarantine" || return $?
   JOBS_DEPLOYMENT_COMMITTED_RECEIPT=()
   print -u2 -r -- "✔ 本轮构建产物清理完成：$derived_root"

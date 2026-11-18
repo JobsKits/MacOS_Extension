@@ -19,9 +19,9 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
+本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
 
 日志区上方的分隔条可上下拖动，窗口也可调整大小；功能列表与日志分别滚动，并保留操作按钮。日志右键提供“全选”，也可用 `⌘A` 全选后 `⌘C` 复制；拖动不会清空日志或改变功能勾选。
 
@@ -49,8 +49,8 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| [RevokeRun.zsh](./RevokeRun.zsh) | 随 App 打包，通过 Terminal 核对并确认单文件 `chmod -x`；支持独立调用。 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | 仅供有效 Xcode 构建上下文登记、启用当前精确 appex 路径并刷新 Finder。 |
+| [RevokeRun.zsh](./【MacOS】RevokeRun.zsh/【MacOS】RevokeRun.zsh) | 随 App 打包，通过 Terminal 核对并确认单文件 `chmod -x`；支持独立调用。 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | 仅供有效 Xcode 构建上下文登记、启用当前精确 appex 路径并刷新 Finder。 |
 
 从本目录调用：
 

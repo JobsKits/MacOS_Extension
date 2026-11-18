@@ -75,7 +75,7 @@
 
 拉取、合并或恢复本地内容仍有冲突时，实际安装目录保持更新前原状，终端显示手动合并指引，失败候选与备份保留在代码片段目标的同级私有目录。发布前再次比较原目录，发现并发改动即停止，不覆盖用户的新修改。成功后保留原始备份，Xcode 由本人重新打开。
 
-菜单分发器要求随 App 携带 `Scripts/Tools/【MacOS】⚙️双击安装JobsCodeSnippets.command`，并传入 `--finder <项目绝对路径>` 做资格校验。规范源为 [JobsCommand@iOS 中的独立脚本](../../../JobsCommand@iOS/配置相关/【MacOS】⚙️双击安装JobsCodeSnippets.command/【MacOS】⚙️双击安装JobsCodeSnippets.command)；完整参数、Git 边界与日志见[独立脚本说明](../../../JobsCommand@iOS/配置相关/【MacOS】⚙️双击安装JobsCodeSnippets.command/README.md)。安装后的 App 只读取自身资源，不读取另一仓库。
+菜单分发器要求随 App 携带 `./Scripts/Tools/【MacOS】⚙️双击安装JobsCodeSnippets.command/【MacOS】⚙️双击安装JobsCodeSnippets.command`，并传入 `--finder <项目绝对路径>` 做资格校验。规范源为 [JobsCommand@iOS 中的独立脚本](../../../JobsCommand@iOS/配置相关/【MacOS】⚙️双击安装JobsCodeSnippets.command/【MacOS】⚙️双击安装JobsCodeSnippets.command)；完整参数、Git 边界与日志见[独立脚本说明](../../../JobsCommand@iOS/配置相关/【MacOS】⚙️双击安装JobsCodeSnippets.command/README.md)。安装后的 App 只读取自身资源，不读取另一仓库。
 
 随包代码片段脚本与规范源逐字节一致，摘要登记在 `SourceManifest.json`；维护规范源后须同步该副本并重新安装菜单，以更新 App 资源。
 
@@ -83,9 +83,9 @@
 
 ## 三、<span id="installation">安装、选择与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理iOS辅助工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理iOS辅助工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -109,7 +109,7 @@
 
 当前用户应用支持目录的 `JobsIOSTools/EnabledFeatures.txt` 保存选择，不改写签名后的 App 资源。宿主和扩展优先读取真实用户配置；空配置表示全部关闭，读取失败保守关闭，无配置才使用随包缺省值。`JOBS_INSTALL_FEATURES` 是未指定 CLI 范围时的兼容输入，明确参数优先。最低部署目标 macOS 12、Swift 语言模式 5.0（工程配置）。
 
-项目源码、iOS 工程、片段仓库和其它业务产物保留；安装 / 卸载菜单不安装、升级或删除代码片段，也不执行 Pod、清理或项目改写。两种操作会刷新 Finder，请先结束文件搬移。内部 `Scripts/ManageExtension.zsh` 的 `--skip-finder-restart` 将刷新交给外层；`--action ... --non-interactive` 仅供面板或已确认的总管理器调用，会实际执行，不能用于只读检查；公开启动器只唤起 GUI。
+项目源码、iOS 工程、片段仓库和其它业务产物保留；安装 / 卸载菜单不安装、升级或删除代码片段，也不执行 Pod、清理或项目改写。两种操作会刷新 Finder，请先结束文件搬移。内部 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` 的 `--skip-finder-restart` 将刷新交给外层；`--action ... --non-interactive` 仅供面板或已确认的总管理器调用，会实际执行，不能用于只读检查；公开启动器只唤起 GUI。
 
 ## 四、<span id="resources-and-checks">资源、日志与只读验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -119,7 +119,7 @@
 | [IOSProjectValidator.swift](./JobsIOSToolsShared/IOSProjectValidator/IOSProjectValidator.swift) | 项目识别、Pod 专项门禁与用户功能配置读取。 |
 | [FinderSync.swift](./JobsIOSToolsFinderSync/FinderSync.swift) | 菜单生成与点击时重新读取目标。 |
 | [IOSToolsLauncher.swift](./JobsIOSTools/IOSToolsLauncher/IOSToolsLauncher.swift) | 私有 Terminal 载体与按参数传递路径。 |
-| [DispatchIOSTools.zsh](./Scripts/Tools/DispatchIOSTools.zsh) | 固定映射、目标复核与随包脚本执行。 |
+| [DispatchIOSTools.zsh](./Scripts/Tools/【MacOS】DispatchIOSTools.zsh/【MacOS】DispatchIOSTools.zsh) | 固定映射、目标复核与随包脚本执行。 |
 | [SourceManifest.json](./Scripts/Tools/SourceManifest.json) | 规范源路径、源与打包资源摘要。 |
 
 安装器在本目录 `work/DerivedData` 保存产物；根管理器使用上级 `work/JobsIOSToolsDerivedData`。系统从已注册路径启动扩展，不能把注册产物当作普通缓存删除。宿主 ID 为 `com.jobs.JobsIOSTools`，扩展 ID 为 `com.jobs.JobsIOSTools.FinderSyncExtension`。
@@ -140,9 +140,9 @@
 隔离回归从本目录运行，不执行安装或注册、不访问用户片段仓库：
 
 ```shell
-ruby ./Tests/IOSToolsTests.rb
-ruby ../Tests/IOSToolsInstallerIntegrationTests.rb
-ruby ../Tests/IOSToolsCodeSnippetsTests.rb
+ruby Tests/IOSToolsTests.rb/IOSToolsTests.rb
+ruby ../Tests/IOSToolsInstallerIntegrationTests.rb/IOSToolsInstallerIntegrationTests.rb
+ruby ../Tests/IOSToolsCodeSnippetsTests.rb/IOSToolsCodeSnippetsTests.rb
 ```
 
 源码映射、Shell 语法及临时假业务验证不替代重新安装后的 Finder 菜单、Terminal 自动化权限与真实远端更新验收。

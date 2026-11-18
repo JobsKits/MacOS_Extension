@@ -18,14 +18,14 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 > 本目录携带可独立运行的 Android 模拟器核心与 Finder 注册辅助脚本，不依赖其它仓库的运行时文件。
 
 | 文件 | 职责与边界 |
 | --- | --- |
-| `CreateAndroidSimulator.zsh` | 检查并自动补齐 SDK 与工具，交互创建 / 启动 Android AVD；`--create` 直接新建，`--prepare` 仅准备工具链，`--check` 只读检查，`--help` 显示参数。与聚合桌面资源和项目准备内核保持相同实现。 |
-| `EnableFinderExtension.zsh` | Xcode Build Phase 注册当前构建产物、核对扩展启用路径并按标记刷新 Finder；不创建模拟器。独立安装器会跳过自动注册阶段并统一执行注册。 |
+| `./【MacOS】CreateAndroidSimulator.zsh/【MacOS】CreateAndroidSimulator.zsh` | 检查并自动补齐 SDK 与工具，交互创建 / 启动 Android AVD；`--create` 直接新建，`--prepare` 仅准备工具链，`--check` 只读检查，`--help` 显示参数。与聚合桌面资源和项目准备内核保持相同实现。 |
+| `./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` | Xcode Build Phase 注册当前构建产物、核对扩展启用路径并按标记刷新 Finder；不创建模拟器。独立安装器会跳过自动注册阶段并统一执行注册。 |
 
 
 **安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，非交互调用默认 `build`。GUI 首次打开默认使用应用程序中的联合 App，并勾选安装成功后清理；显式参数或环境设置优先，用户可在面板手动取消。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。

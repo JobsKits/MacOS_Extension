@@ -19,7 +19,7 @@
 - HDC 和 USB 取证相互独立：USB 读取失败或 plist 损坏时保留已确认 HDC 目标；HDC 命令失败时保留原始输出及退出码，继续查询 USB，绝不将错误文字作为设备。HDC 的 `Unauthorized`、`Offline` 和服务消息会显示诊断提示并写入证据，不伪造运行设备。已开开发者模式仍需打开 USB 调试并在手机确认本机授权；有关状态以 [**HDC 官方说明**](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/hdc/)及本轮实际输出为准。
 - `harmony-run-target` 使用原 HDC ID 或 USB 物理位置与序列号精确匹配一个受支持的鸿蒙 Flutter 设备；USB 断开、换机、重号、缺序列号、未授权或重复目标均不猜测其它设备。准备只执行一次，运行器之后只进行有界设备查询，失败或取消停止本轮。
 
-- `jobs_flutter_preflight_overview` 使用运行器已准备的同源 Dart、SDK 源码依赖和工具快照，调用当前 SDK 的官方本地验证器，并查询构建能力及依赖索引；同时核对工程 FVM 声明、实际 SDK 版本或鸿蒙固定提交。始终显示 iOS、Android、OpenHarmony 三端结果，缺失平台目录明确显示未就绪。
+- `jobs_flutter_preflight_overview` 使用运行器已准备的同源 Dart、SDK 源码依赖和工具快照，调用当前 SDK 的官方本地验证器，并查询构建能力及依赖索引；同时核对工程 FVM 声明、实际 SDK 版本或鸿蒙固定提交。首轮完整显示 iOS、Android、OpenHarmony 三端结果，缺失平台目录明确显示未就绪。同一工程与 SDK 身份下，后续仍实际复检，但只展示状态或缺项变化的结果；完全未变化时仅显示一行提示，不重复展开其它平台的插件清单。更换工程、FVM 声明或 SDK 工具身份后重新完整展示，所选平台的运行门禁始终保留。
 - iOS 检查 Xcode、CocoaPods 及 iOS 构建能力；Android 检查 doctor 的 Android 工具链完整结果，包含 Java、SDK 与许可证；OpenHarmony 检查 HAP 能力、DevEco/CLT、SDK 编译组件、Node、OHPM、Hvigor、HDC、Java、工程结构及移动端原生插件的平台声明。
 - Hvigor 优先使用当前工程 `ohos/hvigorw`，按原生 Shell 在 `ohos/` 内检查版本，不要求脚本执行位；不存在时再查配套工具与当前进程路径。
 - `jobs_flutter_preflight_require 平台 设备ID` 在运行前校验结果，只要求所选平台通过。未知平台、缺失体检、工具失败、超时、无法解析及依赖 SDK 不一致均阻止运行。

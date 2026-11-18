@@ -1,0 +1,953 @@
+#!/bin/zsh
+# 由安装 / 卸载入口调用。共用一份配置和一个扩展，保留逐项启停能力。
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    levels=$(( levels - 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
+# >>> Jobs terminal style protection v1 >>>
+# 临时保护当前终端配色，业务进程自行管理原有退出清理。
+jobs_terminal_style_run() {
+    # 无法可靠保存原色时，沿用脚本已有的纯文本约定。
+    jobs_terminal_style_plain() {
+        PLAIN_OUTPUT=1
+        NO_COLOR=1
+        FORCE_COLOR=0
+        CLICOLOR=0
+        ANSI_COLORS_DISABLED=1
+        npm_config_color=false
+        export PLAIN_OUTPUT NO_COLOR FORCE_COLOR CLICOLOR ANSI_COLORS_DISABLED npm_config_color
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    }
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    fi
+    if [ -n "${TMUX:-}${STY:-}" ]; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_tty=$(tty 2>/dev/null) || jobs_terminal_style_plain "$@"
+    if ! ps -o pgid= -o tpgid= -p "$$" 2>/dev/null |
+         LC_ALL=C awk 'NF == 2 && $1 == $2 && $1 > 0 { foreground = 1 } END { exit !foreground }'; then
+        jobs_terminal_style_plain "$@"
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$jobs_style_tty" ] &&
+               kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null; then
+                if "$@"; then
+                    jobs_style_exit_status=0
+                else
+                    jobs_style_exit_status=$?
+                fi
+                exit "$jobs_style_exit_status"
+            fi
+            ;;
+    esac
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
+    jobs_style_saved=''
+    jobs_style_saved_rows=''
+    jobs_style_original_rows=''
+    jobs_style_applied_rows=''
+    jobs_style_changed=0
+    jobs_style_applied_complete=0
+    jobs_style_query_active=0
+    jobs_style_recovery=''
+    jobs_style_exit_status=0
+    jobs_style_esc=$(printf '\033')
+    jobs_style_bel=$(printf '\007')
+    # 完整颜色帧有界重发；设置核验与退出恢复容忍帧外回车和明确方向键。
+    jobs_terminal_style_query() {
+        jobs_style_query_key=$1
+        jobs_style_reply=''
+        jobs_style_query_buffer=''
+        jobs_style_query_target_reply=''
+        jobs_style_query_target_normalized=''
+        jobs_style_query_target_rgb=''
+        jobs_style_query_st="${jobs_style_esc}\\"
+        jobs_style_query_stale_count=0
+        jobs_style_query_phase=${2:-strict}
+        jobs_style_query_cr=$(printf '\r')
+        jobs_style_query_lf=$(printf '\n.')
+        jobs_style_query_lf=${jobs_style_query_lf%.}
+        jobs_style_query_failure='未收到目标颜色的完整答复（最多 3 次查询，每次约 2 秒）'
+        for jobs_style_query_round in 1 2 3; do
+            printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || {
+                jobs_style_query_failure='无法向原终端发送配色查询'
+                return 1
+            }
+            for jobs_style_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                # 哨兵保留末尾换行，不能把只有回车的键盘输入误当成无答复。
+                jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty; printf '.')
+                jobs_style_piece=${jobs_style_piece%.}
+                jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
+                while [ -n "$jobs_style_query_buffer" ]; do
+                    # 设置核验与退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ] || [ "$jobs_style_query_phase" = applied ]; then
+                        jobs_style_query_control_sequence=''
+                        jobs_style_query_control_partial=0
+                        case $jobs_style_query_buffer in
+                            "$jobs_style_query_cr"*) jobs_style_query_control_sequence=$jobs_style_query_cr ;;
+                            "$jobs_style_query_lf"*) jobs_style_query_control_sequence=$jobs_style_query_lf ;;
+                        esac
+                        if [ -z "$jobs_style_query_control_sequence" ]; then
+                            for jobs_style_query_direction in A B C D; do
+                                for jobs_style_query_control_candidate in \
+                                    "${jobs_style_esc}[${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}O${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;2${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;3${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;4${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;5${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;6${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;7${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;8${jobs_style_query_direction}"; do
+                                    case $jobs_style_query_buffer in
+                                        "$jobs_style_query_control_candidate"*)
+                                            jobs_style_query_control_sequence=$jobs_style_query_control_candidate
+                                            break 2
+                                            ;;
+                                    esac
+                                    case $jobs_style_query_control_candidate in
+                                        "$jobs_style_query_buffer"*) jobs_style_query_control_partial=1 ;;
+                                    esac
+                                done
+                            done
+                        fi
+                        if [ -n "$jobs_style_query_control_sequence" ]; then
+                            jobs_style_phase_control_keys=$(( ${jobs_style_phase_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_phase_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='本阶段已识别控制键超过 64 个，已停止自动恢复'
+                                return 1
+                            fi
+                            jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
+                            continue
+                        fi
+                        if [ "$jobs_style_query_control_partial" = 1 ]; then
+                            break
+                        fi
+                    fi
+                    case $jobs_style_query_buffer in
+                        "$jobs_style_esc"|"$jobs_style_esc]") break ;;
+                        "$jobs_style_esc]"*) ;;
+                        *) jobs_style_query_failure='收到非配色查询输入，已停止读取'; return 1 ;;
+                    esac
+                    jobs_style_query_head=''
+                    jobs_style_query_terminator=''
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_bel"*)
+                            jobs_style_query_head=${jobs_style_query_buffer%%"$jobs_style_bel"*}
+                            jobs_style_query_terminator=$jobs_style_bel
+                            ;;
+                    esac
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_query_st"*)
+                            jobs_style_query_st_head=${jobs_style_query_buffer%%"$jobs_style_query_st"*}
+                            if [ -z "$jobs_style_query_terminator" ] ||
+                               [ "${#jobs_style_query_st_head}" -lt "${#jobs_style_query_head}" ]; then
+                                jobs_style_query_head=$jobs_style_query_st_head
+                                jobs_style_query_terminator=$jobs_style_query_st
+                            fi
+                            ;;
+                    esac
+                    [ -n "$jobs_style_query_terminator" ] || break
+                    jobs_style_query_frame=$jobs_style_query_head$jobs_style_query_terminator
+                    jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_frame"}
+                    jobs_style_query_body=${jobs_style_query_head#"$jobs_style_esc]"}
+                    case $jobs_style_query_body in
+                        *';rgb:'*) ;;
+                        *) jobs_style_query_failure='配色答复格式或 RGB 数据无效'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_key=${jobs_style_query_body%%';rgb:'*}
+                    case $jobs_style_query_frame_key in
+                        10|11|12|'4;'[0-9]|'4;1'[0-5]) ;;
+                        *) jobs_style_query_failure='收到不属于本次颜色协议的答复'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_rgb=${jobs_style_query_body#"$jobs_style_query_frame_key;rgb:"}
+                    jobs_style_query_frame_normalized=$(printf '%s\n' "$jobs_style_query_frame_rgb" | LC_ALL=C awk -F/ '
+                        BEGIN { valid = 1 }
+                        NR != 1 || NF != 3 { valid = 0; exit }
+                        {
+                            for (i = 1; i <= 3; i++) {
+                                h = tolower($i)
+                                if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) {
+                                    valid = 0
+                                    exit
+                                }
+                                n = 0
+                                for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                                value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                            }
+                        }
+                        END {
+                            if (!valid || NR != 1) exit 1
+                            printf "%d/%d/%d", value[1], value[2], value[3]
+                        }
+                    ')
+                    if [ -z "$jobs_style_query_frame_normalized" ]; then
+                        jobs_style_query_failure='配色答复格式或 RGB 数据无效'
+                        return 1
+                    fi
+                    if [ "$jobs_style_query_frame_key" = "$jobs_style_query_key" ]; then
+                        if [ -n "$jobs_style_query_target_reply" ] &&
+                           [ "$jobs_style_query_target_normalized" != "$jobs_style_query_frame_normalized" ]; then
+                            jobs_style_query_failure='同一颜色的重复答复不一致，已停止自动恢复'
+                            return 1
+                        fi
+                        jobs_style_query_target_reply=$jobs_style_query_frame
+                        jobs_style_query_target_normalized=$jobs_style_query_frame_normalized
+                        jobs_style_query_target_rgb=$jobs_style_query_frame_rgb
+                    else
+                        jobs_style_query_stale_count=$((jobs_style_query_stale_count + 1))
+                        if [ "$jobs_style_query_stale_count" -gt 128 ]; then
+                            jobs_style_query_failure='收到过多旧颜色答复，已停止读取'
+                            return 1
+                        fi
+                    fi
+                done
+                if [ -n "$jobs_style_query_target_reply" ] && [ -z "$jobs_style_query_buffer" ]; then
+                    jobs_style_reply=$jobs_style_query_target_reply
+                    jobs_style_normalized=$jobs_style_query_target_normalized
+                    jobs_style_rgb=$jobs_style_query_target_rgb
+                    return 0
+                fi
+            done
+            # 残缺帧不能通过重发拼成另一个答复，更不能被当成键盘空输入。
+            if [ -n "$jobs_style_query_buffer" ]; then
+                jobs_style_query_failure='配色答复帧不完整，已停止自动恢复'
+                return 1
+            fi
+        done
+        return 1
+    }
+    # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
+    jobs_terminal_style_accepts_target() {
+        jobs_style_requested_hex=''
+        case $1 in
+            10|12) jobs_style_requested_hex=ffffff ;;
+            11) jobs_style_requested_hex=000000 ;;
+            '4;'*)
+                jobs_style_requested_index=0
+                for jobs_style_requested_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+                    if [ "4;$jobs_style_requested_index" = "$1" ]; then
+                        jobs_style_requested_hex=$jobs_style_requested_color
+                        break
+                    fi
+                    jobs_style_requested_index=$((jobs_style_requested_index + 1))
+                done
+                ;;
+        esac
+        [ -n "$jobs_style_requested_hex" ] || return 1
+        printf '%s|%s\n' "$jobs_style_normalized" "$jobs_style_requested_hex" | LC_ALL=C awk -F'|' '
+            function hexbyte(h) {
+                return (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            }
+            {
+                if (split($1, actual, "/") != 3 || length($2) != 6) exit 1
+                for (i = 1; i <= 3; i++) {
+                    difference = actual[i] - hexbyte(substr($2, i * 2 - 1, 2)) * 257
+                    if (difference < -255 || difference > 255) exit 1
+                }
+            }
+        '
+    }
+    # 核验中断时重新读取当前值，只撤回仍等于本轮目标值的颜色。
+    jobs_terminal_style_rollback() {
+        jobs_style_rollback_issue='无法读取或设置原终端输入模式'
+        jobs_style_rollback_safe=''
+        jobs_style_rollback_conflicts=''
+        jobs_style_phase_control_keys=0
+        jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+        if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+            jobs_style_query_active=1
+            jobs_style_rollback_ok=1
+            while IFS='|' read -r jobs_style_key jobs_style_original_normalized jobs_style_original; do
+                [ -n "$jobs_style_key" ] || continue
+                if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
+                    jobs_style_rollback_ok=0
+                    jobs_style_rollback_issue="回退颜色项 $jobs_style_key：$jobs_style_query_failure"
+                    break
+                fi
+                if [ "$jobs_style_normalized" = "$jobs_style_original_normalized" ]; then
+                    continue
+                elif jobs_terminal_style_accepts_target "$jobs_style_key"; then
+                    jobs_style_rollback_safe=$jobs_style_rollback_safe$jobs_style_original
+                else
+                    jobs_style_rollback_conflicts="$jobs_style_rollback_conflicts $jobs_style_key"
+                fi
+            done <<JOBS_STYLE_ROLLBACK
+$jobs_style_original_rows
+JOBS_STYLE_ROLLBACK
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_rollback_ok=0; jobs_style_rollback_issue='无法恢复原终端输入模式'; }
+            jobs_style_query_active=0
+            if [ "$jobs_style_rollback_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_rollback_safe" > /dev/tty; then
+                if [ -z "$jobs_style_rollback_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                    return 0
+                fi
+                printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_rollback_conflicts" >&2
+                jobs_style_rollback_issue="核验中断后检测到其它配色变更：$jobs_style_rollback_conflicts"
+            fi
+        fi
+        printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_rollback_issue" "$jobs_style_recovery" >&2
+        return 1
+    }
+    # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
+    jobs_terminal_style_cleanup() {
+        jobs_style_result=$1
+        trap '' HUP INT TERM
+        if [ "$jobs_style_query_active" = 1 ]; then
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
+            jobs_style_query_active=0
+        fi
+        if [ "$jobs_style_changed" = 1 ] && [ "$jobs_style_applied_complete" != 1 ]; then
+            if jobs_terminal_style_rollback; then
+                jobs_style_changed=0
+            else
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+            if [ "${2:-}" = continue ]; then
+                jobs_style_cleanup_status=$jobs_style_result
+                return 0
+            fi
+            exit "$jobs_style_result"
+        fi
+        if [ "$jobs_style_changed" = 1 ]; then
+            jobs_style_cleanup_ok=0
+            jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
+            jobs_style_conflicts=''
+            jobs_style_restore_safe=''
+            jobs_style_phase_control_keys=0
+            if [ "$jobs_style_applied_complete" = 1 ]; then
+                jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+                if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+                    jobs_style_query_active=1
+                    jobs_style_cleanup_ok=1
+                    while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
+                        [ -n "$jobs_style_key" ] || continue
+                        if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
+                            jobs_style_cleanup_ok=0
+                            jobs_style_cleanup_issue="颜色项 $jobs_style_key：$jobs_style_query_failure"
+                            break
+                        fi
+                        if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
+                            jobs_style_restore_safe=$jobs_style_restore_safe$jobs_style_original
+                        else
+                            jobs_style_conflicts="$jobs_style_conflicts $jobs_style_key"
+                        fi
+                    done <<JOBS_STYLE_APPLIED
+$jobs_style_applied_rows
+JOBS_STYLE_APPLIED
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_cleanup_ok=0; jobs_style_cleanup_issue='无法恢复原终端输入模式'; }
+                    jobs_style_query_active=0
+                fi
+            fi
+            if [ "$jobs_style_cleanup_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_restore_safe" > /dev/tty; then
+                if [ -z "$jobs_style_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                else
+                    printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_conflicts" >&2
+                    printf '确认要覆盖后续改色时才使用恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+                    [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+                fi
+            else
+                printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_cleanup_issue" "$jobs_style_recovery" >&2
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+        fi
+        if [ "${2:-}" = continue ]; then
+            jobs_style_cleanup_status=$jobs_style_result
+            return 0
+        fi
+        exit "$jobs_style_result"
+    }
+    trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
+    trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+    trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+    trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
+    if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    for jobs_style_key in 10 11 12 '4;0' '4;1' '4;2' '4;3' '4;4' '4;5' '4;6' '4;7' '4;8' '4;9' '4;10' '4;11' '4;12' '4;13' '4;14' '4;15'; do
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_original_rows="$jobs_style_original_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_reply
+"
+        jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
+"
+    done
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_recovery_dir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/jobs-terminal-style.XXXXXX") || jobs_terminal_style_plain "$@"
+    jobs_style_recovery=$jobs_style_recovery_dir/restore.sh
+    if ! (umask 077; {
+        printf '#!/bin/sh\n'
+        printf '[ -t 0 ] && [ "$(tty)" = '\''%s'\'' ] || { printf '\''请在原终端运行恢复入口。\\n'\'' >&2; exit 1; }\n' "$jobs_style_tty"
+        printf 'printf '\''本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：'\'' >&2\n'
+        printf 'IFS= read -r jobs_restore_choice\n[ "$jobs_restore_choice" = YES ] || exit 1\n'
+        printf 'printf '\''%%s\\033[0m'\'' '\''%s'\'' > /dev/tty\n' "$jobs_style_saved"
+    } > "$jobs_style_recovery"); then
+        printf '%s\n' '无法保存终端配色恢复入口；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '正在准备本次终端临时配色；强退后恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+    jobs_style_changed=1
+    printf '\033]10;#ffffff\007\033]11;#000000\007\033]12;#ffffff\007' > /dev/tty
+    jobs_style_index=0
+    for jobs_style_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+        printf '\033]4;%s;#%s\007' "$jobs_style_index" "$jobs_style_color" > /dev/tty
+        jobs_style_index=$((jobs_style_index + 1))
+    done
+    printf '\033[0m' > /dev/tty
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || { jobs_style_exit_status=1; exit 1; }
+    stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    jobs_style_targets_ok=1
+    jobs_style_phase_control_keys=0
+    while IFS='|' read -r jobs_style_key jobs_style_original; do
+        [ -n "$jobs_style_key" ] || continue
+        if ! jobs_terminal_style_query "$jobs_style_key" applied; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_applied_rows="$jobs_style_applied_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_original
+"
+        if ! jobs_terminal_style_accepts_target "$jobs_style_key"; then
+            jobs_style_targets_ok=0
+        fi
+    done <<JOBS_STYLE_ORIGINAL
+$jobs_style_saved_rows
+JOBS_STYLE_ORIGINAL
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '临时配色核验失败（颜色项 %s：%s），正在核对原色恢复。\n' "$jobs_style_key" "$jobs_style_query_failure" >&2
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
+        printf '%s\n' '已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    if [ "$jobs_style_targets_ok" != 1 ]; then
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
+        printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_applied_complete=1
+    printf '%s\n' '本次终端已临时使用黑底白字。' >&2
+    JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
+    JOBS_TERMINAL_STYLE_OWNER=$$
+    export JOBS_TERMINAL_STYLE_TTY JOBS_TERMINAL_STYLE_OWNER
+    if "$@"; then
+        jobs_style_exit_status=0
+    else
+        jobs_style_exit_status=$?
+    fi
+    exit "$jobs_style_exit_status"
+}
+# 仅监督直接执行的入口；被 source 时不切换配色、不重新执行业务。
+jobs_terminal_style_bootstrap() {
+    jobs_style_bootstrap_script=$1
+    shift
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        case ${ZSH_EVAL_CONTEXT:-} in
+            *:file|*:file:*) return 0 ;;
+        esac
+    elif [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE:-$jobs_style_bootstrap_script}" != "$jobs_style_bootstrap_script" ]; then
+        return 0
+    fi
+    if [ "${JOBS_TERMINAL_STYLE_REEXEC:-}" = "$jobs_style_bootstrap_script" ]; then
+        unset JOBS_TERMINAL_STYLE_REEXEC
+        return 0
+    fi
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       [ -n "${TMUX:-}${STY:-}" ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        return 0
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null &&
+               [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$(tty 2>/dev/null)" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    JOBS_TERMINAL_STYLE_REEXEC=$jobs_style_bootstrap_script
+    export JOBS_TERMINAL_STYLE_REEXEC
+    jobs_terminal_style_run /bin/zsh "$jobs_style_bootstrap_script" "$@"
+    jobs_style_bootstrap_result=$?
+    exit "$jobs_style_bootstrap_result"
+}
+jobs_terminal_style_bootstrap "$0" "$@"
+# <<< Jobs terminal style protection v1 <<<
+
+setopt ERR_EXIT NO_UNSET PIPE_FAIL
+PROJECT_ROOT="$(jobs_layout_directory "$0" 1)"
+CONFIG_DIR="${HOME}/Library/Application Support/JobsProjectTools"
+CONFIG_PATH="${CONFIG_DIR}/EnabledFeatures.txt"
+BUILT_APP_PATH="${PROJECT_ROOT}/work/DerivedData/Build/Products/Debug/JobsProjectTools.app"
+APP_PATH="$BUILT_APP_PATH"
+EXTENSION_PATH="${APP_PATH}/Contents/PlugIns/JobsProjectToolsFinderSync.appex"
+EXTENSION_ID="com.jobs.JobsProjectTools.FinderSyncExtension"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+FEATURES=(android_studio_opener vscode_opener xcode_opener git-pull git_remote git_remote_copier git-proxy-configure git_empty_commit_push git-rollback git-sourcetree)
+LEGACY_APPS=(JobsAndroidStudioOpener JobsVSCodeOpener JobsXcodeOpener JobsGitPuller JobsGitRemoteOpener JobsGitRemoteCopier)
+LEGACY_EXTENSIONS=(JobsAndroidStudioFinderSync JobsVSCodeFinderSync JobsXcodeFinderSync JobsGitPullFinderSync JobsGitRemoteFinderSync JobsGitRemoteCopyFinderSync)
+GIT_MIGRATION_PATH="${CONFIG_DIR}/GitMenuMigrationVersion.txt"
+ROLLBACK_MIGRATION_PATH="${CONFIG_DIR}/GitRollbackMigrationVersion.txt"
+TERMINAL_CONFIG_PATH="${HOME}/Library/Application Support/JobsTerminalOpener/EnabledFinderMenuFeatures.txt"
+typeset -A ENABLED
+PROJECT_CONFIG_TRANSACTION=""
+STOP_REQUEST_FILE="${JOBS_FINDER_STOP_REQUEST_FILE:-}"
+PROJECT_CONFIG_COMMITTED=0
+
+read_configuration() {
+  local feature="" value="" seen=()
+  [[ -e "$CONFIG_PATH" || -L "$CONFIG_PATH" ]] || return 0
+  [[ -f "$CONFIG_PATH" && ! -L "$CONFIG_PATH" && -r "$CONFIG_PATH" ]] || return 1
+  (( $(/usr/bin/wc -c < "$CONFIG_PATH") <= 8192 )) || return 1
+  value="$(/bin/cat "$CONFIG_PATH")" || return 1
+  [[ -z "$value" || ( "$value" != ,* && "$value" != *, && "$value" != *,,* ) ]] || return 1
+  for feature in ${(s:,:)value}; do
+    (( ${FEATURES[(Ie)$feature]} && ! ${seen[(Ie)$feature]} )) || { print -u2 -r -- "功能配置损坏，已停止：$CONFIG_PATH"; return 1; }
+    seen+=("$feature")
+    # 旧 Sourcetree 标识仅保留显式卸载兼容，不能让已移除菜单阻止共享 App 的最后卸载。
+    [[ "$feature" != git-sourcetree ]] || continue
+    ENABLED[$feature]=1
+  done
+  return 0
+}
+
+save_configuration() {
+  local feature="" values=() temporary=""
+  for feature in "${FEATURES[@]}"; do
+    [[ "${ENABLED[$feature]:-0}" == 1 ]] && values+=("$feature")
+  done
+  project_validate_configuration_unchanged "$CONFIG_PATH" || return $?
+  /bin/mkdir -p "$CONFIG_DIR"
+  temporary="$(/usr/bin/mktemp "$CONFIG_DIR/.features.XXXXXX")"
+  print -nr -- "${(j:,:)values}" > "$temporary"
+  /bin/mv -f "$temporary" "$CONFIG_PATH"
+  project_record_published_configuration "$CONFIG_PATH"
+}
+
+legacy_is_enabled() {
+  identifier_is_enabled "com.jobs.$1.FinderSyncExtension"
+}
+# 只迁移系统明确标为启用的旧入口，不触发任何业务脚本。
+identifier_is_enabled() {
+  /usr/bin/pluginkit -m -i "$1" -A 2>/dev/null |
+    /usr/bin/awk '$1 == "+" { found=1 } END { exit !found }'
+}
+# 新 Git 分组只迁移一次，避免后续安装重新启用已被用户关闭的功能。
+migrate_legacy_git_features() {
+  [[ ! -f "$GIT_MIGRATION_PATH" ]] || return 0
+  if identifier_is_enabled com.jobs.gitproxyconfigurator.findersync; then
+    ENABLED[git-proxy-configure]=1
+  fi
+  if identifier_is_enabled com.jobs.JobsTerminalOpener.FinderSyncExtension && [[ -f "$TERMINAL_CONFIG_PATH" ]]; then
+    local entry=""
+    for entry in ${(s:,:)$(<"$TERMINAL_CONFIG_PATH")}; do
+      [[ "$entry" != git-empty-commit-push ]] || ENABLED[git_empty_commit_push]=1
+    done
+  fi
+  return 0
+}
+# 仅迁移已启用的独立回退菜单，不重复打开用户已经关闭的选择。
+migrate_legacy_rollback_feature() {
+  [[ ! -f "$ROLLBACK_MIGRATION_PATH" ]] || return 0
+  if identifier_is_enabled com.jobs.JobsGitRollback.FinderSyncExtension; then
+    ENABLED[git-rollback]=1
+  fi
+  return 0
+}
+# 独立回退实现仍可保留源码，统一菜单启用后精确停用其登记。
+retire_legacy_rollback() {
+  /usr/bin/pkill -x JobsGitRollback 2>/dev/null || true
+  /usr/bin/pkill -f 'JobsGitRollbackFinderSync.appex/Contents/MacOS/JobsGitRollbackFinderSync' 2>/dev/null || true
+  if identifier_is_enabled com.jobs.JobsGitRollback.FinderSyncExtension; then
+    /usr/bin/pluginkit -e ignore -i com.jobs.JobsGitRollback.FinderSyncExtension
+  fi
+  return 0
+}
+# 只有统一安装完成迁移才写标记，后续卸载不会被旧选择重新启用。
+save_git_migration_marker() {
+  project_validate_configuration_unchanged "$GIT_MIGRATION_PATH" || return $?
+  print -r -- 1 > "$GIT_MIGRATION_PATH"
+  project_record_published_configuration "$GIT_MIGRATION_PATH"
+}
+# 统一菜单落盘成功后，仅收回旧 Terminal 外层入口，保留其它功能和未知项。
+retire_terminal_git_menu() {
+  [[ -f "$TERMINAL_CONFIG_PATH" && ! -L "$TERMINAL_CONFIG_PATH" ]] || return 0
+  local original="$(<"$TERMINAL_CONFIG_PATH")" entry="" values=() temporary=""
+  for entry in ${(s:,:)original}; do
+    [[ "$entry" == git-empty-commit-push ]] || values+=("$entry")
+  done
+  [[ "${(j:,:)values}" != "$original" ]] || return 0
+  temporary="$(/usr/bin/mktemp "${TERMINAL_CONFIG_PATH:h}/.features.XXXXXX")" || return 1
+  print -nr -- "${(j:,:)values}" > "$temporary" || return 1
+  [[ "$(<"$TERMINAL_CONFIG_PATH")" == "$original" ]] || { /bin/rm -f -- "$temporary"; return 1; }
+  /bin/mv -f "$temporary" "$TERMINAL_CONFIG_PATH"
+  project_record_published_configuration "$TERMINAL_CONFIG_PATH"
+}
+# 停用旧桌面代理菜单，不删除业务脚本和用户已经配置的 Git 网络策略。
+retire_legacy_proxy() {
+  /usr/bin/pkill -x JobsGitProxyConfigurator 2>/dev/null || true
+  /usr/bin/pkill -f 'JobsGitProxyFinderSync.appex/Contents/MacOS/JobsGitProxyFinderSync' 2>/dev/null || true
+  if identifier_is_enabled com.jobs.gitproxyconfigurator.findersync; then
+    /usr/bin/pluginkit -e ignore -i com.jobs.gitproxyconfigurator.findersync
+  fi
+  return 0
+}
+
+retire_legacy() {
+  local index="$1" identifier="com.jobs.${LEGACY_APPS[$1]}.FinderSyncExtension"
+  /usr/bin/pkill -x "${LEGACY_APPS[$index]}" 2>/dev/null || true
+  /usr/bin/pkill -f "${LEGACY_EXTENSIONS[$index]}.appex/Contents/MacOS/${LEGACY_EXTENSIONS[$index]}" 2>/dev/null || true
+  if legacy_is_enabled "${LEGACY_APPS[$index]}"; then
+    /usr/bin/pluginkit -e ignore -i "$identifier"
+  fi
+  return 0
+}
+
+wait_until_enabled() {
+  local attempt="" registration=""
+  for attempt in {1..40}; do
+    registration="$(/usr/bin/pluginkit -m -i "$EXTENSION_ID" -A -v 2>/dev/null || true)"
+    if print -r -- "$registration" | /usr/bin/awk -v path="$EXTENSION_PATH" \
+      '$1 == "+" && substr($0, length($0)-length(path)+1) == path { found=1 } END { exit !found }'; then
+      return 0
+    fi
+    /bin/sleep 0.5
+  done
+  print -u2 '统一扩展尚未启用，请在系统设置的 Finder 扩展中启用 JobsProjectTools；旧菜单未停用。'
+  return 1
+}
+
+# 成功提交 App 和功能配置后才清理本轮构建；清理失败不回滚已安装 App。
+cleanup_committed_build_products() {
+  [[ "${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}" == 1 ]] || return 0
+  if ! jobs_deployment_cleanup_build_products "$BUILT_APP_PATH" "$PROJECT_ROOT/work/DerivedData" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID"; then
+    print -u2 -r -- '⚠ App 已安装成功，但清除此轮构建产物失败；已保留应用程序目录中的 App，请查看日志。'
+  fi
+  return 0
+}
+install_features() {
+  local feature="" index="" had_config=0
+  [[ ! -f "$CONFIG_PATH" ]] || had_config=1
+  # 首次迁移将已启用的旧菜单一起带入，避免装一项时丢失其余项。
+  if (( ! had_config )); then
+    for index in {1..6}; do
+      if legacy_is_enabled "${LEGACY_APPS[$index]}"; then ENABLED[${FEATURES[$index]}]=1; fi
+    done
+  fi
+  migrate_legacy_git_features
+  migrate_legacy_rollback_feature
+  for feature in "$@"; do ENABLED[$feature]=1; done
+  JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 /usr/bin/xcodebuild \
+    -project "$PROJECT_ROOT/JobsProjectTools.xcodeproj" -scheme JobsProjectTools \
+    -configuration Debug -destination "platform=macOS,arch=$(/usr/bin/uname -m)" \
+    -derivedDataPath "$PROJECT_ROOT/work/DerivedData" build
+  jobs_deployment_install "$BUILT_APP_PATH" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID"
+  jobs_deployment_retire_other_copies "$APP_PATH" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID"
+  [[ -d "$EXTENSION_PATH" ]]
+  /usr/bin/pkill -x JobsProjectTools 2>/dev/null || true
+  /usr/bin/pkill -f 'JobsProjectToolsFinderSync.appex/Contents/MacOS/JobsProjectToolsFinderSync' 2>/dev/null || true
+  "$LSREGISTER" -f "$APP_PATH"
+  /usr/bin/pluginkit -a "$EXTENSION_PATH"
+  /usr/bin/pluginkit -e use -i "$EXTENSION_ID"
+  wait_until_enabled
+  save_configuration
+  save_git_migration_marker
+  project_validate_configuration_unchanged "$ROLLBACK_MIGRATION_PATH" || return $?
+  print -r -- 1 > "$ROLLBACK_MIGRATION_PATH"
+  project_record_published_configuration "$ROLLBACK_MIGRATION_PATH"
+  retire_terminal_git_menu
+  for index in {1..6}; do retire_legacy "$index"; done
+  retire_legacy_proxy
+  retire_legacy_rollback
+  jobs_deployment_commit || return $?
+  cleanup_committed_build_products
+  print -r -- "已启用统一项目菜单：$(<"$CONFIG_PATH")"
+}
+
+uninstall_features() {
+  local feature="" index=""
+  for feature in "$@"; do
+    unset "ENABLED[$feature]"
+    index=${FEATURES[(Ie)$feature]}
+    if (( index <= 6 )); then
+      retire_legacy "$index"
+    elif [[ "$feature" == git-proxy-configure ]]; then
+      retire_legacy_proxy
+    elif [[ "$feature" == git-rollback ]]; then
+      retire_legacy_rollback
+    elif [[ "$feature" == git_empty_commit_push ]]; then
+      retire_terminal_git_menu
+    fi
+  done
+  # 尚未迁移的旧安装没有配置，不创建空文件去影响其他旧功能。
+  if [[ -f "$CONFIG_PATH" ]]; then
+    save_configuration
+    if (( ${#ENABLED} == 0 )); then
+      remove_selected_application
+    fi
+  fi
+  [[ -f "$CONFIG_PATH" ]] || remove_selected_application
+  print -r -- "已关闭项目菜单：$*"
+}
+
+# 快照仅包含本次可能改写的四份配置，保留原字节和权限。
+project_capture_configuration() {
+  local index=0 item="" temporary_root="${TMPDIR:-/tmp}"
+  PROJECT_CONFIG_TRANSACTION="$(/usr/bin/mktemp -d "${temporary_root%/}/JobsProjectToolsConfiguration.XXXXXXXX")" || return 1
+  for item in "$CONFIG_PATH" "$GIT_MIGRATION_PATH" "$ROLLBACK_MIGRATION_PATH" "$TERMINAL_CONFIG_PATH"; do
+    (( index += 1 ))
+    [[ ! -L "$item" && ! -L "${item:h}" ]] || return 1
+    print -r -- "$item" > "$PROJECT_CONFIG_TRANSACTION/$index.path" || return 1
+    if [[ -e "$item" ]]; then
+      [[ -f "$item" ]] || return 1
+      /bin/cp -p "$item" "$PROJECT_CONFIG_TRANSACTION/$index.original" || return 1
+    fi
+  done
+}
+# 每次发布前确认未被其它进程编辑，不能覆盖并发配置。
+project_validate_configuration_unchanged() {
+  [[ -n "$PROJECT_CONFIG_TRANSACTION" ]] || return 0
+  local index=0 item="" reference=""
+  for index in {1..4}; do
+    item="$(<"$PROJECT_CONFIG_TRANSACTION/$index.path")"
+    [[ "$item" == "$1" ]] || continue
+    reference="$PROJECT_CONFIG_TRANSACTION/$index.original"
+    [[ ! -e "$PROJECT_CONFIG_TRANSACTION/$index.published" ]] || reference="$PROJECT_CONFIG_TRANSACTION/$index.published"
+    if [[ -f "$reference" ]]; then
+      /usr/bin/cmp -s "$item" "$reference" || { print -u2 "✖ 配置已被外部修改，保留并停止：$item"; return 1; }
+    else
+      [[ ! -e "$item" && ! -L "$item" ]] || return 1
+    fi
+    return 0
+  done
+  return 1
+}
+# 记录本次成功发布的字节，失败恢复时只撤回自己的写入。
+project_record_published_configuration() {
+  [[ -n "$PROJECT_CONFIG_TRANSACTION" ]] || return 0
+  local index=0
+  for index in {1..4}; do
+    [[ "$(<"$PROJECT_CONFIG_TRANSACTION/$index.path")" == "$1" ]] || continue
+    /bin/cp -p "$1" "$PROJECT_CONFIG_TRANSACTION/$index.published"
+    return $?
+  done
+  return 1
+}
+# 恢复失败前的配置；外部新编辑保留并明确报告。
+project_rollback_configuration() {
+  [[ -n "$PROJECT_CONFIG_TRANSACTION" ]] || return 0
+  local index=0 item="" temporary="" result=0
+  for index in {1..4}; do
+    [[ -f "$PROJECT_CONFIG_TRANSACTION/$index.published" ]] || continue
+    item="$(<"$PROJECT_CONFIG_TRANSACTION/$index.path")"
+    if ! /usr/bin/cmp -s "$item" "$PROJECT_CONFIG_TRANSACTION/$index.published"; then
+      print -u2 "⚠ 配置已被外部修改，未覆盖：$item"
+      result=1
+      continue
+    fi
+    if [[ -f "$PROJECT_CONFIG_TRANSACTION/$index.original" ]]; then
+      temporary="$(/usr/bin/mktemp "${item}.restore.XXXXXXXX")" || return 1
+      /bin/cp -p "$PROJECT_CONFIG_TRANSACTION/$index.original" "$temporary" && /bin/mv -f "$temporary" "$item" || return 1
+    else
+      /bin/rm -f -- "$item" || result=1
+    fi
+  done
+  return "$result"
+}
+# 退出失败同时撤回 App 与本次配置；成功释放私有快照。
+project_finish_transaction() {
+  local original_result="${1:-$?}" restore_result=0
+  if (( ! PROJECT_CONFIG_COMMITTED )); then
+    project_rollback_configuration || restore_result=1
+    jobs_deployment_rollback || restore_result=1
+  fi
+  if (( restore_result )); then
+    print -u2 "⚠ 恢复未全部完成，保留配置快照：$PROJECT_CONFIG_TRANSACTION"
+  elif [[ -n "$PROJECT_CONFIG_TRANSACTION" && -d "$PROJECT_CONFIG_TRANSACTION" && ! -L "$PROJECT_CONFIG_TRANSACTION" ]]; then
+    /bin/rm -r -- "$PROJECT_CONFIG_TRANSACTION"
+    PROJECT_CONFIG_TRANSACTION=""
+  fi
+  return "$original_result"
+}
+# 只移除本次选择的 App；不会全局停用同 ID 的另一份副本。
+remove_selected_application() {
+  if [[ "$JOBS_FINDER_INSTALL_LOCATION" == applications ]]; then
+    jobs_deployment_uninstall "$APP_PATH" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID"
+  else
+    jobs_deployment_validate_app "$APP_PATH" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID" || return $?
+    jobs_deployment_unregister_app "$APP_PATH" JobsProjectToolsFinderSync.appex || return $?
+    /bin/rm -r -- "$APP_PATH"
+  fi
+}
+# 参数解析只选择路径；功能与位置校验通过后才读取配置或执行业务。
+parse_operation() {
+  OPERATION="${1:-}"
+  [[ "$OPERATION" == install || "$OPERATION" == uninstall || "$OPERATION" == cleanup ]] || { print -u2 '用法：ManageProjectTools.zsh install|uninstall|cleanup 功能ID... [--install-location build|applications] [--cleanup-build-products] [--stop-request-file PATH]'; return 2; }
+  shift
+  local value="" install_location="${JOBS_FINDER_INSTALL_LOCATION:-build}" cleanup_build_products="${JOBS_FINDER_CLEANUP_BUILD_PRODUCTS:-0}"
+  REQUESTED=()
+  while (( $# )); do
+    case "$1" in
+      --install-location) (( $# >= 2 )) || return 2; install_location="$2"; shift ;;
+      --install-location=*) install_location="${1#--install-location=}" ;;
+      --cleanup-build-products) cleanup_build_products=1 ;;
+      --stop-request-file) (( $# >= 2 )) && [[ "$2" == /* ]] || return 2; STOP_REQUEST_FILE="$2"; shift ;;
+      --stop-request-file=*) STOP_REQUEST_FILE="${1#--stop-request-file=}"; [[ "$STOP_REQUEST_FILE" == /* ]] || return 2 ;;
+      *)
+        value="$1"
+        (( ${FEATURES[(Ie)$value]} )) || { print -u2 "未知功能：$value"; return 2; }
+        [[ "$OPERATION" != install || "$value" != git-sourcetree ]] || { print -u2 '“用 Sourcetree 打开”已移除；旧配置仅支持卸载。'; return 2; }
+        (( ${REQUESTED[(Ie)$value]} )) || REQUESTED+=("$value")
+        ;;
+    esac
+    shift
+  done
+  [[ "$install_location" == build || "$install_location" == applications ]] || return 2
+  (( ${#REQUESTED} > 0 )) || return 2
+  [[ "$cleanup_build_products" == 0 || "$cleanup_build_products" == 1 ]] || return 2
+  if [[ "$cleanup_build_products" == 1 && ( "$install_location" != applications || "$OPERATION" != install ) ]]; then
+    print -u2 '✖ 仅安装到应用程序目录时允许清除此轮构建产物。'
+    return 2
+  fi
+  [[ "$OPERATION" != cleanup || "$install_location" == applications ]] || { print -u2 '✖ 独立清理仅允许应用程序目录模式。'; return 2; }
+  [[ -z "$STOP_REQUEST_FILE" || "$STOP_REQUEST_FILE" == /* ]] || return 2
+  export JOBS_FINDER_STOP_REQUEST_FILE="$STOP_REQUEST_FILE"
+  export JOBS_FINDER_CLEANUP_BUILD_PRODUCTS="$cleanup_build_products"
+  export JOBS_FINDER_INSTALL_LOCATION="$install_location"
+  source "$PROJECT_ROOT/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh" || return $?
+  APP_PATH="$(jobs_deployment_app_path "$BUILT_APP_PATH")" || return $?
+  EXTENSION_PATH="$APP_PATH/Contents/PlugIns/JobsProjectToolsFinderSync.appex"
+}
+# 缺失副本不触碰共同配置；另一位置启用时只清理当前非活动副本。
+execute_selected_operation() {
+  if [[ "$OPERATION" == cleanup ]]; then
+    jobs_deployment_cleanup_existing_build_products "$BUILT_APP_PATH" "$PROJECT_ROOT/work/DerivedData" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID"
+    return $?
+  fi
+  if [[ "$OPERATION" == uninstall ]]; then
+    if [[ ! -e "$APP_PATH" && ! -L "$APP_PATH" ]]; then
+      print -r -- "ℹ 所选位置未安装，无需卸载：$APP_PATH"
+      return 0
+    fi
+    jobs_deployment_validate_app "$APP_PATH" com.jobs.JobsProjectTools JobsProjectToolsFinderSync.appex "$EXTENSION_ID" || return $?
+    local other_enabled=0
+    jobs_deployment_has_other_enabled "$APP_PATH" "$EXTENSION_ID" || other_enabled=$?
+    (( other_enabled <= 1 )) || return "$other_enabled"
+    if (( other_enabled == 0 )); then
+      remove_selected_application
+      return $?
+    fi
+  fi
+  project_capture_configuration || return $?
+  read_configuration
+  if [[ "$OPERATION" == install ]]; then
+    install_features "${REQUESTED[@]}"
+  else
+    uninstall_features "${REQUESTED[@]}"
+  fi
+  PROJECT_CONFIG_COMMITTED=1
+  if [[ "${JOBS_SKIP_FINDER_RESTART:-0}" != 1 ]]; then
+    /usr/bin/killall Finder 2>/dev/null || true
+  fi
+}
+# zsh 的 ERR_EXIT 在函数失败时不保证触发 EXIT，错误陷阱也必须撤回本次事务。
+TRAPZERR() {
+  local original_result=$?
+  if [[ -n "$PROJECT_CONFIG_TRANSACTION" ]]; then
+    project_finish_transaction "$original_result" || true
+  fi
+  return "$original_result"
+}
+# 只恢复已经开始的事务；位置参数错误或空选不触碰配置和系统登记。
+TRAPEXIT() {
+  local original_result=$?
+  if [[ -n "$PROJECT_CONFIG_TRANSACTION" ]]; then
+    project_finish_transaction "$original_result"
+  fi
+  return "$original_result"
+}
+# 当前调用方已经通过面板确认，本入口集中编排参数与所选位置操作。
+main() {
+  parse_operation "$@" # 校验明确操作、功能清单与安装位置。
+  execute_selected_operation # 只管理该位置并保留未选功能与其它副本。
+}
+
+main "$@"

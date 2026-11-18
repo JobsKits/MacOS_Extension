@@ -48,7 +48,7 @@ struct FlutterRunTerminalLauncher {
                  helperScriptURL: URL,
                  simulatorCreatorsURL: URL? = nil,
                  preflightResourcesURL: URL? = nil) throws -> PreparedRequest {
-        guard validator.isFlutterProject(at: projectURL) else {
+        guard validator.runProjectURL(for: projectURL) != nil else {
             throw failure("请选择真实普通 Flutter 项目文件夹；根 pubspec.yaml 必须声明 dependencies.flutter.sdk: flutter。")
         }
         let scriptData = try Data(contentsOf: businessScriptURL)

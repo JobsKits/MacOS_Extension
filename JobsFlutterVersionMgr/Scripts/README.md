@@ -24,9 +24,9 @@
 
 **SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-`ManageFlutterVersion.zsh` 是 Finder“安装 / 切换 Flutter SDK（FVM）”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再检查工具链，通过 [**fzf**](https://formulae.brew.sh/formula/fzf) 选择历史或最新 SDK，最后使用 [**FVM**](https://fvm.app) 安装 / 切换精确版本。FVM 是电脑上的工具，每个项目通过自己的 `.fvmrc` 固定 SDK。
+`./【MacOS】ManageFlutterVersion.zsh/【MacOS】ManageFlutterVersion.zsh` 是 Finder“安装 / 切换 Flutter SDK（FVM）”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再检查工具链，通过 [**fzf**](https://formulae.brew.sh/formula/fzf) 选择历史或最新 SDK，最后使用 [**FVM**](https://fvm.app) 安装 / 切换精确版本。FVM 是电脑上的工具，每个项目通过自己的 `.fvmrc` 固定 SDK。
 
 ```zsh
 /bin/zsh ./ManageFlutterVersion.zsh \
@@ -62,7 +62,7 @@
 ```text
 ./
 ├── ManageFlutterVersion.zsh    # 唯一业务入口，自包含 JSON / pubspec 解析
-├── EnableFinderExtension.zsh   # Xcode 构建后注册固定扩展并刷新 Finder
+├── 【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh   # Xcode 构建后注册固定扩展并刷新 Finder
 └── README.md                  # 运行前说明
 ```
 
@@ -70,7 +70,7 @@ Finder 宿主把脚本复制到每次独立的私有临时载体，由系统 Ter
 
 Finder 点击先交给后台宿主，再由宿主直接调度 Terminal；项目文件夹与目录空白处右键会各自重新读取点击时的真实目标。宿主不显示管理窗口或 Dock 图标，初始化和所有终端派发完成后退出，业务继续在 Terminal 中运行。单独运行 App 只在后台检查、注册和启用扩展后退出，不打开 Terminal；扩展开关使用系统设置或安装器处理。菜单正常启动后，终端先显示业务自述、目标目录及“已了解用途与影响，按回车继续”的确认；这时按 `Ctrl+C` 可结束，不会进入工具安装或版本切换。
 
-`EnableFinderExtension.zsh` 是独立的构建后挂载入口，仅处理本工程 App / appex 注册与 Finder 刷新，不执行 SDK 管理。总安装器和隔离构建通过 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过该挂载，具体行为见[工程说明](../README.md)。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 是独立的构建后挂载入口，仅处理本工程 App / appex 注册与 Finder 刷新，不执行 SDK 管理。总安装器和隔离构建通过 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过该挂载，具体行为见[工程说明](../README.md)。
 
 目录路径作为独立参数传入，兼容空格、中文、引号和换行；不会拼成用户可执行的 Shell 文本。SDK 版本与列表字段严格校验，不把任意输入作为 FVM 参数。缺少交互 TTY 时停止，请从 Terminal 或 Finder 菜单执行。
 

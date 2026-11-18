@@ -248,7 +248,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-				shellScript = "if [[ \"${JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE:-0}\" != 1 ]]; then\n  /bin/zsh \"${SRCROOT}/Scripts/EnableFinderExtension.zsh\"\nfi\n";
+				shellScript = "if [[ \"${JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE:-0}\" != 1 ]]; then\n  /bin/zsh \"${SRCROOT}/Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

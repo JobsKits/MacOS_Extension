@@ -1,0 +1,693 @@
+#!/bin/zsh
+# 脚本自述：配对导出 / 导入 Gradle、Pods、SPM、OHPM、原生构建、Flutter artifacts 与 Web 包快照。
+# 归档保留宿主、工具版本、工程锁指纹与文件校验；导入先预检再精确 YES，不覆盖冲突或执行归档脚本。
+
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
+# URL仅供显示；纯文本日志传color=0。
+jobs_url_format() {
+  LC_ALL=en_US.UTF-8 /usr/bin/awk -v color="${1:-0}" -v lines="${2:-1}" '
+    # URL 范围只在展示文本上识别；不会改写真实请求或输出数据。
+    function urlInit() {
+      urlPattern = "[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]<>\"" sprintf("%c", 39) esc "]+"
+      urlPunctuationCount = split("，|。|；|：|！|？|、|（|）|【|】|《|》|「|」|『|』|“|”|‘|’", urlPunctuation, "\\|")
+    }
+    function urlCount(value, token, total, idx) {
+      total = 0
+      for (idx = 1; idx <= length(value); idx++) if (substr(value, idx, 1) == token) total++
+      return total
+    }
+    function urlTrim(value, idx, at, last) {
+      for (idx = 1; idx <= urlPunctuationCount; idx++) {
+        at = index(value, urlPunctuation[idx])
+        if (at) value = substr(value, 1, at - 1)
+      }
+      while (length(value)) {
+        last = substr(value, length(value), 1)
+        if (index(".,;:!?", last) > 0 || (last == ")" && urlCount(value, ")") > urlCount(value, "(")) ||
+            (last == "]" && urlCount(value, "]") > urlCount(value, "[")) || (last == "}" && urlCount(value, "}") > urlCount(value, "{"))) {
+          value = substr(value, 1, length(value) - 1)
+        } else break
+      }
+      return value
+    }
+    function urlClean(value, preserve, output, token, start, size) {
+      gsub(esc "\\][^" esc sprintf("%c", 7) "]*(" sprintf("%c", 7) "|" esc "\\\\)", "", value)
+      output = ""
+      while (match(value, esc "\\[[0-?]*[ -/]*[@-~]")) {
+        start = RSTART; size = RLENGTH; token = substr(value, start, size)
+        output = output substr(value, 1, start - 1)
+        if (preserve && token ~ /m$/) output = output token
+        value = substr(value, start + size)
+      }
+      return output value
+    }
+    # 题干分段前临时遮蔽地址，地址里的 Enter、/、?、= 不参与选项识别。
+    function urlProtect(value, output, at, size, token, marker, number, original) {
+      urlProtectedCount = 0; output = ""; original = value; number = 0
+      while (match(value, urlPattern)) {
+        at = RSTART; size = RLENGTH; token = urlTrim(substr(value, at, size))
+        do { marker = sprintf("%c", 2) "U" ++number sprintf("%c", 3) } while (index(original, marker))
+        urlProtected[++urlProtectedCount] = token; urlMarkers[urlProtectedCount] = marker
+        output = output substr(value, 1, at - 1) marker
+        value = substr(value, at + length(token))
+      }
+      return output value
+    }
+    function urlRestore(value, idx, token, at) {
+      for (idx = urlProtectedCount; idx > 0; idx--) {
+        token = urlMarkers[idx]
+        while ((at = index(value, token))) value = substr(value, 1, at - 1) urlProtected[idx] substr(value, at + length(token))
+      }
+      return value
+    }
+    # 保存原 SGR 的有效序列；RGB 中的零值不能误认为整体复位。
+    function urlTrack(tokens, token, code, idx, total, reset, fields) {
+      while (match(tokens, esc "\\[[0-9;:]*m")) {
+        token = substr(tokens, RSTART, RLENGTH)
+        tokens = substr(tokens, RSTART + RLENGTH)
+        code = substr(token, 3, length(token) - 3); reset = (code == "")
+        total = split(code, fields, ";")
+        for (idx = 1; idx <= total; idx++) {
+          if (fields[idx] == "0") reset = 1
+          if ((fields[idx] == "38" || fields[idx] == "48" || fields[idx] == "58") && idx < total) {
+            if (fields[idx + 1] == "2") idx += 4
+            else if (fields[idx + 1] == "5") idx += 2
+          }
+        }
+        if (reset) urlActive = ""
+        urlActive = urlActive token
+      }
+    }
+    # 用可见字符位置映射原 SGR，URL 内已有样式也会重新覆为绿下划线。
+    function urlRender(value, output, visible, rest, key, at, size, token, idx, offset, url, inURL) {
+      value = urlClean(value, color)
+      if (!color) return value
+      for (key in urlStyles) delete urlStyles[key]
+      for (key in urlStarts) delete urlStarts[key]
+      for (key in urlEnds) delete urlEnds[key]
+      visible = ""; rest = value
+      while (match(rest, esc "\\[[0-9;:]*m")) {
+        at = RSTART; size = RLENGTH; token = substr(rest, at, size)
+        visible = visible substr(rest, 1, at - 1)
+        urlStyles[length(visible) + 1] = urlStyles[length(visible) + 1] token
+        rest = substr(rest, at + size)
+      }
+      visible = visible rest; rest = visible; offset = 0
+      while (match(rest, urlPattern)) {
+        at = RSTART; size = RLENGTH; url = urlTrim(substr(rest, at, size))
+        urlStarts[offset + at] = 1; urlEnds[offset + at + length(url) - 1] = 1
+        offset += at + length(url) - 1; rest = substr(visible, offset + 1)
+      }
+      output = ""; inURL = 0
+      for (idx = 1; idx <= length(visible) + 1; idx++) {
+        if (idx in urlStyles) {
+          token = urlStyles[idx]; output = output token; urlTrack(token)
+          if (inURL) output = output esc "[32;4m"
+        }
+        if (idx > length(visible)) break
+        if (idx in urlStarts) { output = output esc "[32;4m"; inURL = 1 }
+        output = output substr(visible, idx, 1)
+        if (idx in urlEnds) { output = output esc "[0m" urlActive; inURL = 0 }
+      }
+      return output
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1; urlInit() }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", urlRender(pending)
+        pending = $0; first = 0
+      } else {
+        if (!lines && !first) printf "\n"
+        printf "%s", urlRender($0)
+        if (lines) printf "\n"
+        first = 0
+      }
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", urlRender(pending)
+      }
+    }
+  '
+}
+# URL仅供显示；纯文本日志传color=0。
+jobs_url_stream() {
+  local url_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then url_color=1; fi
+  jobs_url_format "$url_color" "${1:-1}"
+}
+jobs_prompt_color_ready() {
+  env | LC_ALL=C /usr/bin/grep -qiE '^(SOURCETREE|SOURCE_TREE)' && return 1
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  # 中文字符类按UTF-8字符处理，仅约束此awk进程，保留调用者locale。
+  LC_ALL=en_US.UTF-8 /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" -v question="${4:-0}" '
+    # URL 范围只在展示文本上识别；不会改写真实请求或输出数据。
+    function urlInit() {
+      urlPattern = "[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]<>\"" sprintf("%c", 39) esc "]+"
+      urlPunctuationCount = split("，|。|；|：|！|？|、|（|）|【|】|《|》|「|」|『|』|“|”|‘|’", urlPunctuation, "\\|")
+    }
+    function urlCount(value, token, total, idx) {
+      total = 0
+      for (idx = 1; idx <= length(value); idx++) if (substr(value, idx, 1) == token) total++
+      return total
+    }
+    function urlTrim(value, idx, at, last) {
+      for (idx = 1; idx <= urlPunctuationCount; idx++) {
+        at = index(value, urlPunctuation[idx])
+        if (at) value = substr(value, 1, at - 1)
+      }
+      while (length(value)) {
+        last = substr(value, length(value), 1)
+        if (index(".,;:!?", last) > 0 || (last == ")" && urlCount(value, ")") > urlCount(value, "(")) ||
+            (last == "]" && urlCount(value, "]") > urlCount(value, "[")) || (last == "}" && urlCount(value, "}") > urlCount(value, "{"))) {
+          value = substr(value, 1, length(value) - 1)
+        } else break
+      }
+      return value
+    }
+    function urlClean(value, preserve, output, token, start, size) {
+      gsub(esc "\\][^" esc sprintf("%c", 7) "]*(" sprintf("%c", 7) "|" esc "\\\\)", "", value)
+      output = ""
+      while (match(value, esc "\\[[0-?]*[ -/]*[@-~]")) {
+        start = RSTART; size = RLENGTH; token = substr(value, start, size)
+        output = output substr(value, 1, start - 1)
+        if (preserve && token ~ /m$/) output = output token
+        value = substr(value, start + size)
+      }
+      return output value
+    }
+    # 题干分段前临时遮蔽地址，地址里的 Enter、/、?、= 不参与选项识别。
+    function urlProtect(value, output, at, size, token, marker, number, original) {
+      urlProtectedCount = 0; output = ""; original = value; number = 0
+      while (match(value, urlPattern)) {
+        at = RSTART; size = RLENGTH; token = urlTrim(substr(value, at, size))
+        do { marker = sprintf("%c", 2) "U" ++number sprintf("%c", 3) } while (index(original, marker))
+        urlProtected[++urlProtectedCount] = token; urlMarkers[urlProtectedCount] = marker
+        output = output substr(value, 1, at - 1) marker
+        value = substr(value, at + length(token))
+      }
+      return output value
+    }
+    function urlRestore(value, idx, token, at) {
+      for (idx = urlProtectedCount; idx > 0; idx--) {
+        token = urlMarkers[idx]
+        while ((at = index(value, token))) value = substr(value, 1, at - 1) urlProtected[idx] substr(value, at + length(token))
+      }
+      return value
+    }
+    # 保存原 SGR 的有效序列；RGB 中的零值不能误认为整体复位。
+    function urlTrack(tokens, token, code, idx, total, reset, fields) {
+      while (match(tokens, esc "\\[[0-9;:]*m")) {
+        token = substr(tokens, RSTART, RLENGTH)
+        tokens = substr(tokens, RSTART + RLENGTH)
+        code = substr(token, 3, length(token) - 3); reset = (code == "")
+        total = split(code, fields, ";")
+        for (idx = 1; idx <= total; idx++) {
+          if (fields[idx] == "0") reset = 1
+          if ((fields[idx] == "38" || fields[idx] == "48" || fields[idx] == "58") && idx < total) {
+            if (fields[idx + 1] == "2") idx += 4
+            else if (fields[idx + 1] == "5") idx += 2
+          }
+        }
+        if (reset) urlActive = ""
+        urlActive = urlActive token
+      }
+    }
+    # 用可见字符位置映射原 SGR，URL 内已有样式也会重新覆为绿下划线。
+    function urlRender(value, output, visible, rest, key, at, size, token, idx, offset, url, inURL) {
+      value = urlClean(value, color)
+      if (!color) return value
+      for (key in urlStyles) delete urlStyles[key]
+      for (key in urlStarts) delete urlStarts[key]
+      for (key in urlEnds) delete urlEnds[key]
+      visible = ""; rest = value
+      while (match(rest, esc "\\[[0-9;:]*m")) {
+        at = RSTART; size = RLENGTH; token = substr(rest, at, size)
+        visible = visible substr(rest, 1, at - 1)
+        urlStyles[length(visible) + 1] = urlStyles[length(visible) + 1] token
+        rest = substr(rest, at + size)
+      }
+      visible = visible rest; rest = visible; offset = 0
+      while (match(rest, urlPattern)) {
+        at = RSTART; size = RLENGTH; url = urlTrim(substr(rest, at, size))
+        urlStarts[offset + at] = 1; urlEnds[offset + at + length(url) - 1] = 1
+        offset += at + length(url) - 1; rest = substr(visible, offset + 1)
+      }
+      output = ""; inURL = 0
+      for (idx = 1; idx <= length(visible) + 1; idx++) {
+        if (idx in urlStyles) {
+          token = urlStyles[idx]; output = output token; urlTrack(token)
+          if (inURL) output = output esc "[32;4m"
+        }
+        if (idx > length(visible)) break
+        if (idx in urlStarts) { output = output esc "[32;4m"; inURL = 1 }
+        output = output substr(visible, idx, 1)
+        if (idx in urlEnds) { output = output esc "[0m" urlActive; inURL = 0 }
+      }
+      return output
+    }
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, is_question, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0, is_question) connector segment(right, 31, 0)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31, is_question) "或" segment(substr(value, splitAt + length("或")), 0, 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!color) return value
+      if (!kind) return is_question && value !~ /^[[:space:]]*$/ ? esc "[1;36m" value esc "[0m" : value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      if (is_question && prefix !~ /^[[:space:]]*$/) prefix = esc "[1;36m" prefix esc "[0m"
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original, question_body) {
+      original = value
+      value = urlProtect(urlClean(value, 0))
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return urlRender(original)
+      output = ""
+      inherited = 0
+      depth = 0
+      question_body = question
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited, question_body) boundary
+        if (inherited || greenPosition(part) || part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) question_body = 0
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return urlRender(urlRestore(output segment(value, inherited, question_body) (question && color ? esc "[0m" : "")))
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1; urlInit() }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0 0 1
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
+typeset -g AR_PROJECT="" AR_KIND="" AR_MODE="" AR_PLATFORM="" AR_CHECK=0 AR_PRIVATE=0 AR_ROOT="" AR_DIRECTORY=""
+typeset -g AR_DART="" AR_VERSION="" AR_COMPONENT="" AR_NODE_ROOT=""
+# 第一屏说明缓存边界；参数只作为数据解释，确认前不创建文件。
+ar_intro_and_wait() {
+    local answer=""
+    print -r -- '━━━━━━━━━━ Flutter 分层依赖快照提取 / 导入 ━━━━━━━━━━'
+    print -r -- '1、每次只处理所选类别。Pub 源码继续使用原提取 / 导入入口；本入口处理平台包与工具缓存。'
+    print -r -- '2、快照记录宿主系统、工具版本、工程配置 / 锁文件指纹和逐文件校验，导入不自动联网或运行归档中的脚本。'
+    print -r -- '3、Gradle modules-2、Flutter 平台资源是共享缓存，可能包含其它工程 / 平台的包；后者仅提取 artifacts、Web SDK、缓存引擎包及与载荷配对的 stamp，不含 SDK 源码、Dart、tools 或认证。'
+    print -r -- '4、native 是本机目标构建缓存，可能含业务产物；Web node_modules 可能含本机原生扩展。均不能当作任意系统可复用的源码包。'
+    print -r -- '5、导入完整预检后输入精确 YES；同名不同内容拒绝覆盖。只恢复文件不保证完整离线构建，恢复后仍需对应拉取 / 构建入口验证。'
+    print -r -- '6、日志在系统临时目录 JobsFlutterEnvironment.*；Ctrl+C / Esc 取消。--check 只显示静态计划，不调用 SDK 或写日志。'
+    while (( $# )); do
+        case "$1" in
+            --project) (( $# >= 2 )) && [[ -z "$AR_PROJECT" ]] || return 2; AR_PROJECT="$2"; shift 2 ;;
+            --kind) (( $# >= 2 )) && [[ -z "$AR_KIND" ]] || return 2; AR_KIND="$2"; shift 2 ;;
+            --mode) (( $# >= 2 )) && [[ -z "$AR_MODE" ]] || return 2; AR_MODE="$2"; shift 2 ;;
+            --platform) (( $# >= 2 )) && [[ -z "$AR_PLATFORM" ]] || return 2; AR_PLATFORM="$2"; shift 2 ;;
+            --directory) (( $# >= 2 )) && [[ -z "$AR_DIRECTORY" ]] || return 2; AR_DIRECTORY="$2"; shift 2 ;;
+            --check) AR_CHECK=1; shift ;;
+            *) return 2 ;;
+        esac
+    done
+    case "$AR_KIND" in gradle|pods|spm|ohos|native|precache|web) ;; *) return 2 ;; esac
+    case "$AR_MODE" in export|import) ;; *) return 2 ;; esac
+    case "$AR_PLATFORM" in ''|android|ios|macos|ohos|web) ;; *) return 2 ;; esac
+    (( ! AR_CHECK )) || return 0
+    [[ -t 0 && -t 1 ]] || return 2
+    IFS= read -r "answer?$(jobs_prompt_render '👉 已了解范围，回车继续；其它输入取消：')" || return 130
+    [[ -z "$answer" ]] || return 130
+    if [[ "$AR_MODE" == export ]]; then
+        jobs_prompt_output print -r -- '🔐 私库优先：回车转统一私库识别提取；所选类别的完整缓存含公共包、可能含其它工程缓存。'
+        IFS= read -r "answer?$(jobs_prompt_render '直接回车 = 只提取私库；输入任意字符再回车 = 全提取当前类别缓存：')" || return 130
+        if [[ -z "$answer" ]]; then AR_PRIVATE=1; else print -r -- '➤ 已明确选择当前类别全提取。'; fi
+    fi
+}
+# 加载同包定义并验证项目；静态检查不读取或执行快照业务。
+ar_initialize() {
+    local tools="$(jobs_layout_directory "${(%):-%x}")"
+    source "$(jobs_layout_file "$tools/SetupFlutterProject.zsh")" || return $?
+    source "$(jobs_layout_file "$tools/ProjectEnvironment.zsh")" || return $?
+    source "$(jobs_layout_file "$tools/ManageProjectJava.zsh")" || return $?
+    source "$(jobs_layout_file "$tools/DownloadProjectGradle.zsh")" || return $?
+    source "$(jobs_layout_file "$tools/SetupFlutterRun.zsh")" || return $?
+    source "$(jobs_layout_file "$tools/ProjectDependencies.zsh")" || return $?
+    pe_validate_project "$AR_PROJECT" || return $?
+    SF_PROJECT="$PE_PROJECT" DG_PROJECT="$PE_PROJECT"
+    (( ! AR_CHECK )) || { pe_log "➤ 只读计划：$AR_MODE / $AR_KIND / ${AR_PLATFORM:-项目已有平台}；未复制、联网、调用 SDK 或写日志。"; return 0; }
+    pe_initialize_runtime && pe_ensure_fzf
+}
+# 路径输入支持原路径和 Terminal 拖入转义，不对用户输入使用 eval。
+ar_read_directory() {
+    local prompt="$1" value="${2:-}"
+    if [[ -z "$value" ]]; then
+        IFS= read -r "value?$(jobs_prompt_render "$prompt：")" || return 130
+    fi
+    [[ -n "$value" ]] || return 130
+    if [[ ! -d "$value" ]]; then value="${(Q)value}"; fi
+    [[ "$value" == /* && -d "$value" && ! -L "${value%/}" ]] || { pe_log '✖ 请输入实际存在的普通目录绝对路径。'; return 2; }
+    AR_DIRECTORY="${value:A}"
+}
+# 使用已记录 SDK 或项目自身 FVM 的同套 Dart，不为了导出缓存安装其它 SDK。
+ar_resolve_dart() {
+    pe_read_environment || return $?
+    local candidate="${PE_CONFIG_FLUTTER:-$SF_PROJECT/.fvm/flutter_sdk/bin/flutter}"
+    sf_probe_flutter "$candidate" || { pe_log '✖ 需要当前项目可运行的 Flutter / Dart；请先通过 SDK 或一键配置入口准备。'; return 3; }
+    AR_DART="$SF_FLUTTER_ROOT/bin/cache/dart-sdk/bin/dart"
+}
+# 归档目标平台遵循宿主能力，快照平台在导入时必须与当前选择一致。
+ar_choose_platform() {
+    local kind="$AR_KIND"
+    [[ "$kind" != gradle ]] || kind=android
+    [[ "$kind" != precache ]] || kind=precache
+    pd_choose_platform "$kind" "$AR_PLATFORM" || return $?
+    AR_PLATFORM="$SR_TARGET"
+}
+# 当前工具和锁版本形成兼容键；绝对源路径只用于当前进程，不写入清单。
+ar_resolve_root() {
+    local file="" value="" tool="" help=""
+    case "$AR_KIND" in
+        gradle)
+            dg_read_wrapper || return $?
+            pe_select 'Gradle 快照组件' $'modules\tMaven 制品和元数据缓存（共享 modules-2）\nwrapper\t工程固定 Gradle Wrapper 分发' || return $?
+            AR_COMPONENT="$PE_SELECTION"
+            AR_VERSION="Gradle $DG_VERSION $AR_COMPONENT"
+            if [[ "$AR_COMPONENT" == modules ]]; then AR_ROOT="${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2";
+            else
+                source "$(jobs_layout_file "$PE_TOOLS_DIR/WrapperDistributionCache.zsh")" || return $?
+                wd_resolve_layout "$SF_PROJECT" "$DG_URL" || return $?
+                AR_ROOT="${WD_ZIP_PATH:h}"
+            fi
+            ;;
+        pods)
+            file="$SF_PROJECT/$AR_PLATFORM/Podfile.lock"
+            [[ -f "$file" && ! -L "$file" ]] || { pe_log '✖ 缺少平台 Podfile.lock，不能确认 CocoaPods 快照兼容性。'; return 3; }
+            value="$(/usr/bin/perl -ne 'print $1 if /^COCOAPODS:\s*(\S+)/' "$file")"
+            [[ -n "$value" ]] || return 3
+            AR_VERSION="CocoaPods $value" AR_ROOT="$SF_PROJECT/$AR_PLATFORM/Pods"
+            ;;
+        spm)
+            SF_COMMAND_TIMEOUT=60 sf_run_diagnostic archive-xcode /usr/bin/xcodebuild -version || return $?
+            value="$(/usr/bin/tr '\n' ' ' < "$PE_RUN_DIR/archive-xcode.log")"
+            [[ "$value" == *Xcode* ]] || return 3
+            AR_VERSION="$value" AR_ROOT="$SF_PROJECT/.jobs/dependencies/spm"
+            if [[ "$AR_MODE" == export && ! -d "$AR_ROOT" ]]; then
+                pe_log '➤ 旧版 Xcode 缓存在工程外；请选择本工程实际使用的 SourcePackages 目录。导入目标仍为工程本地 SPM 缓存。'
+                local previous_directory="$AR_DIRECTORY"
+                ar_read_directory '实际 SourcePackages 目录' || return $?
+                AR_ROOT="$AR_DIRECTORY" AR_DIRECTORY="$previous_directory"
+                [[ -d "$AR_ROOT/checkouts" || -d "$AR_ROOT/artifacts" ]] || { pe_log '✖ 所选目录不是 SourcePackages 缓存。'; return 2; }
+            fi
+            ;;
+        ohos)
+            pe_select 'OpenHarmony 快照组件' $'ohpm\tOHPM 包（工程 oh_modules）\nhvigor\tHvigor 插件 / 包缓存（实际工具缓存目录）' || return $?
+            AR_COMPONENT="$PE_SELECTION"
+            if [[ "$AR_COMPONENT" == ohpm ]]; then
+                tool="$(command -v ohpm 2>/dev/null)"
+                [[ -x "$tool" ]] || { pe_log '✖ 需要当前工程对应的 OHPM 读取兼容版本。'; return 3; }
+                SF_COMMAND_TIMEOUT=30 sf_run_diagnostic archive-ohpm "$tool" --version || return $?
+                value="$(pe_semantic_version "$PE_RUN_DIR/archive-ohpm.log")"
+                AR_VERSION="OHPM $value" AR_ROOT="$SF_PROJECT/ohos/oh_modules"
+            else
+                tool="$SF_PROJECT/ohos/hvigorw"
+                [[ -f "$tool" && ! -L "$tool" ]] || tool="$(command -v hvigorw 2>/dev/null)"
+                [[ -f "$tool" ]] || { pe_log '✖ 需要工程配套 Hvigor wrapper 读取兼容版本。'; return 3; }
+                SF_COMMAND_DIRECTORY="$SF_PROJECT/ohos" SF_COMMAND_TIMEOUT=60 sf_run_diagnostic archive-hvigor /bin/sh "$tool" --version || return $?
+                value="$(pe_semantic_version "$PE_RUN_DIR/archive-hvigor.log")"
+                AR_VERSION="Hvigor $value"
+                pe_log '➤ 不猜测 Hvigor 版本间的缓存布局；请指定本工具实际使用的依赖缓存目录（不选整个用户目录）。'
+                local previous_directory="$AR_DIRECTORY"
+                ar_read_directory '实际 Hvigor 缓存源 / 恢复目录' || return $?
+                AR_ROOT="$AR_DIRECTORY" AR_DIRECTORY="$previous_directory"
+                [[ "$AR_ROOT" != "${HOME:A}" && "$AR_ROOT" != / && "$AR_ROOT" != "$SF_PROJECT" && "$AR_ROOT" != "$SF_PROJECT/ohos" ]] || return 2
+            fi
+            [[ -n "$value" ]] || return 3
+            ;;
+        native)
+            AR_VERSION="Flutter $SF_FLUTTER_VERSION arch $(/usr/bin/uname -m)"
+            if [[ "$AR_PLATFORM" == android ]]; then AR_ROOT="$SF_PROJECT/build/app";
+            else AR_ROOT="$SF_PROJECT/build/$AR_PLATFORM"; fi
+            ;;
+        precache)
+            AR_VERSION="Flutter $SF_FLUTTER_VERSION artifacts arch $(/usr/bin/uname -m)" AR_ROOT="$SF_FLUTTER_ROOT/bin/cache"
+            ;;
+        web)
+            AR_NODE_ROOT=""
+            local rows="" scope=""
+            for file in "$SF_PROJECT/web" "$SF_PROJECT"; do
+                if [[ -f "$file/package.json" && ! -L "$file/package.json" ]]; then
+                    scope=root
+                    [[ "$file" != "$SF_PROJECT/web" ]] || scope=web
+                    [[ -z "$rows" ]] || rows+=$'\n'
+                    rows+="$scope"$'\t'"$file/node_modules"
+                fi
+            done
+            [[ -n "$rows" ]] || { pe_log '✖ 当前工程没有额外 JS package.json，无需迁移 node_modules。'; return 3; }
+            if [[ "$rows" == *$'\n'* ]]; then pe_select 'JS 包快照范围' "$rows" || return $?; scope="$PE_SELECTION";
+            else scope="${rows%%$'\t'*}"; fi
+            if [[ "$scope" == web ]]; then AR_NODE_ROOT="$SF_PROJECT/web"; else AR_NODE_ROOT="$SF_PROJECT"; fi
+            tool="$(command -v node 2>/dev/null)"
+            [[ -x "$tool" ]] || { pe_log '✖ 缺少工程对应的 Node.js。'; return 3; }
+            SF_COMMAND_TIMEOUT=30 sf_run_diagnostic archive-node "$tool" --version || return $?
+            value="$(pe_semantic_version "$PE_RUN_DIR/archive-node.log")"
+            [[ -n "$value" ]] || return 3
+            SF_COMMAND_TIMEOUT=30 sf_run_diagnostic archive-node-arch "$tool" -p process.arch || return $?
+            local architecture="$(/usr/bin/tr -d '\r\n' < "$PE_RUN_DIR/archive-node-arch.log")"
+            [[ "$architecture" =~ '^[A-Za-z0-9_-]+$' ]] || return 3
+            AR_VERSION="Node $value arch $architecture scope $scope" AR_ROOT="$AR_NODE_ROOT/node_modules"
+            ;;
+    esac
+    [[ -n "$AR_ROOT" && -n "$AR_VERSION" && ! -L "$AR_ROOT" ]] || return 2
+}
+# 清单预检与真实导入使用同一个内核，确认后仍再次全量核验，不覆盖冲突。
+ar_transfer() {
+    local answer="" engine="$PE_TOOLS_DIR/NativeDependencyArchive.dart"
+    local -a args=("$engine" "$AR_MODE" --project "$SF_PROJECT" --kind "$AR_KIND" --platform "$AR_PLATFORM" --tool-version "$AR_VERSION" --directory "$AR_DIRECTORY")
+    [[ "$AR_KIND" != precache ]] || args+=(--flutter-cache)
+    [[ -f "$engine" ]] || { pe_log '✖ 缺少同包快照内核。'; return 1; }
+    if [[ "$AR_MODE" == export ]]; then
+        [[ -d "$AR_ROOT" && ! -L "$AR_ROOT" ]] || { pe_log "✖ 没有本地可提取内容：$AR_ROOT；先运行相应拉取/构建入口。"; return 3; }
+        pe_log "📤 来源：$AR_KIND · $AR_ROOT；工具：$AR_VERSION；输出父目录：$AR_DIRECTORY"
+        pe_run_logged "$AR_DART" "${args[@]}" --source-root "$AR_ROOT"
+    else
+        pe_log "📥 来源：$AR_DIRECTORY；目标：$AR_ROOT；工具：$AR_VERSION。先验证完整快照与冲突。"
+        pe_run_logged "$AR_DART" "${args[@]}" --target-root "$AR_ROOT" --check || return $?
+        IFS= read -r "answer?$(jobs_prompt_render '输入精确大写 YES 导入；其它输入取消：')" || return 130
+        [[ "$answer" == YES ]] || return 130
+        pe_run_logged "$AR_DART" "${args[@]}" --target-root "$AR_ROOT" --confirm YES
+    fi
+}
+# 一项只处理一个类型和平台；完成后由原包管理器 / 构建步骤验证可使用性。
+ar_run() {
+    if (( AR_PRIVATE )); then
+        local tools="$(jobs_layout_directory "${(%):-%x}")"
+        local -a args=(--project "$AR_PROJECT" --mode export --private-only --confirmed)
+        [[ -z "$AR_DIRECTORY" ]] || args+=(--directory "$AR_DIRECTORY")
+        /bin/zsh "$tools/【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh" "${args[@]}"
+        return $?
+    fi
+    ar_initialize || return $?
+    (( ! AR_CHECK )) || return 0
+    ar_choose_platform && ar_resolve_dart && ar_resolve_root || return $?
+    if [[ "$AR_MODE" == export ]]; then ar_read_directory '提取输出父目录（输入或拖入，空输入取消）' "$AR_DIRECTORY" || return $?;
+    else ar_read_directory '完整快照目录（输入或拖入，空输入取消）' "$AR_DIRECTORY" || return $?; fi
+    if [[ "$AR_MODE" == import ]]; then ar_transfer; return $?; fi
+    local receipt="" result=0 line="" output=""
+    receipt="$(/usr/bin/mktemp "${TMPDIR:-/tmp/}JobsNativeArchiveReceipt.XXXXXX")" || return 1
+    setopt LOCAL_OPTIONS PIPE_FAIL
+    ar_transfer | /usr/bin/tee "$receipt"
+    result=$?
+    if (( result != 0 )); then /bin/rm -f -- "$receipt"; return "$result"; fi
+    while IFS= read -r line; do
+        [[ "$line" != ARCHIVE_DIRECTORY=* ]] || output="${line#ARCHIVE_DIRECTORY=}"
+    done < "$receipt"
+    /bin/rm -f -- "$receipt"
+    [[ -n "$output" && -d "$output" && ! -L "$output" && "${output:A:h}" == "${AR_DIRECTORY:A}" ]] || { pe_log '✖ 没有取得本次完整快照目录，未压缩或删除。'; return 1; }
+    source "$PE_TOOLS_DIR/【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh" || return $?
+    FM_OUTPUT="$output" FM_DIRECTORY="$AR_DIRECTORY" FM_LOG="$PE_LOG_FILE" FM_METADATA="manifest.json"
+    fm_zip_offer
+}
+# 自述确认失败即退出，不能将取消误当成导入完成。
+ar_show_intro_and_confirm() {
+    local result=0
+    ar_intro_and_wait "$@" || result=$?
+    (( result == 0 )) || exit "$result"
+}
+# 单项菜单入口；source 时只提供定义供隔离测试使用。
+main() {
+    ar_show_intro_and_confirm "$@" # 首屏说明缓存范围与确认方式，取消直接终止。
+    ar_run # 校验版本、快照与冲突，再执行本项提取或导入。
+}
+
+if [[ "$ZSH_EVAL_CONTEXT" == toplevel ]]; then
+    main "$@"
+fi

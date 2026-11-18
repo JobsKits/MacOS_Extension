@@ -250,9 +250,11 @@ require 'uri'
 require 'pty'
 require 'io/console'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class FlutterDependencyMigrationShellTests < Minitest::Test
   TOOLS = ENV.fetch('JOBS_TEST_TOOLS_DIR') { File.expand_path('../../Scripts/Tools', __dir__) }
-  SCRIPT = File.join(TOOLS, '【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh')
+  SCRIPT = JobsSourceLayout.file(File.join(TOOLS, '【MacOS】一键迁移Flutter依赖.zsh/【MacOS】一键迁移Flutter依赖.zsh'))
 
   def setup
     @base = File.realpath(Dir.mktmpdir('jobs-migration-shell-'))
@@ -520,7 +522,7 @@ class FlutterDependencyMigrationShellTests < Minitest::Test
     output, status, calls = conflict_import("\n\n\nYES\n")
     assert status.success?, output
     desktop, desktop_status = Open3.capture2e('/usr/bin/osascript', '-e', 'POSIX path of (path to desktop folder)')
-    desktop = File.join(Dir.home, 'Desktop') unless desktop_status.success? && !desktop.strip.empty?
+    desktop = JobsSourceLayout.file(File.join(Dir.home, 'Desktop')) unless desktop_status.success? && !desktop.strip.empty?
     assert_includes calls.last, "--backup-directory #{desktop.strip}"
     assert_includes calls.last, '--apply'
   end
@@ -662,7 +664,7 @@ class FlutterDependencyMigrationShellTests < Minitest::Test
     candidate = ENV['JOBS_TEST_DART'] || ENV.fetch('PATH', '').split(File::PATH_SEPARATOR).map { |entry| File.join(entry, 'dart') }.find { |path| File.file?(path) && File.executable?(path) }
     skip '需要已有原生 Dart；本测试不会安装 SDK' unless candidate && File.executable?(candidate)
     resolved = File.realpath(candidate)
-    sdk_binary = File.join(File.dirname(resolved), 'cache/dart-sdk/bin/dart')
+    sdk_binary = JobsSourceLayout.file(File.join(File.dirname(resolved), 'cache/dart-sdk/bin/dart'))
     File.file?(sdk_binary) ? File.realpath(sdk_binary) : resolved
   end
 
@@ -866,7 +868,7 @@ class FlutterDependencyMigrationShellTests < Minitest::Test
         until output.include?('JOBS_MIGRATION_PLAN=')
           output << stream.readpartial(4096).b
         end
-        File.write(File.join(File.dirname(first), 'added_after_preview.dart'), '// changed')
+        File.write(JobsSourceLayout.file(File.join(File.dirname(first), 'added_after_preview.dart')), '// changed')
         input.write("YES\n")
         input.close
         output << stream.read.b

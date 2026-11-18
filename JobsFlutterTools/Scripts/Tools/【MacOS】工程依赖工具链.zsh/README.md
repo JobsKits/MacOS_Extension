@@ -2,13 +2,23 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#%E5%89%8D%E8%A8%80)
+- [一、工具准备与作用范围](#jobs-toc-heading-2)
+- [二、验证边界](#jobs-toc-heading-3)
+
+</details>
+<!-- jobs-toc:end -->
 
 ## 🔥 <span id="前言">前言</span>
 
-供 [分层依赖内核](../ProjectDependencies.zsh) 加载的函数模块，服务一键配置和独立依赖入口；不直接运行，加载时不执行安装。上级入口见 [Tools 说明](../README.md)。
+供 [分层依赖内核](../【MacOS】ProjectDependencies.zsh/【MacOS】ProjectDependencies.zsh) 加载的函数模块，服务一键配置和独立依赖入口；不直接运行，加载时不执行安装。上级入口见 [Tools 说明](../README.md)。
 
-## 一、工具准备与作用范围 <a href="#前言">🔼</a> <a href="#🔚">🔽</a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、工具准备与作用范围 <a href="#前言">🔼</a> <a href="#🔚">🔽</a></span><!-- jobs-toc:heading-end -->
 
 - [**Node.js**](https://nodejs.org/)：按 `.nvmrc`、`.node-version` 和 `engines.node` 检查 Node 与同套 npm。优先复用健康候选；精确版本从官方归档下载并校验 SHA-256，保存到用户缓存；其它版本约束可使用已有 Homebrew。安装后重新读取版本并验证约束，失败停止。
 - npm / pnpm / Yarn：按唯一锁文件及 `packageManager` 选择。缺少指定版本时安装到用户独立版本目录，不改全局 npm 或项目版本声明；未锁定且无健康工具时停止，避免猜测最新版。
@@ -17,7 +27,7 @@
 
 安装前显示来源、版本和目标位置，保留现有确认及 SDK 获取重试规则。不会改系统代理、Shell 配置、全局 SDK 或工程签名；取消和复检失败不继续下游构建。
 
-## 二、验证边界 <a href="#前言">🔼</a> <a href="#🔚">🔽</a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、验证边界 <a href="#前言">🔼</a> <a href="#🔚">🔽</a></span><!-- jobs-toc:heading-end -->
 
 配套回归使用临时工程、假命令及隔离环境检查健康复用、缺失安装、安装失败、复检失败、取消与缓存冲突。源码检查和隔离回归不代表已安装的 Finder 菜单资源更新，也不代表真实 SDK 下载、签名或用户工程构建通过。
 

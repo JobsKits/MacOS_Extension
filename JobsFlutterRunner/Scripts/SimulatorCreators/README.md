@@ -2,7 +2,17 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#%E5%89%8D%E8%A8%80)
+- [一、创建入口](#creators)
+- [二、验证边界](#validation)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
@@ -14,9 +24,9 @@
 
 | 平台 | 随包入口 | 桌面同源实现 |
 | --- | --- | --- |
-| [**iOS**](https://developer.apple.com/ios/) | [创建说明](./CreateIOSSimulator.zsh/README.md) | [桌面创建脚本](../../../JobsIOSSimulatorCreator/Scripts/CreateIOSSimulator.zsh) |
-| [**Android**](https://developer.android.com/) | [创建说明](./CreateAndroidSimulator.zsh/README.md) | [桌面创建脚本](../../../JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh) |
-| [**HarmonyOS**](https://developer.huawei.com/consumer/cn/) | [创建说明](./CreateHarmonySimulator.zsh/README.md) | [桌面创建脚本](../../../JobsHarmonySimulatorCreator/Scripts/CreateHarmonySimulator.zsh) |
+| [**iOS**](https://developer.apple.com/ios/) | [创建说明](./【MacOS】CreateIOSSimulator.zsh/README.md) | [桌面创建脚本](../../../JobsIOSSimulatorCreator/Scripts/【MacOS】CreateIOSSimulator.zsh/【MacOS】CreateIOSSimulator.zsh) |
+| [**Android**](https://developer.android.com/) | [创建说明](./【MacOS】CreateAndroidSimulator.zsh/README.md) | [桌面创建脚本](../../../JobsAndroidSimulatorCreator/Scripts/【MacOS】CreateAndroidSimulator.zsh/【MacOS】CreateAndroidSimulator.zsh) |
+| [**HarmonyOS**](https://developer.huawei.com/consumer/cn/) | [创建说明](./【MacOS】CreateHarmonySimulator.zsh/README.md) | [桌面创建脚本](../../../JobsHarmonySimulatorCreator/Scripts/【MacOS】CreateHarmonySimulator.zsh/【MacOS】CreateHarmonySimulator.zsh) |
 
 - [已有模拟器启动环境](./【MacOS】模拟器启动环境.zsh/README.md)在独立启动分组中准备工具、核验更新并复检，随后只启动精确已有实例；不调用三份创建入口。
 - 每份脚本保留桌面入口的自述、确认、取消、工具准备和许可证要求，在当前终端完成选择与创建。

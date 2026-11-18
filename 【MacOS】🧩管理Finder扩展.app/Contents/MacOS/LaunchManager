@@ -1,6 +1,39 @@
 #!/bin/zsh
 # shell: zsh
 # App 是公开管理入口；只接受面板操作与范围，不接受后台执行开关。
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
 launch_management_error() {
   print -u2 -r -- "$1"
   /usr/bin/osascript - "$1" <<'APPLESCRIPT'
@@ -27,7 +60,8 @@ APPLESCRIPT
 # 同名 App 与准确的 worker 必须属于同一个包，不搜索其它机器或旧副本。
 validate_management_package() {
   local package_root="$1" application_name="$2" worker_name="$3"
-  [[ -f "$package_root/$application_name/Contents/MacOS/LaunchManager" && -f "$package_root/Scripts/$worker_name" && -r "$package_root/Scripts/$worker_name" ]]
+  local worker_path="$(jobs_layout_file "$package_root/Scripts/$worker_name")"
+  [[ -f "$package_root/$application_name/Contents/MacOS/LaunchManager" && -f "$worker_path" && -r "$worker_path" ]]
 }
 # App 已独立于启动终端；只关闭该 tty 上已无任何进程的完成页。
 close_completed_launcher_terminal() {
@@ -121,7 +155,7 @@ launch_management_app() {
     esac
   done
   [[ -n "$package_root" ]] || package_root="${application_root:h}"
-  entry="$package_root/Scripts/${entry:t}"
+  entry="$(jobs_layout_file "$package_root/Scripts/${entry:t}")"
   if (( diagnose_paths )); then
     print -l -r -- "App运行路径：$application_root" "包目录：$package_root" "内部管理器：$entry"
     if validate_management_package "$package_root" "${application_root:t}" "${entry:t}"; then
@@ -135,7 +169,7 @@ launch_management_app() {
     selected_root="$(choose_management_package "${application_root:t}" "$entry")" || return 2
     [[ -n "$selected_root" ]] || return 130
     package_root="${selected_root:A}"
-    entry="$package_root/Scripts/${entry:t}"
+    entry="$(jobs_layout_file "$package_root/Scripts/${entry:t}")"
     validate_management_package "$package_root" "${application_root:t}" "${entry:t}" || {
       launch_management_error "所选目录缺少同名 App 或可读的内部管理器。实际查找：$entry"
       return 2

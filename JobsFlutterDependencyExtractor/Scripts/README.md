@@ -19,7 +19,7 @@
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 > 本目录承接 [**Flutter**](https://flutter.dev/) 第三方依赖归档与 Finder 扩展构建后的注册，完整行为见 [工程说明](../README.md)。
 
@@ -43,15 +43,15 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `ExtractFlutterDependencies.zsh` | 交互入口，项目校验、Dart 发现、目标路径输入 / 拖入，回车默认系统桌面 |
+| `./【MacOS】ExtractFlutterDependencies.zsh/【MacOS】ExtractFlutterDependencies.zsh` | 交互入口，项目校验、Dart 发现、目标路径输入 / 拖入，回车默认系统桌面 |
 | `ExtractFlutterDependencies.dart` | 基于锁文件与包配置复制本地已解析依赖、输出清单和许可证 |
-| `EnableFinderExtension.zsh` | Xcode Build Phase 注册并启用固定 Finder 扩展，可由开关跳过 |
+| `./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` | Xcode Build Phase 注册并启用固定 Finder 扩展，可由开关跳过 |
 
 ```text
 Scripts/
 ├── ExtractFlutterDependencies.zsh
 ├── ExtractFlutterDependencies.dart
-├── EnableFinderExtension.zsh
+├── 【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh
 └── README.md
 ```
 
@@ -80,6 +80,6 @@ Scripts/
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、构建注册边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-`EnableFinderExtension.zsh` 在真实 Xcode Build Phase 中自动注册 `com.jobs.JobsFlutterDependencyExtractor.FinderSync`，正常启用后可能重启 Finder。普通验证须设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1`；外层独立安装器也设置此开关，避免重复注册。不要把直接运行该脚本作为语法测试。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 在真实 Xcode Build Phase 中自动注册 `com.jobs.JobsFlutterDependencyExtractor.FinderSync`，正常启用后可能重启 Finder。普通验证须设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1`；外层独立安装器也设置此开关，避免重复注册。不要把直接运行该脚本作为语法测试。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

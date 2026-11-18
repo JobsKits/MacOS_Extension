@@ -29,10 +29,22 @@
 
 实际删除的精确路径权限拒绝验证 `77` 阻断事件、负责面板及保留文件；其它路径权限信息与普通错误保留原退出码，不误报 App 管理阻断。
 
+安装后登记核验使用替身时钟和独立临时 App，覆盖早期 `+` 后登记丢失、定向恢复后重新累计稳定时间、多个安装单元共享同一观察窗口、单个 ID 恢复次数及整轮总时限。恢复后的五秒发现等待期只观察，不立即消耗下一次恢复机会；长观察每十秒给出进度。查询失败不当成缺失后改写登记；恢复失败、查询／恢复／等待中的取消码 `129/130/143`、同 ID 的另一启用位置及目标 inode 并发替换均停止后续动作。恢复前每次系统写入都复核原节点，测试中的四个登记动作只写临时调用记录，不调用系统服务。事务旧 `previous.app` 必须在删除前按准确路径撤销登记；失败或取消保留旧副本与锁，允许原文件回滚，不能注销当前目标或其它 ID。
+
+慢恢复跨过绝对时限后，不再执行剩余登记步骤或后续 ID 的写入；长暂停越过总时限也不能以仍显示启用为由成功。旧事务撤销使用真实生产注销函数，额外验证扩展移除及失败复核中的 `130` 原码传递，取消后不查询或注销后续宿主，也不删除 `previous.app`。
+
 在本目录执行：
 
 ```shell
 ruby './AppDeploymentTests.rb'
+```
+
+只核对登记稳定与事务旧节点，或用相同夹具核对磁盘独立包的部署副本：
+
+```shell
+ruby './AppDeploymentTests.rb' --name '/registration_postcheck|registration_repair|previous_transaction|exact_previous_transaction/'
+JOBS_APP_DEPLOYMENT_TEST_LIBRARY='../../JobsDiskSpaceInfo/Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh' \
+  ruby './AppDeploymentTests.rb' --name '/registration_postcheck|registration_repair|previous_transaction|exact_previous_transaction/'
 ```
 
 依赖 [**macOS**](https://www.apple.com/macos/) 自带 `zsh`、`PlistBuddy` 和 `ditto`；测试替换所有系统登记函数。签名验证通常使用替身，专门一例只在临时容器、宿主及扩展中实际签名，验证外层签名不改变子扩展权限；不调用真实登记、不写 `/Applications`、不构建、不结束进程或重启 Finder。通过结果仅证明隔离部署逻辑，真实安装另行验收。
@@ -40,5 +52,8 @@ ruby './AppDeploymentTests.rb'
 <!-- jobs-language-terminal-style-v1 -->
 
 **终端配色保护：** `AppDeploymentTests.rb` 直接运行时，在可可靠保存与恢复配色的交互终端中临时使用黑底白字和统一强调色；正常退出、失败及可捕获中断后恢复进入前的配色，保留原业务清理和退出状态。导入本文件不接管终端；无法可靠保护、纯文本模式或无交互终端时按纯文本约定降级。运行中另行修改的颜色会保留并报告冲突，强制终止后可按运行提示使用独立恢复入口。 此实现保留原解释器选项和预载状态；无可用 fork、Windows 或预载多线程时不重启脚本，以纯文本继续。
+
+
+新增联合App菜单清单用例：四模块按固定优先级选择输出者，卸载后重选、旧协议排除及清单移除；错误宿主身份和符号链接保持原文件。签名替身核对清单先于签名；不写系统登记或用户真实应用目录。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

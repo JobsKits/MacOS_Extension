@@ -38,7 +38,7 @@ struct FlutterToolsLauncher {
         guard FlutterFeatureConfiguration.permits(action, enabled: FlutterFeatureConfiguration.enabledFeatures()) else {
             throw failure("此 Flutter 功能未安装或选择配置已变化，请重新运行总安装器勾选。")
         }
-        guard FlutterProjectValidator().isFlutterProject(at: projectURL) else { throw failure("请选择合法 Flutter 项目根目录。") }
+        guard (action == .run ? FlutterProjectValidator().runProjectURL(for: projectURL) != nil : FlutterProjectValidator().isFlutterProject(at: projectURL)) else { throw failure("请选择合法 Flutter 项目根目录。") }
         guard action != .packageHarmony || FlutterProjectValidator().isHarmonyFlutterProject(at: projectURL) else {
             throw failure("鸿蒙打包需要当前 Flutter 工程包含普通 ohos 目录、build-profile.json5 和 oh-package.json5，请先完成鸿蒙适配。")
         }

@@ -246,10 +246,12 @@ require 'shellwords'
 require 'timeout'
 require 'json'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class FlutterSdkRouteIntegrationTests < Minitest::Test
   ROOT = File.expand_path('../../..', __dir__)
   RUNNERS = %w[JobsFlutterRunner/Scripts/RunFlutterProject.zsh JobsFlutterTools/Scripts/Tools/RunFlutterProject.zsh].freeze
-  TOOLS = File.join(ROOT, 'JobsFlutterTools/Scripts/Tools')
+  TOOLS = JobsSourceLayout.file(File.join(ROOT, 'JobsFlutterTools/Scripts/Tools'))
   def setup
     @tmp = Dir.mktmpdir('jobs-route-entry-中文')
     @sdk = File.join(@tmp, 'SDK 空格')
@@ -284,7 +286,7 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
   def test_runner_bootstrap_uses_resolved_sdk_and_logs_context_before_route
     RUNNERS.each do |relative|
       FileUtils.rm_f(@calls)
-      out, err, status = invoke(File.join(ROOT, relative), runner_setup + "find_flutter\n")
+      out, err, status = invoke(JobsSourceLayout.file(File.join(ROOT, relative)), runner_setup + "find_flutter\n")
       assert status.success?, err+out
       calls = File.readlines(@calls).map(&:strip)
       assert_equal 'context', calls[0]
@@ -308,7 +310,7 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
         watch_session() { :; }
         main
       SH
-      out, err, status = invoke(File.join(ROOT, relative), body)
+      out, err, status = invoke(JobsSourceLayout.file(File.join(ROOT, relative)), body)
       assert_equal 130, status.exitstatus, err+out
       refute_match(/selector|business/, File.read(@calls))
     end
@@ -323,7 +325,7 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
         jobs_flutter_sdk_retry() { print -r -- "${JOBS_FLUTTER_ROUTE_MODE}|$3|$*" >> "$FIXTURE_CALLS"; }
         prepare_target_sdk_resources
       SH
-      _out, err, status = invoke(File.join(ROOT, relative), body)
+      _out, err, status = invoke(JobsSourceLayout.file(File.join(ROOT, relative)), body)
       assert status.success?, err
       assert_includes File.read(@calls), "platform|#{File.realpath(@sdk)}|"
       assert_includes File.read(@calls), 'precache --android'
@@ -331,8 +333,8 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
     end
   end
   def test_distributed_shell_modules_match_canonical
-    canonical = File.read(File.join(TOOLS, '【MacOS】FlutterSDK网络选路.zsh/【MacOS】FlutterSDK网络选路.zsh'))[/# JOBS_FLUTTER_ROUTE_BEGIN\n.*?# JOBS_FLUTTER_ROUTE_END/m]
-    paths = Dir.glob(File.join(ROOT, 'JobsFlutter*/Scripts/**/*.zsh')).select { |p| File.file?(p) && File.read(p).include?('# JOBS_FLUTTER_ROUTE_BEGIN') }
+    canonical = File.read(JobsSourceLayout.file(File.join(TOOLS, '【MacOS】FlutterSDK网络选路.zsh/【MacOS】FlutterSDK网络选路.zsh')))[/# JOBS_FLUTTER_ROUTE_BEGIN\n.*?# JOBS_FLUTTER_ROUTE_END/m]
+    paths = Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'JobsFlutter*/Scripts/**/*.zsh'))).select { |p| File.file?(p) && File.read(p).include?('# JOBS_FLUTTER_ROUTE_BEGIN') }
     assert_operator paths.length, :>=, 14
     paths.each do |path|
       block = File.read(path)[/# JOBS_FLUTTER_ROUTE_BEGIN\n.*?# JOBS_FLUTTER_ROUTE_END/m]
@@ -348,7 +350,7 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
     paths = Dir.glob(File.join(tree, 'MacOS/**/*')).select { |p| File.file?(p) && p.end_with?('.command', '.zsh') && File.read(p).include?('# JOBS_FLUTTER_ROUTE_BEGIN') }
     assert_equal 8, paths.length
     paths.each do |path|
-      runtime = File.join(Dir.home, 'SourceTree.command', path.delete_prefix(tree + '/'))
+      runtime = JobsSourceLayout.file(File.join(Dir.home, 'SourceTree.command', path.delete_prefix(tree + '/')))
       assert_equal File.binread(path), File.binread(runtime), runtime if File.exist?(runtime)
       _out, err, status = Open3.capture3('/bin/zsh', '-n', path)
       assert status.success?, "#{path}: #{err}"
@@ -400,7 +402,7 @@ class FlutterSdkRouteIntegrationTests < Minitest::Test
   end
 
   def test_shared_dart_keeps_both_platform_bridges_identical
-    mac = File.join(TOOLS, 'FlutterProjectTools.dart')
+    mac = JobsSourceLayout.file(File.join(TOOLS, 'FlutterProjectTools.dart'))
     win = File.expand_path('../WindowsOS@Extension/JobsFlutterTools/Scripts/FlutterProjectTools.dart', ROOT)
     assert_equal File.read(mac), File.read(win)
     assert_includes File.read(mac), 'sdkAcquisition && Platform.isMacOS'

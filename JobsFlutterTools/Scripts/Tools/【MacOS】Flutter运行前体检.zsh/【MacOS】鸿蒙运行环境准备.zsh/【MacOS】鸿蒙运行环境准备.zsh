@@ -3,6 +3,39 @@
 # 供当前运行器 source：原地承接鸿蒙 SDK、工具链、平台与依赖准备，不启动 App。
 # 项目绑定与新增平台有备份；已有平台、业务源码与第三方插件不重写。
 
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
 typeset -g JOBS_HARMONY_PREPARE_PACKAGE="${${(%):-%x}:A:h}"
 typeset -g JOBS_HARMONY_PREPARE_RUN=""
 typeset -g JOBS_HARMONY_PREPARE_OHPM="" JOBS_HARMONY_PREPARE_HVIGOR=""
@@ -37,19 +70,24 @@ jobs_hpr_backup_project() {
 }
 
 jobs_hpr_prepare_sdk() {
-    local result=0 needs_prepare=0 manager="$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Tools/ManageHarmonyFlutterVersion.zsh"
+    local result=0 needs_prepare=0 manager="$(jobs_layout_file "$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Tools/ManageHarmonyFlutterVersion.zsh")"
     [[ -s "$manager" && ! -L "$manager" ]] || { log '✖ 随包鸿蒙 SDK 管理器缺失，已停止当前准备。'; return 1; }
-    jobs_hpr_command sdk-capabilities 60 "$FLUTTER_BIN" build -h || result=$?
-    if (( result != 0 )) || ! /usr/bin/grep -Eq '^[[:space:]]*hap[[:space:]]' "$LOG_FILE.harmony-prepare.sdk-capabilities"; then
+    if [[ "${JOBS_HARMONY_PREPARE_FORCE_PRIVATE:-0}" == 1 ]]; then
+        # 后台准备先取得私有SDK，避免能力探测触碰当前运行使用的共享SDK缓存。
         needs_prepare=1
     else
-        result=0
-        /bin/zsh "$manager" --project "$PROJECT_PATH" --verify-sdk "${FLUTTER_BIN:A:h:h}" || result=$?
-        case "$result" in
-            0) ;;
-            65) needs_prepare=1 ;;
-            *) log '✖ 当前 SDK 版本或工程约束无法可靠核验，保留原绑定，未猜测版本继续。'; return "$result" ;;
-        esac
+        jobs_hpr_command sdk-capabilities 60 "$FLUTTER_BIN" build -h || result=$?
+        if (( result != 0 )) || ! /usr/bin/grep -Eq '^[[:space:]]*hap[[:space:]]' "$LOG_FILE.harmony-prepare.sdk-capabilities"; then
+            needs_prepare=1
+        else
+            result=0
+            /bin/zsh "$manager" --project "$PROJECT_PATH" --verify-sdk "${FLUTTER_BIN:A:h:h}" || result=$?
+            case "$result" in
+                0) ;;
+                65) needs_prepare=1 ;;
+                *) log '✖ 当前 SDK 版本或工程约束无法可靠核验，保留原绑定，未猜测版本继续。'; return "$result" ;;
+            esac
+        fi
     fi
     if (( needs_prepare )); then
         log '▶ 当前 SDK 不满足 HAP 或项目版本约束，直接在本轮运行中准备正式鸿蒙 SDK 与项目级绑定。'
@@ -144,7 +182,7 @@ jobs_hpr_prepare_java17() {
 }
 
 jobs_hpr_prepare_tools() {
-    local creator="$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Tools/CreateHarmonySimulator.zsh"
+    local creator="$(jobs_layout_file "$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Tools/CreateHarmonySimulator.zsh")"
     local receipt="$JOBS_HARMONY_PREPARE_RUN/toolchain-root" root="" directory="" tool="" candidate="" node="" java=""
     [[ -s "$creator" && ! -L "$creator" ]] || { log '✖ 随包鸿蒙工具获取器缺失。'; return 1; }
     : > "$receipt" || return 1
@@ -177,7 +215,7 @@ jobs_hpr_prepare_tools() {
 }
 
 jobs_hpr_prepare_dependencies() {
-    local verifier="$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Flutter运行前体检.jxa" result=0
+    local verifier="$(jobs_layout_file "$JOBS_HARMONY_PREPARE_PACKAGE/Resources/Flutter运行前体检.jxa")" result=0
     jobs_hpr_command_in_project pub-get 900 "$FLUTTER_BIN" pub get || return $?
     [[ -s "$verifier" && ! -L "$verifier" ]] || { log '✖ 随包鸿蒙插件核验器缺失。'; return 1; }
     jobs_hpr_command plugins 30 /usr/bin/osascript -l JavaScript "$verifier" ohos "$PROJECT_PATH" "${FLUTTER_BIN:A:h:h}" || result=$?

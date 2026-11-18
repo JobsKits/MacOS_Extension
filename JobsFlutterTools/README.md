@@ -6,9 +6,13 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**鸿蒙连接可见性：** “目前已有的设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+**独立 Dart Demo：** 在 Finder 中右键 Flutter 工程内单个真实 `.dart` 文件，直接选择当前右键层的“▶️ 从终端运行 Flutter Demo”，不再进入只有这一项的工具分组。菜单组递归检查后仅有一个可执行叶子时沿用原菜单项直接展示，保留图标与原动作目标；多动作目录菜单仍使用原分组。文件菜单只开放已启用的运行功能；最近的 `pubspec.yaml` 必须声明 Flutter SDK，不越过嵌套的其它包。Terminal 确认后沿用现有 FVM、环境体检和设备选择，将选中文件作为 `flutter run -t` 的真实目标；运行前拒绝无可识别 `main()` 的辅助文件。不同项目、设备和入口各自保存后台会话，重新打开同一入口才重连该入口日志。主题由 Finder 跟随系统；新增 Demo 标题支持管理面板的十种语言选择。当前安装与真实运行状态见[Demo 资产盘点](../../项目相关报告/Flutter-Demo独立运行资产盘点.md#validation)，源码或隔离通过不能代替 Finder 菜单与设备验收。
 
-**运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。检查失败、超时、结果无法解析或体检资源缺失时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；选中鸿蒙连接项或环境未就绪的真实鸿蒙设备后，当前流程会备份配置并直接承接准备，不要求另找入口。准备只执行一次，之后有界重查原设备，不重复获取 SDK 或构建。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
+**鸿蒙连接可见性：** “目前已有的真实设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+
+**运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。可自动补齐的目标缺项在当前流程准备并复检；检查超时、结果无法解析、体检资源缺失或准备后仍未通过时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；选中鸿蒙连接项或环境未就绪的真实鸿蒙设备后，当前流程会备份配置并直接承接准备，不要求另找入口。准备只执行一次，之后有界重查原设备，不重复获取 SDK 或构建。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
+
+公共依赖索引在首次体检前先与本轮选定 SDK 核对；缺失或指向其它 SDK 时，在当前工程使用同一 Flutter 执行 `pub get` 后复检。公共只读探针超时或因信号退出时直接停止并保留退出码，不再执行 `pub get`。索引仍无效就停止，不进入无关 Android 工具或许可证准备；索引有效后才按仍缺失的目标平台组件继续。Android 许可必须是本轮命令退出成功且末尾明确报告全部接受，兼容成功句末有无句点及终端 CR／ANSI 差异，不自动代为接受许可。
 
 **侧边栏：** 收藏的真实本地 Flutter 根文件夹支持同一工具组，沿用 Flutter 清单、平台与功能开关过滤。生成菜单和点击动作都以右键点中的侧边栏文件夹为准，不借用主区域选中项；无有效目录时隐藏。
 
@@ -25,7 +29,13 @@
 `JobsFlutterTools` 是 Flutter 工程右键菜单的统一入口。只有同层 `pubspec.yaml` 声明 Flutter SDK 的工程文件夹才展示菜单；支持选中文件夹或工程内空白处。菜单由单个扩展创建，子菜单顺序固定，不再由多个独立扩展竞争排列。其他软件提供的菜单相对于本组的位置由操作系统决定。
 
 
-**从终端运行的设备分组：** 设备选择分为“目前已有的设备”“新建设备”和独立的“启动虚拟设备”。已有组只显示当前已连接 / 正在运行的设备及鸿蒙连接诊断，可重新加载；启动组二级固定提供 iOS、Android、鸿蒙模拟器，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再列出、启动已有实例。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件。空清单不会隐式新建；启动就绪后才进入工程运行门禁，失败不改选其它设备。新建组始终提供 iOS、Android、Harmony（鸿蒙）三项，直接在当前终端复用桌面右键的创建脚本和原有自述、许可及最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，创建器通过本轮私有回执交接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 目标核验后等待同一 Flutter ID；就绪后自动继续原工程的预缓存与 `flutter run`，不再要求二次选择。取消、缺少有效回执、等待失败均不运行其它设备；没有对应平台目录的工程仍可新建设备，完成后保留设备并返回分组，不自动运行。 根层 `Esc` 或“取消本轮运行”结束；已有／新建子层用 `←` 或“返回设备分组”回根层，启动平台层用 `←` 返回根层，实例层用 `←` 返回启动平台层；返回保留已准备工具，本轮复用已通过的准备。`↑/↓` 移动、回车选择，搜索可选；创建器内部沿用其原有按键和确认。
+**从终端运行的设备分组：** 设备选择分为“目前已有的真实设备”“虚拟设备”和“其他运行目标（桌面 / Web）”，另有重新加载入口。设备选择器只显示一列可读名称，不把内部设备 ID、TSV 字段或选择器行标识显示成第二列，也不显示冗余的取消操作行；Esc／Ctrl+C 取消和子层左方向键返回保留，普通确认菜单的取消项不受影响；确认后仍按所选行精确绑定原设备，同名设备不会按名称误连。真实设备组只展示当前已连接的手机及鸿蒙连接诊断，不混入模拟器；桌面、浏览器和自定义平台保留在其他目标中。虚拟设备组按 iOS、Android、Harmony 分别进入子菜单，每组先列已有实例，最后一项为“新建 iOS / Android / Harmony 虚拟设备”（按所在系统显示实际名称）；无已有实例时仍可选择新建，不隐式执行创建。
+
+选定虚拟设备系统后，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再展示已有实例及新建入口。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件；已有实例、数据及镜像保持原样，运行中的实例直接复用，失败不改选其它设备。新建在当前终端复用桌面创建器及原有自述、许可和最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，通过本轮私有回执承接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 核验同一 Flutter ID；就绪后自动继续原工程预缓存与 `flutter run`，无需二次选择。取消、无有效回执或等待失败均不运行其它设备；工程缺对应平台目录时保留新设备并返回分组。
+
+菜单不再显示“取消本轮运行”；`Esc` / `Ctrl+C` 结束选择，`←` 逐层返回真正上一层，文本模式用 `b` 返回。平台实例列表最后始终为新建项，返回通过按键完成；返回保留本轮已准备并复检的工具。`↑/↓` 移动、回车确认、输入可筛选；创建器继续沿用各自原有确认。SDK 下载上下文、环境准备与 Flutter 构建运行等里程碑标题统一红色粗体；正文保留原信息配色，纯文本环境和落盘日志不含颜色控制码。
+
+**体检、准备与日志：** 每个平台的缺项逐行显示，合格为绿色勾、失败为红色叉。所选 iOS / Android 环境缺失时直接补齐并复检；所选 Harmony 沿原设备身份准备 SDK、工具、平台和依赖。其它未就绪平台按“回车后台补齐；任意字符加回车不补”选择，运行日志可输入 `e` 停止经身份复核的本工程后台任务；后台只写隔离缓存和工程草稿，不修改当前运行工程、FVM 或依赖索引；实际选用时再应用项目集成并复检，插件适配、许可和授权不冒充自动完成。SDK 下载上下文对照官网当前最新稳定 SDK、本机环境和工程 FVM 声明／解析结果，官网查询失败明确未知，不自动升级工程绑定。URL 统一绿色下划线，错误正文红色，结构日志保留原标签并加 emoji；纯文本及原始日志不含 ANSI。iOS Pod 下载遇到明确网络断流会保留锁及原设备，在本任务内切换 Git HTTP/1.1 并持续重试依赖获取，成功后继续原设备；认证、校验、版本冲突与编译错误不误重试。
 
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
 
@@ -380,9 +390,9 @@ Harmony Flutter 是适配分支，普通 Flutter 安装并不会自动带来 Har
 
 ## 十四、<span id="installation-validation">macOS 安装与验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter开发辅助工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter开发辅助工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -402,23 +412,25 @@ Harmony Flutter 是适配分支，普通 Flutter 安装并不会自动带来 Har
   --features run,package-android
 ```
 
-固定动作是 `project-setup`、`run`、`pub-get`、`android-dependencies`、`pods-dependencies`、`spm-dependencies`、`ohos-dependencies`、`native-dependencies`、`flutter-precache`、`web-dependencies`、`extract`、`import-dependencies`、`export-gradle-dependencies`、`import-gradle-dependencies`、`export-pods-dependencies`、`import-pods-dependencies`、`export-spm-dependencies`、`import-spm-dependencies`、`export-ohos-dependencies`、`import-ohos-dependencies`、`export-native-dependencies`、`import-native-dependencies`、`export-precache-dependencies`、`import-precache-dependencies`、`export-web-dependencies`、`import-web-dependencies`、`sdk-version`、`sdk-manage`、`ohos-sdk-manage`、`java-manage`、`gradle-download`、`package-ios`、`package-android`、`package-ohos`、`codegen`、`native-doctor`、`harmony-doctor`、`repair-android`、`repair-imports`、`repair-namespace`、`repair-package-imports`、`clean-build-artifacts`、`maintenance`。省略范围即全部动作，未知值停止。内部 `Scripts/ManageExtension.zsh` 的 `--skip-finder-restart` 只把刷新交给外层；`--non-interactive` 仅供面板提交已确认计划并要求明确 `--action`，会实际安装或卸载，公开启动器不接受该开关。
+固定动作是 `project-setup`、`run`、`pub-get`、`android-dependencies`、`pods-dependencies`、`spm-dependencies`、`ohos-dependencies`、`native-dependencies`、`flutter-precache`、`web-dependencies`、`extract`、`import-dependencies`、`export-gradle-dependencies`、`import-gradle-dependencies`、`export-pods-dependencies`、`import-pods-dependencies`、`export-spm-dependencies`、`import-spm-dependencies`、`export-ohos-dependencies`、`import-ohos-dependencies`、`export-native-dependencies`、`import-native-dependencies`、`export-precache-dependencies`、`import-precache-dependencies`、`export-web-dependencies`、`import-web-dependencies`、`sdk-version`、`sdk-manage`、`ohos-sdk-manage`、`java-manage`、`gradle-download`、`package-ios`、`package-android`、`package-ohos`、`codegen`、`native-doctor`、`harmony-doctor`、`repair-android`、`repair-imports`、`repair-namespace`、`repair-package-imports`、`clean-build-artifacts`、`maintenance`。省略范围即全部动作，未知值停止。内部 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` 的 `--skip-finder-restart` 只把刷新交给外层；`--non-interactive` 仅供面板提交已确认计划并要求明确 `--action`，会实际安装或卸载，公开启动器不接受该开关。
 
 安装日志是系统临时目录的 `JobsFlutterToolsInstall.log`，卸载为管理入口同名 `.log`，具体路径见终端。取消或空选不改变功能配置。
 
-依赖拉取验证：`ruby Tests/PubGetSdkPreparationTests.rb` 在真实伪终端中，用临时项目和假 SDK 覆盖健康复用、未绑定 / 断链 / 损坏准备、取消 / 失败停止、准备后复检、拉取退出码与只读检查；同时验证真实管理器四处取消在串接时阻断后续拉取。`JOBS_TEST_TOOLS_DIR` 可指定已安装 App 的 `Contents/Resources/Tools` 复验资源，不安装真实 SDK、不联网或修改用户工程。
+依赖拉取验证：`ruby Tests/PubGetSdkPreparationTests.rb/PubGetSdkPreparationTests.rb` 在真实伪终端中，用临时项目和假 SDK 覆盖健康复用、未绑定 / 断链 / 损坏准备、取消 / 失败停止、准备后复检、拉取退出码与只读检查；同时验证真实管理器四处取消在串接时阻断后续拉取。`JOBS_TEST_TOOLS_DIR` 可指定已安装 App 的 `Contents/Resources/Tools` 复验资源，不安装真实 SDK、不联网或修改用户工程。
 
-分层依赖验证：`ruby Tests/ProjectDependencyTests.rb` 使用临时工程、假 Gradle / Xcode / OHPM / JS / Flutter 工具和真实伪终端，核对实际解析命令、锁文件策略、目标目录、原生构建参数、取消 / 失败停止、同一内核复用及 `--check` 零工具执行。`python3 Tests/MenuTransportTests.py` 和仓库 `Tests/FlutterInstallerIntegrationTests.rb` 同时覆盖各依赖项的菜单传输、单独选择、共享包映射与禁用拦截。隔离结果不替代真实包源、私库认证、原生构建和设备运行验收。
+分层依赖验证：`ruby Tests/ProjectDependencyTests.rb/ProjectDependencyTests.rb` 使用临时工程、假 Gradle / Xcode / OHPM / JS / Flutter 工具和真实伪终端，核对实际解析命令、锁文件策略、目标目录、原生构建参数、取消 / 失败停止、同一内核复用及 `--check` 零工具执行。`python3 Tests/MenuTransportTests.py/MenuTransportTests.py` 和仓库 `Tests/FlutterInstallerIntegrationTests.rb` 同时覆盖各依赖项的菜单传输、单独选择、共享包映射与禁用拦截。隔离结果不替代真实包源、私库认证、原生构建和设备运行验收。
 
-依赖导入验证：`ruby Tests/DependencyImportShellTests.rb` 覆盖拖入路径、目录识别、取消、确认与失败码；`dart Tests/DependencyImportTests.dart` 使用临时项目核对真实导出 / 导入、只读预检、冲突、备份和异常目录拦截。`ruby Tests/DependencyImportEndToEndTests.rb` 完整执行分发器、原样交互脚本和原生 Dart，覆盖没有 `lib/` 的合法 Flutter 项目、真实导出快照、拖入路径、确认及取消零写入；`JOBS_TEST_TOOLS_DIR` 可指定已安装 App 的 `Contents/Resources/Tools` 复验打包资源。测试不操作用户项目、不运行 Flutter / pub get 或安装扩展。
+依赖导入验证：`ruby Tests/DependencyImportShellTests.rb/DependencyImportShellTests.rb` 覆盖拖入路径、目录识别、取消、确认与失败码；`dart Tests/DependencyImportTests.dart` 使用临时项目核对真实导出 / 导入、只读预检、冲突、备份和异常目录拦截。`ruby Tests/DependencyImportEndToEndTests.rb/DependencyImportEndToEndTests.rb` 完整执行分发器、原样交互脚本和原生 Dart，覆盖没有 `lib/` 的合法 Flutter 项目、真实导出快照、拖入路径、确认及取消零写入；`JOBS_TEST_TOOLS_DIR` 可指定已安装 App 的 `Contents/Resources/Tools` 复验打包资源。测试不操作用户项目、不运行 Flutter / pub get 或安装扩展。
 
-隔离验证：`python3 Tests/BuildArtifactDispatchTests.py` 不需要 Dart，使用临时工程和独立资源副本验证无 FVM 分发、取消、原生平台产物、DerivedData 归属、依赖保留、链接保护及旧维护的 FVM 门禁。`python3 Tests/MenuTransportTests.py` 编译真实 Swift 菜单与传输代码，核对清理二级菜单、新动作与旧维护 URL，并截获打开请求，不运行用户工程。
+隔离验证：`python3 Tests/BuildArtifactDispatchTests.py/BuildArtifactDispatchTests.py` 不需要 Dart，使用临时工程和独立资源副本验证无 FVM 分发、取消、原生平台产物、DerivedData 归属、依赖保留、链接保护及旧维护的 FVM 门禁。`python3 Tests/MenuTransportTests.py/MenuTransportTests.py` 编译真实 Swift 菜单与传输代码，核对清理二级菜单、新动作与旧维护 URL，并截获打开请求，不运行用户工程。
 
-`python3 Tests/PackageImportDispatchTests.py` 通过临时工程与真实伪终端核对相对路径和条件 import 转换、注释 / 字符串保护、第三方 / 生成 / 链接跳过、取消、精确备份、CRLF、只读零写入、Flutter 声明和无 SDK 分发；同时校验独立脚本与包内资源逐字节一致。
+`python3 Tests/PackageImportDispatchTests.py/PackageImportDispatchTests.py` 通过临时工程与真实伪终端核对相对路径和条件 import 转换、注释 / 字符串保护、第三方 / 生成 / 链接跳过、取消、精确备份、CRLF、只读零写入、Flutter 声明和无 SDK 分发；同时校验独立脚本与包内资源逐字节一致。
 
-`ruby Tests/ProjectJavaManagerTests.rb` 使用假 jEnv / Homebrew / JDK 验证 Java 安装分支、项目声明、取消、中断恢复和 Gradle 参数；`ruby Tests/HarmonyFlutterVersionTests.rb` 使用假 Git / FVM 验证鸿蒙标签、精确 commit、缓存、影子绑定及安全发布；`ruby Tests/NativeFlutterReturnTests.rb` 验证受管鸿蒙 SDK 切回官方 SDK、失败恢复与未知 fork 保护；`ruby Tests/VersionManagerDispatchTests.rb` 验证新入口无需现有 FVM、Java 绑定传递及错误退出。测试不安装真实 SDK、不修改用户工程。
+`ruby Tests/ProjectJavaManagerTests.rb/ProjectJavaManagerTests.rb` 使用假 jEnv / Homebrew / JDK 验证 Java 安装分支、项目声明、取消、中断恢复和 Gradle 参数；`ruby Tests/HarmonyFlutterVersionTests.rb/HarmonyFlutterVersionTests.rb` 使用假 Git / FVM 验证鸿蒙标签、精确 commit、缓存、影子绑定及安全发布；`ruby Tests/NativeFlutterReturnTests.rb/NativeFlutterReturnTests.rb` 验证受管鸿蒙 SDK 切回官方 SDK、失败恢复与未知 fork 保护；`ruby Tests/VersionManagerDispatchTests.rb/VersionManagerDispatchTests.rb` 验证新入口无需现有 FVM、Java 绑定传递及错误退出。测试不安装真实 SDK、不修改用户工程。
 
-维护引擎回归可先设置 `JOBS_TEST_DART` 为某个已安装 FVM SDK 内的原生 Dart，再运行 `python3 Tests/ToolsTests.py`，使用假的 SDK/插件/缓存；可用 `JOBS_TEST_DART=/项目FVM路径/bin/cache/dart-sdk/bin/dart` 指定测试 Dart。`ruby Tests/PackagingMenuTests.rb` 复用旧打包夹具，并额外验证三平台直达、项目 FVM、包型选择、取消、非法参数与分发退出码；不执行真实构建。完整发布验证另运行仓库 `Tests/FlutterInstallerIntegrationTests.rb` 和 Xcode build / codesign 校验。
+维护引擎回归可先设置 `JOBS_TEST_DART` 为某个已安装 FVM SDK 内的原生 Dart，再运行 `python3 Tests/ToolsTests.py/ToolsTests.py`，使用假的 SDK/插件/缓存；可用 `JOBS_TEST_DART=/项目FVM路径/bin/cache/dart-sdk/bin/dart` 指定测试 Dart。`ruby Tests/PackagingMenuTests.rb/PackagingMenuTests.rb` 复用旧打包夹具，并额外验证三平台直达、项目 FVM、包型选择、取消、非法参数与分发退出码；不执行真实构建。完整发布验证另运行仓库 `Tests/FlutterInstallerIntegrationTests.rb` 和 Xcode build / codesign 校验。
+
+配置窗口源码、构建入口与成品对应为 `Scripts/Tools/SetupProjectWindow.swift` → [BuildSetupWindow.zsh](./Scripts/【MacOS】BuildSetupWindow.zsh/README.md) → App 内 `Contents/Resources/Tools/JobsFlutterSetup`。工程的构建阶段命令及输入清单共同使用脚本同名包装路径，`SetupWindowLauncherTests` 直接执行该真实阶段并检查双架构产物；源码整理后也须保持这三者一致。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 

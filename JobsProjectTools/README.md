@@ -72,9 +72,9 @@ Finder 只控制本扩展内的顺序；整组相对其他扩展的位置由系�
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与逐项启停 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理项目工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理项目工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -100,15 +100,15 @@ Finder 只控制本扩展内的顺序；整组相对其他扩展的位置由系�
 - `JobsProjectTools/AppDelegate.swift`：宿主再次校验功能与项目条件，执行 IDE、Git 和剪贴板操作。
 - `../JobsGitRemoteOpener/JobsGitRemoteOpener/GitRemoteBrowserOpener.swift`：共用单 remote 直开、多 remote 终端选择；读取 Git 的实际配置，不修改 remote。
 - Xcode 工程直接引用既有项目检测器、Git 远程解析器、Git 拉取 / 提交回退 / 动态代理 launcher 和 Terminal 动作实现；业务脚本随统一 App 打包，安装后不读取源码目录。
-- [Scripts/ManageProjectTools.zsh](./Scripts/README.md)：统一构建、注册、保存功能状态和逐项关闭。
+- [Scripts/【MacOS】ManageProjectTools.zsh/【MacOS】ManageProjectTools.zsh](./Scripts/README.md)：统一构建、注册、保存功能状态和逐项关闭。
 
 ```sh
-python3 ./Tests/ConfigurationTests.py
-python3 ./Tests/MenuTests.py
-python3 ./Tests/HostDispatchTests.py
-python3 ./Tests/HostBootstrapTests.py
-python3 ./Tests/SourcetreeBehaviorTests.py
-python3 ./Tests/InstallerTests.py
+python3 Tests/ConfigurationTests.py/ConfigurationTests.py
+python3 Tests/MenuTests.py/MenuTests.py
+python3 Tests/HostDispatchTests.py/HostDispatchTests.py
+python3 Tests/HostBootstrapTests.py/HostBootstrapTests.py
+python3 Tests/SourcetreeBehaviorTests.py/SourcetreeBehaviorTests.py
+python3 Tests/InstallerTests.py/InstallerTests.py
 xcodebuild \
   -project ./JobsProjectTools.xcodeproj \
   -scheme JobsProjectTools \
@@ -125,7 +125,7 @@ xcodebuild \
 
 ## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、输入、状态与副作用 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-管理入口省略 `--features` 时，面板显示九项且默认空选；后台编排保留旧标识的卸载兼容；指定逗号分隔的 ID 则仅处理对应项：`android_studio_opener`、`vscode_opener`、`xcode_opener`、`git-pull`、`git-rollback`、`git_remote`、`git_remote_copier`、`git-proxy-configure`、`git_empty_commit_push`。`--action install|uninstall` 可预设操作，普通运行打开 GUI，由面板按钮最终确认；`--non-interactive` 仅属于内部 `Scripts/ManageExtension.zsh` 的已确认编排协议，公开启动器不接受，普通操作始终在 GUI 确认。需要面板逐项或多项勾选时使用 [总管理器](../【MacOS】🧩管理Finder扩展.command)。旧 `git-sourcetree` 不能重新安装；如需清除旧选择，显式执行 `/bin/zsh ./Scripts/ManageProjectTools.zsh uninstall git-sourcetree`，只清除此标识并保留其它选择。
+管理入口省略 `--features` 时，面板显示九项且默认空选；后台编排保留旧标识的卸载兼容；指定逗号分隔的 ID 则仅处理对应项：`android_studio_opener`、`vscode_opener`、`xcode_opener`、`git-pull`、`git-rollback`、`git_remote`、`git_remote_copier`、`git-proxy-configure`、`git_empty_commit_push`。`--action install|uninstall` 可预设操作，普通运行打开 GUI，由面板按钮最终确认；`--non-interactive` 仅属于内部 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` 的已确认编排协议，公开启动器不接受，普通操作始终在 GUI 确认。需要面板逐项或多项勾选时使用 [总管理器](../【MacOS】🧩管理Finder扩展.command)。旧 `git-sourcetree` 不能重新安装；如需清除旧选择，显式执行 `/bin/zsh ./Scripts/ManageProjectTools.zsh uninstall git-sourcetree`，只清除此标识并保留其它选择。
 
 构建输出位于 `./work/DerivedData/`。安装先成功注册并确认统一扩展启用，再保存配置、停用对应单项扩展；其它启用选择保留。卸载移除所选功能，全部关闭后注销统一扩展，保留源码、构建缓存和空配置。两种模式均刷新 Finder，会影响当前 Finder 窗口；脚本没有单独文件日志，诊断保留在终端。
 

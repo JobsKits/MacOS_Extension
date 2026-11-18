@@ -243,6 +243,8 @@ require 'tmpdir'
 require 'fileutils'
 require 'open3'
 
+require_relative '../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 module LegacyDesktopEntryAssertions
   def test_install_entry_preserves_leaf_identity_and_options
     with_compatibility_fixture(self.class::INSTALLER) do |entry, manager|
@@ -286,7 +288,7 @@ module LegacyDesktopEntryAssertions
       manager = File.join(directory, 'JobsDesktopTools/Scripts/ManageDesktopTools.zsh')
       FileUtils.mkdir_p([legacy, File.dirname(manager)])
       entry = File.join(legacy, File.basename(source))
-      FileUtils.cp(source, entry)
+      JobsSourceLayout.copy(source, entry)
       yield entry, manager
     end
   end

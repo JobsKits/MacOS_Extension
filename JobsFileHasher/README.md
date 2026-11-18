@@ -71,7 +71,7 @@ ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
 | `Tests/` | [文件指纹隔离验证](./Tests/FileHashTests.rb/README.md) |
 
 ```shell
-/bin/zsh ./Scripts/ManageExtension.zsh --help
+/bin/zsh ./Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh --help
 ruby ./Tests/FileHashTests.rb/FileHashTests.rb
 ```
 

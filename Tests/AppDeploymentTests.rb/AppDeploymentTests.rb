@@ -243,9 +243,10 @@ require 'minitest/autorun'
 require 'tmpdir'
 require 'fileutils'
 require 'open3'
+require 'json'
 
 class AppDeploymentTests < Minitest::Test
-  LIBRARY = File.expand_path('../../Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh', __dir__)
+  LIBRARY = ENV.fetch('JOBS_APP_DEPLOYMENT_TEST_LIBRARY', File.expand_path('../../Scripts/【MacOS】AppDeployment.zsh/【MacOS】AppDeployment.zsh', __dir__))
   APP_ID = 'com.jobs.fixture'
   EXTENSION = 'JobsFixtureFinder.appex'
   EXTENSION_ID = 'com.jobs.fixture.findersync'
@@ -873,6 +874,360 @@ class AppDeploymentTests < Minitest::Test
     ZSH
   end
 
+  def test_registration_postcheck_resets_stability_after_an_early_enabled_record_drops
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() {
+        [[ "$1" == "$EXTENSION_ID" ]] || return 97
+        local tick="$(<"$REGISTRATION_CLOCK")"
+        if (( tick == 2 )) && [[ ! -e "$TEST_ROOT/repaired-$EXTENSION_ID" ]]; then
+          return 0
+        fi
+        print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"
+      }
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || exit 1
+      [[ "$(<"$REGISTRATION_CLOCK")" == 6 ]] || exit 2
+      [[ "$(/usr/bin/grep -c '^enable:' "$CALLS")" == 1 ]] || exit 3
+      [[ "$(<"$CALLS")" == $'register-host:'"$DEPLOYED"$'\ninitialize-host:'"$DEPLOYED"'|'"$EXTENSION_ID"$'\nadd-extension:'"$DEPLOYED/Contents/PlugIns/$EXTENSION"$'\nenable:'"$EXTENSION_ID" ]] || exit 4
+    ZSH
+  end
+
+  def test_registration_postcheck_shares_one_stability_window_for_multiple_ids
+    make_app(@deployed, 'first')
+    second = File.join(@container, 'Contents/Applications/JobsSecond.app')
+    make_app(second, 'second', app_id: 'com.jobs.second', extension_id: 'com.jobs.second.findersync')
+    registration_shell(<<~'ZSH')
+      second="$CONTAINER/Contents/Applications/JobsSecond.app"
+      first_identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      second_identity="$(/usr/bin/stat -f '%d:%i' "$second")"
+      jobs_deployment_enabled_extension_paths() {
+        print -r -- "$1" >> "$TEST_ROOT/queries"
+        case "$1" in
+          com.jobs.fixture.findersync) print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION" ;;
+          com.jobs.second.findersync) print -r -- "$second/Contents/PlugIns/$EXTENSION" ;;
+          *) return 97 ;;
+        esac
+      }
+      jobs_deployment_verify_registrations 3 10 2 \
+        "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$first_identity" \
+        "$second" com.jobs.second "$EXTENSION" com.jobs.second.findersync "$second_identity" || exit 1
+      [[ "$(<"$REGISTRATION_CLOCK")" == 3 ]] || exit 2
+      [[ ! -e "$CALLS" ]] || exit 3
+      [[ "$(/usr/bin/grep -c '^com.jobs.fixture.findersync$' "$TEST_ROOT/queries")" == 4 ]] || exit 4
+      [[ "$(/usr/bin/grep -c '^com.jobs.second.findersync$' "$TEST_ROOT/queries")" == 4 ]] || exit 5
+    ZSH
+  end
+
+  def test_registration_postcheck_failed_or_cancelled_repair_stops_before_other_ids
+    make_app(@deployed, 'first')
+    second = File.join(@container, 'Contents/Applications/JobsSecond.app')
+    make_app(second, 'second', app_id: 'com.jobs.second', extension_id: 'com.jobs.second.findersync')
+    [17, 129, 130, 143].each do |failure_code|
+      registration_shell(<<~'ZSH' + "\nTEST_FAILURE_CODE=#{failure_code}\n" + <<~'ZSH')
+        jobs_deployment_registration_register_host() {
+          print -r -- "register-host:$1" >> "$CALLS"
+          return "$TEST_FAILURE_CODE"
+        }
+        jobs_deployment_enabled_extension_paths() { print -r -- "$1" >> "$TEST_ROOT/queries"; return 0; }
+      ZSH
+        second="$CONTAINER/Contents/Applications/JobsSecond.app"
+        identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+        second_identity="$(/usr/bin/stat -f '%d:%i' "$second")"
+        result=0
+        jobs_deployment_verify_registrations 3 10 2 \
+          "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" \
+          "$second" com.jobs.second "$EXTENSION" com.jobs.second.findersync "$second_identity" || result=$?
+        [[ "$result" == "$TEST_FAILURE_CODE" && "$(<"$REGISTRATION_CLOCK")" == 0 ]] || exit 1
+        [[ "$(<"$TEST_ROOT/queries")" == "$EXTENSION_ID" ]] || exit 2
+        [[ "$(<"$CALLS")" == "register-host:$DEPLOYED" ]] || exit 3
+      ZSH
+    end
+  end
+
+  def test_registration_postcheck_query_errors_do_not_trigger_registration_writes
+    make_app(@deployed, 'installed')
+    [9, 129, 130, 143].each do |failure_code|
+      registration_shell("TEST_QUERY_CODE=#{failure_code}\n" + <<~'ZSH')
+        identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+        jobs_deployment_enabled_extension_paths() { return "$TEST_QUERY_CODE"; }
+        result=0
+        jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+        [[ "$result" == "$TEST_QUERY_CODE" && ! -e "$CALLS" && "$(<"$REGISTRATION_CLOCK")" == 0 ]] || exit 1
+      ZSH
+    end
+  end
+
+  def test_registration_postcheck_does_not_override_another_enabled_copy_of_the_same_id
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() { print -r -- "$BUILT/Contents/PlugIns/$EXTENSION"; }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && ! -e "$CALLS" && "$(<"$REGISTRATION_CLOCK")" == 0 ]] || exit 1
+    ZSH
+  end
+
+  def test_registration_postcheck_detects_a_concurrent_target_swap_before_repair
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() { print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"; }
+      jobs_deployment_registration_pause() {
+        print 1 > "$REGISTRATION_CLOCK"
+        /bin/mv -- "$DEPLOYED" "$DEPLOYED.original" || return 98
+        /bin/mkdir -- "$DEPLOYED" || return 98
+      }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && ! -e "$CALLS" && -d "$DEPLOYED.original" && -d "$DEPLOYED" ]] || exit 1
+    ZSH
+  end
+
+  def test_registration_postcheck_limits_repairs_per_id_and_total_observation_time
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() { return 0; }
+      result=0
+      jobs_deployment_verify_registrations 3 15 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && "$(<"$REGISTRATION_CLOCK")" == 10 ]] || exit 1
+      [[ "$(/usr/bin/grep -c '^enable:' "$CALLS")" == 2 ]] || exit 2
+      /bin/rm -- "$CALLS" "$TEST_ROOT/repaired-$EXTENSION_ID"
+      print 0 > "$REGISTRATION_CLOCK"
+      jobs_deployment_enabled_extension_paths() {
+        [[ -f "$TEST_ROOT/repaired-$EXTENSION_ID" ]] && print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"
+        return 0
+      }
+      result=0
+      jobs_deployment_verify_registrations 4 4 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && "$(<"$REGISTRATION_CLOCK")" == 4 ]] || exit 3
+      [[ "$(/usr/bin/grep -c '^enable:' "$CALLS")" == 1 ]] || exit 4
+    ZSH
+  end
+
+  def test_registration_postcheck_allows_asynchronous_discovery_to_settle_without_spending_another_repair
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() {
+        local tick="$(<"$REGISTRATION_CLOCK")"
+        if (( tick >= 4 )); then
+          print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"
+        fi
+        return 0
+      }
+      jobs_deployment_verify_registrations 3 15 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || exit 1
+      [[ "$(<"$REGISTRATION_CLOCK")" == 7 ]] || exit 2
+      [[ "$(/usr/bin/grep -c '^enable:' "$CALLS")" == 1 ]] || exit 3
+    ZSH
+  end
+
+  def test_registration_postcheck_reports_progress_while_one_shared_window_is_observed
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      exec 2> "$TEST_ROOT/registration-progress"
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() { print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"; }
+      jobs_deployment_verify_registrations 21 30 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || exit 1
+      [[ "$(<"$REGISTRATION_CLOCK")" == 21 && ! -e "$CALLS" ]] || exit 2
+      /usr/bin/grep -F '已观察 10 秒' "$TEST_ROOT/registration-progress" >/dev/null || exit 3
+      /usr/bin/grep -F '已观察 20 秒' "$TEST_ROOT/registration-progress" >/dev/null || exit 4
+    ZSH
+  end
+
+  def test_registration_postcheck_cancelled_observation_stops_without_registration_writes
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() {
+        print -r -- "$1" >> "$TEST_ROOT/queries"
+        print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"
+      }
+      jobs_deployment_registration_pause() { return 130; }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 130 && ! -e "$CALLS" && "$(<"$TEST_ROOT/queries")" == "$EXTENSION_ID" ]] || exit 1
+    ZSH
+  end
+
+  def test_registration_postcheck_does_not_report_success_when_a_pause_passes_the_total_deadline
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_enabled_extension_paths() { print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"; }
+      jobs_deployment_registration_pause() { print 20 > "$REGISTRATION_CLOCK"; }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && ! -e "$CALLS" && "$(<"$REGISTRATION_CLOCK")" == 20 ]] || exit 1
+    ZSH
+  end
+
+  def test_registration_postcheck_rejects_a_final_signature_check_that_passes_the_deadline
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      signature_checks=0
+      jobs_deployment_verify_signature() {
+        (( signature_checks += 1 ))
+        if (( signature_checks == 2 )); then
+          print 20 > "$REGISTRATION_CLOCK"
+        fi
+        return 0
+      }
+      jobs_deployment_enabled_extension_paths() { print -r -- "$DEPLOYED/Contents/PlugIns/$EXTENSION"; }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && "$signature_checks" == 2 && "$(<"$REGISTRATION_CLOCK")" == 20 && ! -e "$CALLS" ]] || exit 1
+    ZSH
+  end
+
+  def test_registration_repair_rechecks_the_absolute_deadline_before_each_system_write
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_registration_register_host() {
+        print -r -- "register-host:$1" >> "$CALLS"
+        print 20 > "$REGISTRATION_CLOCK"
+      }
+      result=0
+      jobs_deployment_repair_registration "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" 10 || result=$?
+      [[ "$result" == 1 && "$(<"$REGISTRATION_CLOCK")" == 20 ]] || exit 1
+      [[ "$(<"$CALLS")" == "register-host:$DEPLOYED" ]] || exit 2
+    ZSH
+  end
+
+  def test_registration_postcheck_does_not_repair_the_next_id_after_a_slow_final_write
+    make_app(@deployed, 'first')
+    second = File.join(@container, 'Contents/Applications/JobsSecond.app')
+    make_app(second, 'second', app_id: 'com.jobs.second', extension_id: 'com.jobs.second.findersync')
+    registration_shell(<<~'ZSH')
+      second="$CONTAINER/Contents/Applications/JobsSecond.app"
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      second_identity="$(/usr/bin/stat -f '%d:%i' "$second")"
+      jobs_deployment_enabled_extension_paths() { print -r -- "$1" >> "$TEST_ROOT/queries"; return 0; }
+      jobs_deployment_registration_enable_extension() {
+        print -r -- "enable:$3" >> "$CALLS"
+        print 20 > "$REGISTRATION_CLOCK"
+      }
+      result=0
+      jobs_deployment_verify_registrations 3 10 2 \
+        "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" \
+        "$second" com.jobs.second "$EXTENSION" com.jobs.second.findersync "$second_identity" || result=$?
+      [[ "$result" == 1 && "$(<"$REGISTRATION_CLOCK")" == 20 ]] || exit 1
+      [[ "$(<"$TEST_ROOT/queries")" == "$EXTENSION_ID" ]] || exit 2
+      [[ "$(<"$CALLS")" == $'register-host:'"$DEPLOYED"$'\ninitialize-host:'"$DEPLOYED"'|'"$EXTENSION_ID"$'\nadd-extension:'"$DEPLOYED/Contents/PlugIns/$EXTENSION"$'\nenable:'"$EXTENSION_ID" ]] || exit 3
+    ZSH
+  end
+
+  def test_registration_repair_rechecks_identity_before_each_system_write
+    make_app(@deployed, 'installed')
+    registration_shell(<<~'ZSH')
+      identity="$(/usr/bin/stat -f '%d:%i' "$DEPLOYED")"
+      jobs_deployment_registration_register_host() {
+        print -r -- "register-host:$1" >> "$CALLS"
+        /bin/mv -- "$DEPLOYED" "$DEPLOYED.original" || return 98
+        /bin/mkdir -- "$DEPLOYED" || return 98
+      }
+      result=0
+      jobs_deployment_repair_registration "$DEPLOYED" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" "$identity" || result=$?
+      [[ "$result" == 1 && "$(<"$CALLS")" == "register-host:$DEPLOYED" ]] || exit 1
+      [[ -d "$DEPLOYED.original" && -d "$DEPLOYED" ]] || exit 2
+    ZSH
+  end
+
+  def test_commit_retires_only_the_exact_previous_transaction_host_before_deleting_it
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      previous="$JOBS_DEPLOYMENT_TRANSACTION_DIR/previous.app"
+      [[ -d "$previous" ]] || exit 2
+      jobs_deployment_unregister_app() {
+        [[ "$1" == "$previous" && -d "$1" && "$2" == "$EXTENSION" ]] || return 98
+        print -r -- "unregister:$1" >> "$CALLS"
+      }
+      jobs_deployment_commit || exit 3
+      [[ "$(<"$CALLS")" == "unregister:$previous" && ! -e "$previous" ]] || exit 4
+      [[ "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == new ]] || exit 5
+    ZSH
+  end
+
+  def test_failed_previous_transaction_unregister_retains_backup_until_safe_rollback
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      transaction="$JOBS_DEPLOYMENT_TRANSACTION_DIR"
+      previous="$transaction/previous.app"
+      jobs_deployment_unregister_app() { [[ "$1" != "$previous" ]] || return 31; }
+      result=0
+      jobs_deployment_commit || result=$?
+      [[ "$result" == 31 && -d "$transaction" && -d "$previous" && -d "$JOBS_DEPLOYMENT_TRANSACTION_LOCK" ]] || exit 2
+      [[ "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == new ]] || exit 3
+      jobs_deployment_unregister_app() { print -r -- "unregister:$1" >> "$CALLS"; }
+      jobs_deployment_rollback || exit 4
+      [[ "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == old && -z "$JOBS_DEPLOYMENT_TRANSACTION_DIR" && ! -e "$transaction" ]] || exit 5
+    ZSH
+  end
+
+  def test_cancelled_previous_transaction_unregister_preserves_code_and_does_not_release_backup
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      for cancelled in 129 130 143; do
+        jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+        transaction="$JOBS_DEPLOYMENT_TRANSACTION_DIR"
+        previous="$transaction/previous.app"
+        jobs_deployment_unregister_app() { [[ "$1" != "$previous" ]] || return "$cancelled"; }
+        result=0
+        jobs_deployment_commit || result=$?
+        [[ "$result" == "$cancelled" && -d "$previous" && -d "$JOBS_DEPLOYMENT_TRANSACTION_LOCK" ]] || exit 2
+        [[ "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == new ]] || exit 3
+        jobs_deployment_unregister_app() { print -r -- "unregister:$1" >> "$CALLS"; }
+        jobs_deployment_rollback || exit 4
+        [[ "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == old && ! -e "$transaction" ]] || exit 5
+      done
+    ZSH
+  end
+
+  def test_previous_transaction_retirement_preserves_a_real_extension_unregister_cancellation
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      previous="$JOBS_DEPLOYMENT_TRANSACTION_DIR/previous.app"
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { print -r -- "remove-extension:$1" >> "$CALLS"; return 130; }
+      jobs_deployment_registered_extension_paths_for_bundle() { print unexpected-query >> "$CALLS"; return 0; }
+      jobs_deployment_unregister_host_path() { print unexpected-host >> "$CALLS"; return 0; }
+      result=0
+      jobs_deployment_commit || result=$?
+      [[ "$result" == 130 && -d "$previous" && -d "$JOBS_DEPLOYMENT_TRANSACTION_LOCK" ]] || exit 2
+      [[ "$(<"$CALLS")" == "remove-extension:$previous/Contents/PlugIns/$EXTENSION" ]] || exit 3
+      [[ "$(<"$previous/Contents/Resources/业务.zsh")" == old && "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == new ]] || exit 4
+    ZSH
+  end
+
+  def test_previous_transaction_retirement_preserves_cancellation_from_a_failed_remove_recheck
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      previous="$JOBS_DEPLOYMENT_TRANSACTION_DIR/previous.app"
+      functions[jobs_deployment_unregister_app]="$functions[jobs_deployment_unregister_app_original]"
+      jobs_deployment_remove_extension_path() { print -r -- "remove-extension:$1" >> "$CALLS"; return 7; }
+      jobs_deployment_registered_extension_paths_for_bundle() { print -r -- "recheck:$1" >> "$CALLS"; return 130; }
+      jobs_deployment_unregister_host_path() { print unexpected-host >> "$CALLS"; return 0; }
+      result=0
+      jobs_deployment_commit || result=$?
+      [[ "$result" == 130 && -d "$previous" && -d "$JOBS_DEPLOYMENT_TRANSACTION_LOCK" ]] || exit 2
+      [[ "$(<"$CALLS")" == $'remove-extension:'"$previous/Contents/PlugIns/$EXTENSION"$'\nrecheck:'"$previous/Contents/PlugIns/$EXTENSION" ]] || exit 3
+      [[ "$(<"$previous/Contents/Resources/业务.zsh")" == old && "$(<"$DEPLOYED/Contents/Resources/业务.zsh")" == new ]] || exit 4
+    ZSH
+  end
+
   def test_app_management_signature_denial_returns_77_and_emits_responsible_app_marker
     shell(<<~'ZSH')
       setopt ERR_EXIT
@@ -1212,6 +1567,27 @@ class AppDeploymentTests < Minitest::Test
 
   private
 
+  # 用同一可控时钟验证多单元观察，全部登记系统动作只记入临时文件。
+  def registration_shell(body)
+    shell(<<~'ZSH' + body)
+      REGISTRATION_CLOCK="$TEST_ROOT/registration-clock"
+      print 0 > "$REGISTRATION_CLOCK"
+      /bin/rm -f -- "$CALLS" "$TEST_ROOT/queries"
+      jobs_deployment_registration_now() { print -r -- "$(<"$REGISTRATION_CLOCK")"; }
+      jobs_deployment_registration_pause() {
+        local tick="$(<"$REGISTRATION_CLOCK")"
+        print -r -- "$((tick + 1))" > "$REGISTRATION_CLOCK"
+      }
+      jobs_deployment_registration_register_host() { print -r -- "register-host:$1" >> "$CALLS"; }
+      jobs_deployment_registration_initialize_host() { print -r -- "initialize-host:$1|$3" >> "$CALLS"; }
+      jobs_deployment_registration_add_extension() { print -r -- "add-extension:$1/Contents/PlugIns/$2" >> "$CALLS"; }
+      jobs_deployment_registration_enable_extension() {
+        print -r -- "enable:$3" >> "$CALLS"
+        : > "$TEST_ROOT/repaired-$3"
+      }
+    ZSH
+  end
+
   # 提供可控的有效 LS 记录，避免查询或改写真实系统登记。
   def unused_cleanup_shell(body)
     shell(<<~'ZSH' + body)
@@ -1228,6 +1604,116 @@ class AppDeploymentTests < Minitest::Test
     ZSH
   end
 
+  public
+
+  def test_ordered_desktop_manifest_uses_fixed_owner_and_runs_before_outer_signing
+    %w[JobsDiskSpaceInfo JobsEnvironmentUpdater JobsDesktopTools JobsFileCreator].each { |name| make_ordered_provider(name) }
+    shell(<<~'ZSH')
+      jobs_deployment_codesign_container() {
+        [[ -f "$1/Contents/Resources/DesktopMenu.json" ]] || return 93
+        print -r -- signed >> "$CALLS"
+      }
+      jobs_deployment_sign_container_original "$CONTAINER" || exit 1
+    ZSH
+    manifest = JSON.parse(File.read(File.join(@container, 'Contents/Resources/DesktopMenu.json')))
+    assert_equal({ 'schemaVersion' => 1, 'owner' => 'JobsFileCreator',
+                   'providers' => %w[JobsFileCreator JobsDesktopTools JobsEnvironmentUpdater JobsDiskSpaceInfo] }, manifest)
+    assert_equal "signed\n", File.read(File.join(@root, 'calls'))
+  end
+
+  def test_ordered_desktop_manifest_reelects_after_removal_and_excludes_legacy_hosts
+    make_ordered_provider('JobsFileCreator')
+    make_ordered_provider('JobsDiskSpaceInfo')
+    make_ordered_provider('JobsDesktopTools', protocol: nil)
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER" || exit 1')
+    manifest = File.join(@container, 'Contents/Resources/DesktopMenu.json')
+    assert_equal %w[JobsFileCreator JobsDiskSpaceInfo], JSON.parse(File.read(manifest)).fetch('providers')
+    FileUtils.remove_entry(File.join(@container, 'Contents/Applications/JobsFileCreator.app'))
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER" || exit 1')
+    assert_equal 'JobsDiskSpaceInfo', JSON.parse(File.read(manifest)).fetch('owner')
+    FileUtils.remove_entry(File.join(@container, 'Contents/Applications/JobsDiskSpaceInfo.app'))
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER" || exit 1')
+    refute File.exist?(manifest)
+    assert File.directory?(File.join(@container, 'Contents/Applications/JobsDesktopTools.app'))
+  end
+
+  def test_ordered_desktop_manifest_rejects_links_and_bad_provider_identity_without_replacing_manifest
+    make_ordered_provider('JobsDiskSpaceInfo')
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER" || exit 1')
+    manifest = File.join(@container, 'Contents/Resources/DesktopMenu.json')
+    original = File.binread(manifest)
+    make_ordered_provider('JobsFileCreator', identifier: 'com.other.unowned')
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER"; [[ $? == 1 ]] || exit 1')
+    assert_equal original, File.binread(manifest)
+    FileUtils.remove_entry(File.join(@container, 'Contents/Applications/JobsFileCreator.app'))
+    File.unlink(manifest)
+    victim = File.join(@root, 'do-not-touch.json')
+    File.write(victim, 'keep')
+    File.symlink(victim, manifest)
+    shell('jobs_deployment_refresh_desktop_menu "$CONTAINER"; [[ $? == 1 ]] || exit 1')
+    assert_equal 'keep', File.read(victim)
+    assert File.symlink?(manifest)
+  end
+
+  def test_ordered_desktop_manifest_follows_install_rollback_commit_and_uninstall
+    make_ordered_provider('JobsDiskSpaceInfo')
+    make_ordered_provider('JobsFileCreator')
+    FileUtils.mkdir_p(File.join(@root, 'NewBuild'))
+    FileUtils.mv(File.join(@container, 'Contents/Applications/JobsFileCreator.app'), File.join(@root, 'NewBuild/JobsFileCreator.app'))
+    shell(<<~'ZSH')
+      functions[jobs_deployment_sign_container]="$functions[jobs_deployment_sign_container_original]"
+      jobs_deployment_codesign_container() { return 0; }
+      CREATOR="$TEST_ROOT/NewBuild/JobsFileCreator.app"
+      MANIFEST="$CONTAINER/Contents/Resources/DesktopMenu.json"
+      jobs_deployment_refresh_desktop_menu "$CONTAINER" || exit 1
+      original="$(/bin/cat "$MANIFEST")"
+      jobs_deployment_install "$CREATOR" com.jobs.filecreator JobsFileCreatorFinderSync.appex com.jobs.filecreator.findersync || exit 2
+      [[ "$(/usr/bin/plutil -extract owner raw -o - "$MANIFEST")" == JobsFileCreator ]] || exit 3
+      jobs_deployment_rollback || exit 4
+      [[ "$(/bin/cat "$MANIFEST")" == "$original" ]] || exit 5
+      jobs_deployment_install "$CREATOR" com.jobs.filecreator JobsFileCreatorFinderSync.appex com.jobs.filecreator.findersync || exit 6
+      jobs_deployment_commit || exit 7
+      jobs_deployment_uninstall "$CONTAINER/Contents/Applications/JobsFileCreator.app" com.jobs.filecreator JobsFileCreatorFinderSync.appex com.jobs.filecreator.findersync || exit 8
+      [[ "$(/bin/cat "$MANIFEST")" == "$original" ]] || exit 9
+    ZSH
+    refute File.exist?(File.join(@container, 'Contents/Applications/JobsFileCreator.app'))
+    assert File.directory?(File.join(@container, 'Contents/Applications/JobsDiskSpaceInfo.app'))
+  end
+
+  def test_rollback_restores_outer_signature_before_previous_registration
+    make_app(@deployed, 'old')
+    set_active(@deployed)
+    shell(<<~'ZSH')
+      jobs_deployment_sign_container() { print -r -- restored-signature >> "$CALLS"; }
+      jobs_deployment_register_restored_app() {
+        [[ "$(/usr/bin/tail -n 1 "$CALLS")" == restored-signature ]] || return 94
+        print -r -- "register:$1" >> "$CALLS"
+      }
+      jobs_deployment_install "$BUILT" "$APP_ID" "$EXTENSION" "$EXTENSION_ID" || exit 1
+      : > "$CALLS"
+      jobs_deployment_rollback || exit 2
+      [[ "$(/usr/bin/tail -n 1 "$CALLS")" == "register:$DEPLOYED" ]] || exit 3
+    ZSH
+    assert_equal 'old', File.read(resource(@deployed))
+  end
+
+  private
+
+  def make_ordered_provider(name, protocol: 1, identifier: nil)
+    make_container unless File.directory?(@container)
+    identifier ||= { 'JobsFileCreator' => 'com.jobs.filecreator', 'JobsDesktopTools' => 'com.jobs.desktoptools',
+                     'JobsEnvironmentUpdater' => 'com.jobs.environmentupdater', 'JobsDiskSpaceInfo' => 'com.jobs.diskspaceinfo' }.fetch(name)
+    app = File.join(@container, 'Contents/Applications', "#{name}.app")
+    [[app, identifier, name], [File.join(app, 'Contents/PlugIns', "#{name}FinderSync.appex"), "#{identifier}.findersync", "#{name}FinderSync"]].each do |bundle, bundle_id, executable|
+      FileUtils.mkdir_p(File.join(bundle, 'Contents/MacOS'))
+      marker = protocol && "<key>JobsOrderedDesktopMenuVersion</key><integer>#{protocol}</integer>"
+      File.write(File.join(bundle, 'Contents/Info.plist'), "<plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>#{bundle_id}</string><key>CFBundleExecutable</key><string>#{executable}</string>#{marker}</dict></plist>")
+      program = File.join(bundle, 'Contents/MacOS', executable)
+      File.write(program, "#!/bin/sh\nexit 0\n")
+      File.chmod(0o755, program)
+    end
+  end
+
   def make_container
     FileUtils.mkdir_p(File.join(@container, 'Contents/Applications'))
     FileUtils.mkdir_p(File.join(@container, 'Contents/MacOS'))
@@ -1241,8 +1727,8 @@ class AppDeploymentTests < Minitest::Test
     File.join(app, 'Contents/Resources/业务.zsh')
   end
 
-  def make_app(app, content, app_id: APP_ID)
-    [[app, app_id, 'FixtureHost'], [File.join(app, 'Contents/PlugIns', EXTENSION), EXTENSION_ID, 'FixtureExtension']].each do |bundle, identifier, executable|
+  def make_app(app, content, app_id: APP_ID, extension_id: EXTENSION_ID)
+    [[app, app_id, 'FixtureHost'], [File.join(app, 'Contents/PlugIns', EXTENSION), extension_id, 'FixtureExtension']].each do |bundle, identifier, executable|
       FileUtils.mkdir_p(File.join(bundle, 'Contents/MacOS'))
       File.write(File.join(bundle, 'Contents/Info.plist'), <<~XML)
         <?xml version="1.0" encoding="UTF-8"?>

@@ -20,7 +20,7 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 本目录包含 [**Git**](https://git-scm.com/) 拉取业务与 [**Finder**](https://support.apple.com/zh-cn/102339) 扩展构建后注册脚本，随本工程归 MacOS@Extension 统一管理，无独立 Git 根。
 
@@ -40,7 +40,7 @@
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、脚本用途 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[PullGitRepository.zsh](./PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[PullGitRepository.zsh](./【MacOS】PullGitRepository.zsh/【MacOS】PullGitRepository.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 拉取所属工作树当前分支的 upstream，保护本地状态并处理冲突。
 
@@ -49,7 +49,7 @@
 - 合并并恢复改动；冲突提供回滚、`YES` 放弃、输入信息提交后三项处理，空 commit 信息允许直接回车。
 - 操作范围、恢复锚点、日志和中断处理见[工程说明](../README.md#safety)。
 
-### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[EnableFinderExtension.zsh](./EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">[EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在本工程 Xcode Build Phase 注册并启用构建出的扩展。
 
@@ -63,8 +63,8 @@
 
 ```shell
 zsh -n ./PullGitRepository.zsh
-zsh -n ./EnableFinderExtension.zsh
-ruby ../Tests/GitPullCommandTests.rb
+zsh -n ./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh
+ruby ../Tests/GitPullCommandTests.rb/GitPullCommandTests.rb
 ```
 
 业务仅依赖原生 zsh、系统工具和健康 Git，不自动安装依赖或改写全局配置。真实安装使用[工程安装入口](../README.md#install)，不要用完整注册流程代替语法测试。

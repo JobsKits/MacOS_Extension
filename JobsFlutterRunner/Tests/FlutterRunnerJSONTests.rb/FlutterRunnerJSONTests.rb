@@ -1,0 +1,999 @@
+# frozen_string_literal: true
+
+# FlutterRunnerJSONTests.rb · JobsFlutterRunner
+# Created by Jobs on 2026年10月20日，星期二.
+# 只使用临时夹具验证 JXA 协议，不创建模拟器、不注册 launchd、不启动 Flutter。
+
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
+require 'minitest/autorun'
+require 'tmpdir'
+require 'fileutils'
+require 'json'
+require 'open3'
+require 'uri'
+
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
+class FlutterRunnerJSONTests < Minitest::Test
+  HELPER = ENV.fetch('JOBS_TEST_RUNNER_HELPER') { File.expand_path('../Scripts/FlutterRunner.jxa/FlutterRunner.jxa', File.dirname(__dir__)) }
+
+  def setup
+    @root = Dir.mktmpdir('JobsFlutterRunnerJSON-')
+    @project = File.join(@root, '项目 空格 $(touch SHOULD_NOT_EXIST)')
+    FileUtils.mkdir_p(@project)
+    File.write(File.join(@project, 'pubspec.yaml'), "name: fixture\ndependencies:\n  flutter:\n    sdk: flutter\n")
+  end
+
+  def teardown
+    FileUtils.remove_entry(@root)
+  end
+
+  def test_flutter_devices_keep_real_supported_ids_and_two_columns
+    path = write_json('devices.json', [
+                        { id: 'ios-id', name: "iPhone\t17\nPro\e[0m", targetPlatform: 'ios', isSupported: true },
+                        { id: 'macos', name: 'Mac', targetPlatform: 'darwin-arm64' },
+                        { id: 'unsupported', name: 'Old', supported: false },
+                        { id: 'unsupported2', name: 'Old', isSupported: false },
+                        { id: "bad\nidentifier", name: 'invalid' },
+                        { id: 'ios-id', name: 'duplicate' },
+                        { name: 'missing' }
+                      ])
+    output = successful('devices', path)
+    assert_equal 2, output.lines.length
+    assert_equal ['ios-id', 'macos'], output.lines.map { |line| line.split("\t", 2)[0] }
+    output.lines.each { |line| assert_equal 2, line.chomp.split("\t", -1).length }
+    refute_match(/[\x00-\x08\x0b-\x1f\x7f]/, output)
+    assert_includes output, 'iPhone 17 Pro [0m — ios'
+  end
+
+  def test_empty_device_array_is_distinct_from_malformed_response
+    assert_empty successful('devices', write_json('empty.json', [])).strip
+    [{ devices: [] }, nil, 'unexpected'].each_with_index do |data, index|
+      output, status = execute('devices', write_json("bad#{index}.json", data))
+      refute status.success?, output
+      assert_includes output, '必须是数组'
+    end
+    output, status = execute('devices', write_data('broken.json', '['))
+    refute status.success?, output
+  end
+
+  def test_physical_and_other_groups_do_not_mislabel_running_simulators
+    %w[android ios ohos macos web].each { |directory| FileUtils.mkdir_p(File.join(@project, directory)) }
+    path = write_json('classified-devices.json', [
+                        { id: 'android-usb', name: 'Android Phone', targetPlatform: 'android-arm64', emulator: false },
+                        { id: 'iphone-usb', name: 'iPhone', targetPlatform: 'ios', emulator: false },
+                        { id: 'harmony-usb', name: 'Harmony Phone', targetPlatform: 'ohos-arm64', emulator: false },
+                        { id: 'emulator-5554', name: 'Pixel AVD', targetPlatform: 'android-x64', emulator: true },
+                        { id: 'IOS-SIM', name: 'iOS Simulator', targetPlatform: 'ios', emulator: true },
+                        { id: '127.0.0.1:5555', name: 'Harmony Simulator', targetPlatform: 'ohos-arm64', emulator: true },
+                        { id: 'macos', name: 'Mac', targetPlatform: 'darwin-arm64', emulator: false },
+                        { id: 'chrome', name: 'Chrome', targetPlatform: 'web-javascript', emulator: false },
+                        { id: 'custom-target', name: 'Custom runner', targetPlatform: 'custom-extension', emulator: false }
+                      ])
+
+    assert_equal %w[android-usb iphone-usb harmony-usb],
+                 successful('devices', path, @project, 'physical').lines.map { |line| line.split("\t", 2).first }
+    assert_equal %w[macos chrome custom-target],
+                 successful('devices', path, @project, 'other').lines.map { |line| line.split("\t", 2).first }
+    assert_equal 9, successful('devices', path, @project).lines.length,
+                 '后台等待与运行仍需完整设备清单，不能因菜单分组丢掉模拟器'
+  end
+
+  def test_project_platform_directories_filter_known_devices_but_preserve_custom_platforms
+    values = [
+      { id: 'android-phone', name: 'Phone', targetPlatform: 'android-arm64' },
+      { id: 'iphone', name: 'iPhone', targetPlatform: 'ios' },
+      { id: 'desktop-mac', name: 'Mac', targetPlatform: 'darwin-arm64' },
+      { id: 'browser', name: 'Chrome', targetPlatform: 'web-javascript' },
+      { id: 'desktop-linux', name: 'Linux', targetPlatform: 'linux-x64' },
+      { id: 'desktop-windows', name: 'Windows', targetPlatform: 'windows-x64' },
+      { id: 'harmony-phone', name: 'Harmony', targetPlatform: 'ohos-arm64' },
+      { id: 'custom-platform', name: 'Custom', targetPlatform: 'custom-extension' }
+    ]
+    path = write_json('platform-devices.json', values)
+    assert_equal 8, successful('devices', path).lines.length
+    assert_equal ['custom-platform'], successful('devices', path, @project).lines.map { |line| line.split("\t", 2)[0] }
+    %w[android ios macos web linux windows ohos].each_with_index do |directory, index|
+      FileUtils.mkdir_p(File.join(@project, directory))
+      output = successful('devices', path, @project)
+      assert_equal index + 2, output.lines.length
+      assert_equal values[0..index].map { |value| value[:id] } + ['custom-platform'], output.lines.map { |line| line.split("\t", 2)[0] }
+    end
+    FileUtils.remove_entry(File.join(@project, 'android'))
+    File.write(File.join(@project, 'android'), 'not a directory')
+    refute_includes successful('devices', path, @project), 'android-phone'
+  end
+
+  def test_emulator_array_uses_official_daemon_fields_and_only_lists_android
+    path = write_json('emulators.json', [
+                        { id: 'Pixel_API_35', name: "Pixel\tAPI 35\nPhone", category: 'mobile', platformType: 'android' },
+                        { id: 'Pixel_API_35', name: 'duplicate', platformType: 'android' },
+                        { id: 'apple_ios_simulator', name: 'iOS Simulator', category: 'mobile', platformType: 'ios' },
+                        { id: "bad\nname", name: 'Bad', platformType: 'android' },
+                        { id: 'unknown', name: 'Unknown', platformType: 'custom' }
+                      ])
+    assert_equal "Pixel_API_35\tPixel API 35 Phone — Android", successful('emulators', path).strip
+    assert_empty successful('emulators', write_json('no-emulators.json', [])).strip
+    output, status = execute('emulators', write_json('invalid-emulators.json', { emulators: [] }))
+    refute status.success?, output
+    assert_includes output, '模拟器响应必须是数组'
+  end
+
+  def test_simulators_only_use_available_ios_runtimes_and_devices
+    path = write_json('simctl.json', simulator_fixture)
+    output = successful('simulators', path)
+    assert_equal ['booted-ios', 'shutdown-ios', 'legacy-ios'], output.lines.map { |line| line.split("\t", 2)[0] }
+    assert_includes output, "booted-ios\tiPhone 17 — Booted — iOS 26.0"
+    refute_includes output, 'unavailable'
+    refute_includes output, 'tv-device'
+    refute_includes output, 'duplicate'
+    output.lines.each { |line| assert_equal 2, line.chomp.split("\t", -1).length }
+  end
+
+  def test_runtime_choices_are_available_ios_versions_newest_first
+    output = successful('runtimes', write_json('simctl.json', simulator_fixture))
+    assert_equal [ios_runtime('26-0'), ios_runtime('18-5')], output.lines.map { |line| line.split("\t", 2)[0] }
+    assert_equal ["#{ios_runtime('26-0')}\tiOS 26.0", "#{ios_runtime('18-5')}\tiOS 18.5"], output.lines.map(&:chomp)
+  end
+
+  def test_duplicate_available_runtime_builds_only_offer_one_version_name
+    fixture = simulator_fixture
+    fixture[:runtimes] << { identifier: ios_runtime('26-0-duplicate'), name: 'iOS 26.0', version: '26.0', isAvailable: true }
+    output = successful('runtimes', write_json('duplicate-runtimes.json', fixture))
+    assert_equal 2, output.lines.length
+    assert_equal 1, output.scan(/\tiOS 26\.0/).length
+    assert_includes output, "#{ios_runtime('26-0')}\tiOS 26.0"
+    fixture[:devices][ios_runtime('26-0-duplicate')] = [{ udid: 'second-build-device', name: 'iPhone 17', state: 'Shutdown', isAvailable: true }]
+    output = successful('simulators', write_json('duplicate-runtimes.json', fixture))
+    assert_includes output, 'second-build-device'
+  end
+
+  def test_device_type_choices_exclude_ipad_watch_and_tv
+    output = successful('types', write_json('simctl.json', simulator_fixture))
+    assert_equal "com.apple.CoreSimulator.SimDeviceType.iPhone-17\tiPhone 17", output.strip
+  end
+
+  def test_preferred_types_put_models_with_available_runtime_first
+    output = successful('preferred-types', write_json('preferred.json', combination_fixture), 'arm64')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    assert_equal ['iPhone New', 'iPhone Old', 'iPhone Unknown', 'iPhone Range（本机无可搭配系统）'], labels
+    assert_equal 'com.apple.CoreSimulator.SimDeviceType.iPhone-New', output.lines.first.split("\t", 2)[0]
+    output.lines.each { |line| assert_equal 2, line.chomp.split("\t", -1).length }
+  end
+
+  def test_preferred_types_rank_by_current_architecture_only
+    output = successful('preferred-types', write_json('preferred.json', combination_fixture), 'x86_64')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    # 26.0 只支持 arm64，x86_64 下 iPhone New 降到未知组，iPhone Old 升到已确认组；
+    # 型号本身不因架构隐藏，只是推荐顺序变化。
+    assert_equal ['iPhone Old', 'iPhone Unknown', 'iPhone New', 'iPhone Range（本机无可搭配系统）'], labels
+  end
+
+  def test_compatible_runtimes_hide_unsupported_versions_and_mark_unknown
+    output = successful('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                        'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-New')
+    labels = output.lines.map { |line| line.chomp.split("\t", 2)[1] }
+    assert_equal ['iOS 26.0', 'iOS 17.0（未确认支持）'], labels
+    refute_includes output, 'iOS 18.5'
+    refute_includes output, ios_runtime('16-4')
+  end
+
+  def test_compatible_runtimes_respect_version_bounds_without_whitelist
+    assert_empty successful('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                            'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-Range').strip
+  end
+
+  def test_compatible_runtimes_reject_unknown_model
+    output, status = execute('compatible-runtimes', write_json('compatible.json', combination_fixture),
+                             'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-Missing')
+    refute status.success?, output
+    assert_includes output, '所选型号不属于当前设备清单'
+  end
+
+  def test_combination_modes_reject_malformed_simctl_response
+    output, status = execute('preferred-types', write_json('bad-preferred.json', { runtimes: [] }))
+    refute status.success?, output
+    assert_includes output, 'simctl 响应缺少'
+    output, status = execute('compatible-runtimes', write_json('bad-compatible.json', { runtimes: [] }),
+                             'arm64', 'com.apple.CoreSimulator.SimDeviceType.iPhone-New')
+    refute status.success?, output
+    assert_includes output, 'simctl 响应缺少'
+  end
+
+  def test_simctl_missing_structure_is_a_parse_failure
+    %w[simulators runtimes types].each do |mode|
+      output, status = execute(mode, write_json('simctl-bad.json', { runtimes: [] }))
+      refute status.success?, output
+      assert_includes output, 'simctl 响应缺少'
+    end
+  end
+
+  def test_common_pubspec_block_and_flow_forms_are_accepted
+    fixtures = [
+      "dependencies:\n  flutter:\n    sdk: flutter # official\n",
+      "'dependencies':\n  \"flutter\": {sdk: 'flutter'}\n",
+      'dependencies: {flutter: {sdk: flutter}}',
+      'dependencies: {http: any, flutter: {sdk: "flutter"}} # actual',
+      "\uFEFFname: fixture\r\ndependencies:\r\n  flutter:\r\n    sdk: flutter\r\n",
+      "description: 'dependencies: not a map'\ndependencies:\n  flutter:\n    sdk: flutter\n",
+      "description: |\n  some text\ndependencies:\n  http: any\n  flutter:\n    sdk: flutter\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n"
+    ]
+    fixtures.each do |contents|
+      File.write(File.join(@project, 'pubspec.yaml'), contents)
+      assert_equal 'true', successful('validate', @project).strip, contents
+    end
+  end
+
+  def test_misleading_descriptions_wrong_keys_and_ambiguous_yaml_are_rejected
+    fixtures = [
+      "name: dart_only\ndependencies:\n  http: any\n",
+      "# dependencies:\n#   flutter:\n#     sdk: flutter\n",
+      "description: |\n  dependencies:\n    flutter:\n      sdk: flutter\n",
+      "description: >\n  dependencies: {flutter: {sdk: flutter}}\n",
+      "dev_dependencies:\n  flutter_test:\n    sdk: flutter\n",
+      "dependencies:\n  flutter_test:\n    sdk: flutter\n",
+      "dependencies:\n  fluter:\n    sdk: flutter\n",
+      "dependencies:\n  example:\n    flutter:\n      sdk: flutter\n",
+      "dependencies:\n  flutter:\n    sdk: dart\n",
+      "dependencies:\n  flutter:\n    sdk: flutter\ndependencies:\n  http: any\n",
+      "dependencies:\n  flutter:\n    sdk: flutter\n  flutter:\n    sdk: flutter\n",
+      "dependencies:\n  flutter:\n    sdk: flutter\n    sdk: dart\n",
+      'dependencies: {flutter: {sdk: flutter, sdk: dart}}',
+      'dependencies: {flutter: {sdk: flutter}, flutter: {sdk: flutter}}',
+      "---\ndependencies:\n  flutter:\n    sdk: flutter\n",
+      "dependencies:\n\tflutter:\n\t  sdk: flutter\n",
+      "dependencies:\n  flutter:\n    sdk: flutter\u0000\n",
+      "dependencies:\n  flutter: *sdk\n",
+      "dependencies:\n  flutter:\n    sdk: !custom flutter\n"
+    ]
+    fixtures.each do |contents|
+      File.write(File.join(@project, 'pubspec.yaml'), contents)
+      assert_equal 'false', successful('validate', @project).strip, contents
+    end
+  end
+
+  def test_validator_rejects_root_and_pubspec_symlinks_large_files_and_packages
+    link = File.join(@root, 'linked-project')
+    File.symlink(@project, link)
+    assert_equal 'false', successful('validate', link).strip
+    assert_equal 'false', successful('validate', link + '/').strip
+    manifest = File.join(@project, 'pubspec.yaml')
+    external = write_data('external.yaml', File.read(manifest))
+    File.unlink(manifest)
+    File.symlink(external, manifest)
+    assert_equal 'false', successful('validate', @project).strip
+    File.unlink(manifest)
+    File.write(manifest, "dependencies: {flutter: {sdk: flutter}}\n" + ('#' * 1_048_576))
+    assert_equal 'false', successful('validate', @project).strip
+    package = File.join(@root, 'Fixture.app')
+    FileUtils.mkdir_p(package)
+    File.write(File.join(package, 'pubspec.yaml'), 'dependencies: {flutter: {sdk: flutter}}')
+    assert_equal 'false', successful('validate', package).strip
+    assert_equal 'false', successful('validate', File.join(@root, 'missing')).strip
+  end
+
+def test_dart_entry_resolves_nearest_flutter_root_and_plist_keeps_target
+  entry = File.join(@project, "lib/中文 space ' $() demo.dart")
+  FileUtils.mkdir_p(File.dirname(entry))
+  File.write(entry, "import 'package:flutter/material.dart';\nFuture<void> main() async {}\n")
+  assert_equal({'project' => @project, 'target' => entry}, JSON.parse(successful('run-selection', entry)))
+  session = File.join(@root, 'demo-session')
+  FileUtils.mkdir_p(session)
+  worker = write_data('demo-worker.zsh', '# fixture')
+  successful('plist', session, 'com.jobs.demo-test', worker, @project, '/usr/bin/true', 'device-1', entry)
+  plist, error, status = Open3.capture3('/usr/bin/plutil', '-convert', 'json', '-o', '-', File.join(session, 'job.plist'))
+  assert status.success?, error
+  assert_equal ['/bin/zsh', worker, '--worker', session, @project, '/usr/bin/true', 'device-1', entry], JSON.parse(plist)['ProgramArguments']
+  linked = File.join(@project, 'lib/link.dart')
+  File.symlink(entry, linked)
+  _out, result = execute('run-selection', linked)
+  refute result.success?
+  File.write(entry, '// void main() {}')
+  _out, result = execute('run-selection', entry)
+  refute result.success?, 'comment-only helper cannot start SDK work'
+  File.write(entry, 'void main() {}')
+  File.write(File.join(@project, 'lib/pubspec.yaml'), 'dependencies: {}')
+  _out, result = execute('run-selection', entry)
+  refute result.success?, 'nested non-Flutter package is a boundary'
+end
+
+  def test_plist_preserves_argument_boundaries_and_only_selected_environment
+    session = File.join(@root, "session & ' \" space")
+    FileUtils.mkdir_p(session)
+    worker = write_data("worker ' ; $(touch SHOULD_NOT_EXIST).zsh", '# fixture only')
+    flutter = File.join(@root, 'Flutter SDK & space', 'bin', 'flutter')
+    env = { 'DEVELOPER_DIR' => '/Applications/Xcode Custom.app/Contents/Developer',
+            'ANDROID_SDK_ROOT' => '/example/android-sdk', 'PUB_CACHE' => '',
+            'http_proxy' => 'http://127.0.0.1:7990', 'JOBS_TEST_SECRET' => 'never export' }
+    output, status = execute('plist', session, 'com.jobs.flutter.fixture', worker, @project, flutter, 'device-42', env: env)
+    assert status.success?, output
+    path = File.join(session, 'job.plist')
+    assert_equal path, output.strip
+    xml = File.read(path)
+    assert_includes xml, '<!DOCTYPE plist'
+    result, status = Open3.capture2e('/usr/bin/plutil', '-convert', 'json', '-o', '-', path)
+    assert status.success?, result
+    plist = JSON.parse(result)
+    assert_equal ['/bin/zsh', worker, '--worker', session, @project, flutter, 'device-42'], plist['ProgramArguments']
+    assert_equal @project, plist['WorkingDirectory']
+    assert_equal true, plist['RunAtLoad']
+    assert_equal false, plist['KeepAlive']
+    assert_equal 20, plist['ExitTimeOut']
+    assert_equal 'Interactive', plist['ProcessType']
+    assert_equal File.join(session, 'run.log'), plist['StandardOutPath']
+    assert_equal plist['StandardOutPath'], plist['StandardErrorPath']
+    %w[DEVELOPER_DIR ANDROID_SDK_ROOT PUB_CACHE http_proxy].each do |key|
+      assert_equal env[key], plist['EnvironmentVariables'][key]
+    end
+    refute plist['EnvironmentVariables'].key?('JOBS_TEST_SECRET')
+    assert_equal 0o600, File.stat(path).mode & 0o777
+    refute File.exist?(File.join(@project, 'SHOULD_NOT_EXIST'))
+    refute File.exist?(File.join(@root, 'SHOULD_NOT_EXIST'))
+  end
+
+  def test_plist_rejects_invalid_label_and_linked_destination_without_writes
+    session = File.join(@root, 'session')
+    FileUtils.mkdir_p(session)
+    worker = write_data('worker.zsh', '# fixture')
+    ['bad/label', "bad\nlabel", 'bad label', ''].each do |label|
+      output, status = execute('plist', session, label, worker, @project, '/bin/flutter', 'macos')
+      refute status.success?, output
+      assert_includes output, 'label 无效'
+      refute File.exist?(File.join(session, 'job.plist'))
+    end
+    external = write_data('outside.plist', 'keep')
+    File.symlink(external, File.join(session, 'job.plist'))
+    output, status = execute('plist', session, 'com.jobs.fixture', worker, @project, '/bin/flutter', 'macos')
+    refute status.success?, output
+    assert_equal 'keep', File.read(external)
+  end
+
+  def test_emulator_plist_owns_native_emulator_process_with_exact_avd_argument
+    session = File.join(@root, 'AVD session 中文')
+    FileUtils.mkdir_p(session)
+    binary = write_data("SDK space & ' /emulator/emulator", "#!/bin/zsh\nexit 0\n")
+    File.chmod(0o700, binary)
+    avd = 'Pixel_API_35'
+    output, status = execute('emulator-plist', session, 'com.jobs.flutterrunner.avd.fixture', binary, avd,
+                             env: { 'ANDROID_SDK_ROOT' => File.dirname(File.dirname(binary)),
+                                    'ANDROID_AVD_HOME' => '/custom/AVD home', 'ANDROID_USER_HOME' => '/custom/android-user',
+                                    'ANDROID_EMULATOR_HOME' => '/custom/emulator-home', 'PUB_CACHE' => '', 'JOBS_TEST_SECRET' => 'private' })
+    assert status.success?, output
+    path = File.join(session, 'job.plist')
+    assert_equal path, output.strip
+    json, status = Open3.capture2e('/usr/bin/plutil', '-convert', 'json', '-o', '-', path)
+    assert status.success?, json
+    plist = JSON.parse(json)
+    assert_equal [binary, '-avd', avd], plist['ProgramArguments']
+    assert_equal File.dirname(binary), plist['WorkingDirectory']
+    assert_equal true, plist['RunAtLoad']
+    assert_equal false, plist['KeepAlive']
+    assert_equal 20, plist['ExitTimeOut']
+    assert_equal 'Interactive', plist['ProcessType']
+    assert_equal File.join(session, 'emulator.log'), plist['StandardOutPath']
+    assert_equal plist['StandardOutPath'], plist['StandardErrorPath']
+    refute plist.key?('AbandonProcessGroup')
+    refute plist['EnvironmentVariables'].key?('JOBS_TEST_SECRET')
+    assert_equal '', plist['EnvironmentVariables']['PUB_CACHE']
+    assert_equal '/custom/AVD home', plist['EnvironmentVariables']['ANDROID_AVD_HOME']
+    assert_equal '/custom/android-user', plist['EnvironmentVariables']['ANDROID_USER_HOME']
+    assert_equal '/custom/emulator-home', plist['EnvironmentVariables']['ANDROID_EMULATOR_HOME']
+    assert_equal 0o600, File.stat(path).mode & 0o777
+  end
+
+  def test_emulator_plist_rejects_bad_binary_label_id_or_session
+    session = File.join(@root, 'avd-session')
+    FileUtils.mkdir_p(session)
+    binary = write_data('sdk/emulator', "#!/bin/zsh\nexit 0\n")
+    File.chmod(0o700, binary)
+    fixtures = [
+      [session, 'bad/label', binary, 'Pixel_API_35'],
+      [session, 'com.jobs.avd.fixture', binary, "bad\nAVD"],
+      [session, 'com.jobs.avd.fixture', File.join(@root, 'missing'), 'Pixel_API_35'],
+      [session, 'com.jobs.avd.fixture', 'relative/emulator', 'Pixel_API_35']
+    ]
+    fixtures.each do |args|
+      output, status = execute('emulator-plist', *args)
+      refute status.success?, output
+      refute File.exist?(File.join(session, 'job.plist'))
+    end
+    File.chmod(0o600, binary)
+    output, status = execute('emulator-plist', session, 'com.jobs.avd.fixture', binary, 'Pixel_API_35')
+    refute status.success?, output
+    refute File.exist?(File.join(session, 'job.plist'))
+    File.chmod(0o700, binary)
+    linked = File.join(@root, 'linked-avd-session')
+    File.symlink(session, linked)
+    output, status = execute('emulator-plist', linked, 'com.jobs.avd.fixture', binary, 'Pixel_API_35')
+    refute status.success?, output
+    refute File.exist?(File.join(session, 'job.plist'))
+  end
+
+  def test_daemon_controls_use_latest_app_start_and_flutter_array_protocol
+    log = write_data('run.log', <<~LOG)
+      Resolving dependencies...
+      [{"event":"app.start","params":{"appId":"old-id"}}]
+      [broken response
+      [{"event":"app.started","params":{"appId":"ignore-id"}}]
+      [{"event":"app.start","params":{"appId":"latest-id"}}]
+      [{"event":"app.log","params":{"log":"hello"}}]
+    LOG
+    %w[reload restart stop].each do |operation|
+      values = JSON.parse(successful('command', log, operation))
+      assert_equal 1, values.length
+      value = values[0]
+      assert_kind_of Integer, value['id']
+      assert_equal 'latest-id', value['params']['appId']
+      assert_equal(operation == 'stop' ? 'app.stop' : 'app.restart', value['method'])
+      if operation == 'stop'
+        assert_equal({ 'appId' => 'latest-id' }, value['params'])
+      else
+        assert_equal(operation == 'restart', value['params']['fullRestart'])
+        assert_equal false, value['params']['pause']
+      end
+    end
+  end
+
+  def test_daemon_control_refuses_missing_app_id_unknown_action_and_bad_arguments
+    log = write_data('no-app.log', "Flutter is compiling\n[]\n")
+    output, status = execute('command', log, 'reload')
+    refute status.success?, output
+    assert_includes output, '尚未返回 app.start'
+    output, status = execute('command', log, 'kill-all')
+    refute status.success?, output
+    assert_includes output, '未知 Flutter 控制操作'
+    output, status = execute('devices')
+    refute status.success?, output
+    assert_includes output, '参数无效'
+  end
+
+  def test_fvm_version_reads_both_config_layouts
+    assert_equal '3.47.7', successful('fvm-version', write_json('fvmrc.json', flutter: '3.47.7')).strip
+    assert_equal 'stable', successful('fvm-version', write_json('legacy.json', flutterSdkVersion: 'stable')).strip
+  end
+
+  def test_universal_ready_reuses_complete_cache_without_executing_or_writing_sdk
+    sdk = universal_sdk_fixture
+    before = Dir.glob(File.join(sdk, '**', '*')).select { |path| File.file?(path) }.to_h do |path|
+      [path, [File.binread(path), File.stat(path).mode, File.mtime(path)]]
+    end
+    assert_equal 'true', successful('universal-ready', sdk).strip
+    before.each do |path, state|
+      assert_equal state, [File.binread(path), File.stat(path).mode, File.mtime(path)], path
+    end
+    refute File.exist?(File.join(@root, 'SDK_EXECUTED'))
+  end
+
+  def test_universal_ready_rejects_missing_package_or_patched_directory_even_with_valid_stamps
+    sdk = universal_sdk_fixture
+    %w[pkg/sky_engine pkg/flutter_gpu artifacts/engine/common/flutter_patched_sdk
+       artifacts/engine/common/flutter_patched_sdk_product artifacts/engine/darwin-x64
+       artifacts/material_fonts artifacts/openssl].each do |relative|
+      path = File.join(sdk, 'bin/cache', relative)
+      saved = path + '.saved'
+      File.rename(path, saved)
+      assert_equal 'false', successful('universal-ready', sdk).strip, relative
+      File.rename(saved, path)
+    end
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_mismatched_engine_artifact_and_version_stamps
+    sdk = universal_sdk_fixture
+    %w[engine engine-dart-sdk flutter_sdk font-subset engine_stamp material_fonts gradle_wrapper
+       libimobiledevice libusbmuxd libplist openssl libimobiledeviceglue ios-deploy].each do |name|
+      path = File.join(sdk, 'bin/cache', name + '.stamp')
+      content = File.read(path)
+      File.write(path, 'stale-version')
+      assert_equal 'false', successful('universal-ready', sdk).strip, name
+      File.write(path, content)
+    end
+    assert_equal 'false', execute('universal-ready', sdk, env: { 'FLUTTER_PREBUILT_ENGINE_VERSION' => 'b' * 40 }).first.strip
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_missing_or_nonexecutable_required_tools
+    sdk = universal_sdk_fixture
+    %w[artifacts/gradle_wrapper/gradle/wrapper/gradle-wrapper.jar
+       artifacts/gradle_wrapper/gradlew.bat pkg/sky_engine/pubspec.yaml
+       artifacts/libimobiledevice/idevicesyslog artifacts/libusbmuxd/iproxy
+       artifacts/ios-deploy/ios-deploy artifacts/engine/darwin-x64/font-subset].each do |relative|
+      path = File.join(sdk, 'bin/cache', relative)
+      saved = path + '.saved'
+      File.rename(path, saved)
+      assert_equal 'false', successful('universal-ready', sdk).strip, relative
+      File.rename(saved, path)
+    end
+    executable = File.join(sdk, 'bin/cache/artifacts/libusbmuxd/iproxy')
+    File.chmod(0o600, executable)
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.chmod(0o700, executable)
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_validates_pub_roots_and_rejects_network_uris_or_invalid_configs
+    sdk = universal_sdk_fixture
+    path = File.join(sdk, 'packages/flutter_tools/.dart_tool/package_config.json')
+    original = File.read(path)
+    config = JSON.parse(original)
+    invalid = [nil, {}, { configVersion: 1, packages: config['packages'] }, { configVersion: 2, packages: [] }]
+    ['https://example.invalid/pkg/', 'file://example.invalid/pkg/', '../missing/', "../bad\npath/", '../?query=1', '../#fragment'].each do |uri|
+      value = JSON.parse(original)
+      value['packages'][1]['rootUri'] = uri
+      invalid << value
+    end
+    duplicate = JSON.parse(original)
+    duplicate['packages'] << duplicate['packages'].first
+    invalid << duplicate
+    invalid.each do |value|
+      File.write(path, JSON.generate(value))
+      assert_equal 'false', successful('universal-ready', sdk).strip, value.inspect
+    end
+    File.write(path, '[')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original)
+    dependency = File.join(sdk, 'packages/flutter_tools/deps/本地 依赖/pubspec.yaml')
+    File.rename(dependency, dependency + '.saved')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.rename(dependency + '.saved', dependency)
+    assert_equal 'true', successful('universal-ready', sdk).strip
+  end
+
+  def test_universal_ready_rejects_unknown_layout_or_engine_metadata
+    sdk = universal_sdk_fixture
+    path = File.join(sdk, 'packages/flutter_tools/lib/src/flutter_cache.dart')
+    original = File.read(path)
+    File.write(path, original.sub('registerArtifact(MaterialFonts(this));', 'registerArtifact(NewArtifact(this));'))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original.sub("'sky_engine', 'flutter_gpu'", "'sky_engine', 'flutter_gpu', 'new_package'"))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.write(path, original)
+    File.rename(path, path + '.saved')
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    File.rename(path + '.saved', path)
+    metadata = File.join(sdk, 'bin/cache/engine_stamp.json')
+    File.write(metadata, JSON.generate(git_revision: 'b' * 40))
+    assert_equal 'false', successful('universal-ready', sdk).strip
+    assert_equal 'false', successful('universal-ready', File.join(@root, 'missing SDK')).strip
+  end
+
+  def test_fvm_version_rejects_missing_or_unsafe_values
+    [{ flutter: '3.47.7; rm -rf /' }, { flutter: '' }, { flutter: 3 }, { other: 'x' }, nil, []].each_with_index do |data, index|
+      output, status = execute('fvm-version', write_json("fvm-bad#{index}.json", data))
+      refute status.success?, output
+      assert_includes output, 'FVM'
+    end
+  end
+
+  def test_unique_simulator_name_appends_suffix_for_existing_names
+    path = write_json('devices.json', devices: {
+      ios_runtime('26-0') => [
+        { name: 'iPhone 18 Pro@2026.10.21 11:30:00-1234' },
+        { name: 'iPhone 18 Pro@2026.10.21 11:30:00-1234 (2)' }
+      ],
+      ios_runtime('18-5') => [{ name: 'iPhone 16' }]
+    })
+    assert_equal 'iPhone 18 Pro@2026.10.21 11:30:00-1234 (3)',
+                 successful('unique-name', path, 'iPhone 18 Pro@2026.10.21 11:30:00-1234').strip
+    assert_equal 'iPhone 18 Pro@2026.10.21 11:30:00-9999',
+                 successful('unique-name', path, 'iPhone 18 Pro@2026.10.21 11:30:00-9999').strip
+  end
+
+  def test_unique_simulator_name_rejects_empty_base_or_malformed_devices
+    path = write_json('devices.json', devices: {})
+    output, status = execute('unique-name', path, '   ')
+    refute status.success?, output
+    assert_includes output, '模拟器名称不能为空'
+    [{ devices: [] }, { devices: 'x' }, nil, {}].each_with_index do |data, index|
+      output, status = execute('unique-name', write_json("bad-name#{index}.json", data), 'iPhone')
+      refute status.success?, output
+      assert_includes output, '已有设备 JSON'
+    end
+    output, status = execute('unique-name', write_json('bad-list.json', devices: { 'r' => 'not-array' }), 'iPhone')
+    refute status.success?, output
+    assert_includes output, '格式无效'
+  end
+
+  private
+
+  def execute(*args, env: {})
+    Open3.capture2e(env, '/usr/bin/osascript', '-l', 'JavaScript', HELPER, *args)
+  end
+
+  def successful(*args)
+    output, status = execute(*args)
+    assert status.success?, output
+    output
+  end
+
+  def write_data(name, contents)
+    path = File.join(@root, name)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, contents)
+    path
+  end
+
+  def write_json(name, value)
+    write_data(name, JSON.generate(value))
+  end
+
+  def ios_runtime(version)
+    'com.apple.CoreSimulator.SimRuntime.iOS-' + version
+  end
+
+  # 保留真实缓存结构和源码登记形状，所有“工具”仅写入标记以检测误执行。
+  def universal_sdk_fixture
+    sdk = File.join(@root, 'SDK 中文 空格 $(touch SHOULD_NOT_EXIST)')
+    engine = 'a' * 40
+    put = lambda do |relative, contents, executable = false|
+      path = File.join(sdk, relative)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, contents)
+      File.chmod(0o700, path) if executable
+    end
+    put.call('bin/internal/engine.version', engine)
+    %w[engine engine-dart-sdk flutter_sdk font-subset engine_stamp].each do |name|
+      put.call('bin/cache/' + name + '.stamp', engine + "\n")
+    end
+    put.call('bin/cache/engine_stamp.json', JSON.generate(git_revision: engine))
+    %w[material_fonts gradle_wrapper libimobiledevice libusbmuxd libplist openssl libimobiledeviceglue ios-deploy].each do |name|
+      put.call('bin/internal/' + name + '.version', name + '-version')
+      put.call('bin/cache/' + name + '.stamp', name + "-version\n")
+      FileUtils.mkdir_p(File.join(sdk, 'bin/cache/artifacts', name))
+    end
+    %w[flutter_patched_sdk flutter_patched_sdk_product].each do |name|
+      FileUtils.mkdir_p(File.join(sdk, 'bin/cache/artifacts/engine/common', name))
+    end
+    %w[sky_engine flutter_gpu].each { |name| put.call('bin/cache/pkg/' + name + '/pubspec.yaml', 'name: ' + name) }
+    marker = "#!/bin/zsh\ntouch '#{File.join(@root, 'SDK_EXECUTED')}'\n"
+    %w[bin/flutter bin/cache/dart-sdk/bin/dart bin/cache/artifacts/engine/darwin-x64/flutter_tester
+       bin/cache/artifacts/engine/darwin-x64/font-subset bin/cache/artifacts/libimobiledevice/idevicescreenshot
+       bin/cache/artifacts/libimobiledevice/idevicesyslog bin/cache/artifacts/libusbmuxd/iproxy
+       bin/cache/artifacts/ios-deploy/ios-deploy].each { |path| put.call(path, marker, true) }
+    %w[gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar].each do |path|
+      put.call('bin/cache/artifacts/gradle_wrapper/' + path, 'fixture')
+    end
+    put.call('packages/flutter_tools/pubspec.yaml', 'name: flutter_tools')
+    put.call('packages/flutter_tools/deps/本地 依赖/pubspec.yaml', 'name: local_dependency')
+    external = File.join(@root, '外部 dependency')
+    FileUtils.mkdir_p(external)
+    File.write(File.join(external, 'pubspec.yaml'), 'name: external_dependency')
+    put.call('packages/flutter_tools/.dart_tool/package_config.json', JSON.generate(configVersion: 2, packages: [
+      { name: 'flutter_tools', rootUri: '../' },
+      { name: 'local_dependency', rootUri: URI::DEFAULT_PARSER.escape('../deps/本地 依赖/') },
+      { name: 'external_dependency', rootUri: URI::DEFAULT_PARSER.escape('file://' + external + '/') }
+    ]))
+    put.call('packages/flutter_tools/lib/src/flutter_cache.dart', <<~DART)
+      class FlutterCache {
+        registerArtifact(MaterialFonts(this));
+        registerArtifact(GradleWrapper(this));
+        registerArtifact(FlutterSdk(this));
+        registerArtifact(IosUsbArtifacts(name, this));
+        registerArtifact(FontSubsetArtifacts(this));
+        registerArtifact(PubDependencies());
+        registerArtifact(OtherPlatformArtifacts(this));
+      }
+      class MaterialFonts extends CachedArtifact {
+        MaterialFonts(cache) : super('material_fonts', cache, DevelopmentArtifact.universal);
+      }
+      class GradleWrapper extends CachedArtifact {
+        GradleWrapper(cache) : super('gradle_wrapper', cache, DevelopmentArtifact.universal);
+        List<String> get _gradleScripts => <String>['gradlew', 'gradlew.bat'];
+      }
+      class FlutterSdk extends EngineCachedArtifact {
+        FlutterSdk(cache) : super('flutter_sdk', cache, DevelopmentArtifact.universal);
+        List<String> getPackageDirs() => const <String>['sky_engine', 'flutter_gpu'];
+        List<List<String>> getBinaryDirs() { return <List<String>>[
+          <String>['common', 'flutter_patched_sdk.zip'],
+          <String>['common', 'flutter_patched_sdk_product.zip'],
+          <String>['darwin-x64', 'darwin-$arch/artifacts.zip']
+        ]; }
+      }
+      class IosUsbArtifacts extends CachedArtifact {
+        IosUsbArtifacts(name, cache) : super(name, cache, DevelopmentArtifact.universal);
+        static const artifactNames = <String>['libimobiledevice', 'libusbmuxd', 'libplist', 'openssl', 'libimobiledeviceglue', 'ios-deploy'];
+      }
+      class FontSubsetArtifacts extends EngineCachedArtifact {
+        FontSubsetArtifacts(cache) : super(artifactName, cache, DevelopmentArtifact.universal);
+        List<List<String>> getBinaryDirs() { return <List<String>>[
+          <String>['darwin-x64', 'darwin-$arch/$artifactName.zip']
+        ]; }
+      }
+      class PubDependencies extends ArtifactSet {
+        PubDependencies() : super(DevelopmentArtifact.universal);
+      }
+      class OtherPlatformArtifacts extends ArtifactSet {
+        OtherPlatformArtifacts(cache) : super(DevelopmentArtifact.androidGenSnapshot);
+      }
+    DART
+    sdk
+  end
+
+  def simulator_fixture
+    { runtimes: [
+      { identifier: ios_runtime('18-5'), name: 'iOS 18.5', version: '18.5', availability: '(available)' },
+      { identifier: ios_runtime('26-0'), name: 'iOS 26.0', version: '26.0', isAvailable: true },
+      { identifier: ios_runtime('17-0'), name: 'iOS 17.0 unavailable', version: '17.0', isAvailable: false },
+      { identifier: 'com.apple.CoreSimulator.SimRuntime.tvOS-26-0', name: 'tvOS 26.0', version: '26.0', isAvailable: true }
+    ], devicetypes: [
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', name: 'iPhone 17', productFamily: 'iPhone' },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17', name: 'duplicate', productFamily: 'iPhone' },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.iPad', name: 'iPad', productFamily: 'iPad' },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.Apple-Watch', name: 'Apple Watch' },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.Apple-TV', name: 'Apple TV' }
+    ], devices: {
+      ios_runtime('26-0') => [
+        { udid: 'shutdown-ios', name: 'iPhone 17 Pro', state: 'Shutdown', isAvailable: true },
+        { udid: 'booted-ios', name: 'iPhone 17', state: 'Booted', isAvailable: true },
+        { udid: 'bad-device', name: 'unavailable', state: 'Shutdown', isAvailable: false },
+        { udid: 'booted-ios', name: 'duplicate', state: 'Shutdown', isAvailable: true }
+      ],
+      ios_runtime('18-5') => [{ udid: 'legacy-ios', name: 'iPhone 16', state: 'Shutdown', availability: '(available)' }],
+      ios_runtime('17-0') => [{ udid: 'old-ios', name: 'unavailable', state: 'Shutdown', isAvailable: true }],
+      'com.apple.CoreSimulator.SimRuntime.tvOS-26-0' => [{ udid: 'tv-device', name: 'Apple TV', state: 'Booted', isAvailable: true }]
+    } }
+  end
+
+  # 型号 / 系统组合夹具：26.0 只确认支持 iPhone New 且仅 arm64，18.5 只支持 iPhone Old 且仅 x86_64，
+  # 17.0 无白名单只能靠版本范围，16.4 只确认支持 iPhone Unknown 且仅 x86_64。
+  def combination_fixture
+    { runtimes: [
+      { identifier: ios_runtime('26-0'), name: 'iOS 26.0', version: '26.0', isAvailable: true,
+        supportedArchitectures: ['arm64'], supportedDeviceTypes: [{ identifier: iphone_type('New') }] },
+      { identifier: ios_runtime('18-5'), name: 'iOS 18.5', version: '18.5', isAvailable: true,
+        supportedArchitectures: ['x86_64'], supportedDeviceTypes: [{ identifier: iphone_type('Old') }] },
+      { identifier: ios_runtime('17-0'), name: 'iOS 17.0', version: '17.0', isAvailable: true },
+      { identifier: ios_runtime('16-4'), name: 'iOS 16.4', version: '16.4', isAvailable: true,
+        supportedArchitectures: ['x86_64'], supportedDeviceTypes: [{ identifier: iphone_type('Unknown') }] }
+    ], devicetypes: [
+      { identifier: iphone_type('New'), name: 'iPhone New', productFamily: 'iPhone' },
+      { identifier: iphone_type('Old'), name: 'iPhone Old', productFamily: 'iPhone' },
+      { identifier: iphone_type('Unknown'), name: 'iPhone Unknown', productFamily: 'iPhone' },
+      { identifier: iphone_type('Range'), name: 'iPhone Range', productFamily: 'iPhone',
+        minRuntimeVersion: 18 * 65_536 },
+      { identifier: 'com.apple.CoreSimulator.SimDeviceType.iPad-Pro', name: 'iPad Pro', productFamily: 'iPad' }
+    ], devices: {} }
+  end
+
+  def iphone_type(name)
+    'com.apple.CoreSimulator.SimDeviceType.iPhone-' + name
+  end
+end

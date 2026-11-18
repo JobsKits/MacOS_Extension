@@ -1,0 +1,136 @@
+# FlutterRunnerShellTests 回归入口
+
+![Jobs出品，必属精品](https://picsum.photos/1500/400)
+
+[toc]
+
+---
+
+## 🔥 <span id="前言">前言</span>
+
+[实际测试脚本](./FlutterRunnerShellTests.rb)验证同包功能的接口和边界；保留原回归协议，不增加重复确认。
+
+## 一、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+在当前脚本包目录运行，保留完整功能目录以定位被测源码：
+
+```shell
+ruby "./FlutterRunnerShellTests.rb"
+```
+
+使用已有 Ruby 与文件声明的测试库，不因目录包装安装或升级环境。各平台、GUI、SDK和网络分支的依赖及取消条件以用例声明为准；未满足的条件不能当作测试通过。
+
+## 二、覆盖项与结果 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+- `test_eof_at_first_confirmation_does_not_create_state`
+- `test_milestone_titles_are_red_in_a_terminal_and_plain_in_the_saved_log`
+- `test_milestone_titles_respect_plain_output_modes`
+- `test_simulator_failure_stops_without_selecting_another_phone`
+- `test_device_refresh_option_and_selection`
+- `test_new_device_continues_directly_without_a_second_device_selection`
+- `test_creation_receipt_waits_for_exact_avd_before_running_once`
+- `test_cancelled_creator_without_receipt_never_runs_an_existing_phone`
+- `test_malformed_creation_receipt_does_not_wait_or_run`
+- `test_creation_for_an_unsupported_project_platform_preserves_device_without_running`
+- `test_wait_failure_never_enters_flutter_run`
+- `test_return_from_virtual_group_then_existing_does_not_create`
+- `test_creator_failure_returns_to_groups_without_running_or_refreshing`
+- `test_group_cancel_does_not_query_or_create_devices`
+- `test_existing_ios_empty_inventory_does_not_create`
+- `test_existing_android_empty_inventory_does_not_create`
+- `test_unified_platform_lists_put_existing_instances_before_the_creation_action`
+- `test_unified_empty_platform_lists_offer_explicit_creation_without_creating_automatically`
+- `test_unified_platform_creation_uses_same_platform_and_hands_off_exact_created_device`
+- `test_packaged_creator_runs_literal_path_and_preserves_failure`
+- `test_invalid_number_can_retry_and_cancel`
+- `test_fzf_selection_returns_hidden_identifier`
+- `test_fzf_user_defaults_cannot_change_selection_or_parent_environment`
+- `test_fzf_cancel_is_treated_as_cancellation`
+- `test_real_fzf_resize_and_filter_restores_original_terminal_screen`
+- `test_real_fzf_cancel_restores_original_terminal_screen`
+- `test_real_fzf_group_navigation_with_left_and_enter`
+- `test_cancel_existing_simulator_picker_cancels_run`
+- `test_fvm_project_never_falls_back_to_global_flutter`
+- `test_untrusted_project_is_rechecked_before_worker`
+- `test_worker_holds_stdin_open_without_terminal_and_records_result`
+- `test_lock_releases_when_owner_exits`
+- `test_control_uses_data_and_does_not_block_without_worker_reader`
+- `test_bounded_command_failure_returns_actual_status`
+- `test_bounded_stream_preserves_progress_bytes_and_command_failure`
+- `test_bounded_stream_is_visible_before_command_finishes`
+- `test_bounded_stream_timeout_keeps_progress_and_closes_reader`
+- `test_prepare_project_fvm_sdk_streams_install_and_use_output`
+- `test_find_flutter_streams_bootstrap_download_from_existing_sdk`
+- `test_discovery_sdk_uses_routed_visible_long_acquisition_before_devices`
+- `test_warm_discovery_sdk_needs_no_network_or_sdk_process`
+- `test_failed_discovery_sdk_preparation_blocks_device_discovery`
+- `test_discovery_sdk_retry_keeps_each_completed_attempt`
+- `test_missing_ios_simulator_creates_selected_type_and_runtime`
+- `test_created_simulator_name_uses_model_time_and_pid`
+- `test_simulator_name_failure_stops_before_create`
+- `test_missing_ios_runtime_stops_before_any_create`
+- `test_model_without_matching_runtime_stops_on_enter`
+- `test_ios_incompatible_combination_only_reselects_with_explicit_r`
+- `test_ios_enter_after_incompatible_does_not_reselect`
+- `test_ios_generic_create_failure_is_not_treated_as_incompatible`
+- `test_simulator_interface_path_prefers_xcode_27_device_hub_layout`
+- `test_simulator_interface_path_falls_back_to_legacy_simulator_app`
+- `test_simulator_interface_path_rejects_xcode_without_any_interface`
+- `test_prepare_project_fvm_sdk_uses_ready_link_without_touching`
+- `test_prepare_project_fvm_sdk_relinks_when_cache_already_exists`
+- `test_prepare_project_fvm_sdk_downloads_when_cache_missing`
+- `test_prepare_project_fvm_sdk_relinks_when_fvm_only_writes_config`
+- `test_prepare_project_fvm_sdk_respects_tool_cancellation_without_download_confirmation`
+- `test_prepare_project_fvm_sdk_rejects_unreadable_version`
+- `test_resolve_fvm_cli_prefers_explicit_override`
+- `test_refresh_devices_defaults_to_30_seconds_and_honours_override`
+- `test_refresh_devices_failure_prints_recent_output`
+- `test_simulator_recognition_first_refresh_gets_120_seconds`
+- `test_simulator_recognition_retries_after_initial_failure`
+- `test_simulator_recognition_gives_up_after_four_attempts`
+- `test_missing_simulator_interface_warns_without_aborting`
+- `test_unopenable_simulator_interface_only_warns`
+- `test_connected_harmony_diagnostic_prepares_and_returns_only_the_original_real_target`
+- `test_harmony_usb_diagnostic_survives_flutter_device_query_failure`
+- `test_physical_group_excludes_harmony_emulator_loopback_diagnostics`
+- `test_other_targets_group_keeps_desktop_and_does_not_query_harmony_usb`
+- `test_cancel_from_harmony_diagnostic_does_not_start_background`
+- `test_failed_native_harmony_query_does_not_inject_output_into_device_rows`
+- `test_harmony_preparation_success_continues_same_main_and_runs_once`
+- `test_harmony_preparation_failure_and_cancel_stop_main_without_reselecting`
+- `test_original_harmony_target_wait_is_bounded_without_repeating_preparation`
+- `test_supported_harmony_device_with_unhealthy_environment_is_prepared_in_same_main`
+- `test_main_reports_health_before_device_selection_and_gates_background_run`
+- `test_main_stops_before_devices_if_preflight_report_fails`
+- `test_main_stops_before_precache_and_background_if_selected_platform_fails`
+- `test_main_device_cancellation_never_checks_target_or_starts_background`
+- `test_missing_preflight_resource_blocks_run`
+- `test_selected_device_platform_is_resolved_each_time`
+- `test_unparseable_selected_device_does_not_reuse_old_health`
+- `test_ios_incompatible_combination_does_not_claim_success`
+- `test_virtual_group_prepares_selected_platform_before_inventory_and_runs_only_original_target`
+- `test_virtual_group_back_and_cancel_do_not_prepare_or_launch`
+- `test_real_fzf_virtual_platform_navigation_returns_to_exact_parent`
+- `test_fzf_runtime_error_is_not_reported_as_cancel_or_text_fallback`
+- `test_return_from_instance_list_reuses_prepared_environment_without_replaying_acquisition`
+- `test_replaced_avd_after_selection_stops_before_version_start_or_wait`
+- `test_required_environment_repairs_without_optional_confirmation`
+- `test_optional_environment_enter_accepts_and_text_or_eof_skips`
+- `test_pod_download_disconnect_classification_rejects_compile_and_auth_failures`
+- `test_pod_retry_preserves_original_device_and_uses_process_git_transport`
+- `test_optional_worker_uses_private_project_and_caches_without_touching_original`
+- `test_optional_real_fork_returns_promptly_reuses_registration_and_cancels_its_child_tree`
+- `test_optional_registration_lock_contention_does_not_wait_or_prepare_another_task`
+- `test_optional_stop_rejects_a_reused_pid_without_signalling_the_unrelated_process`
+- `test_ios_physical_preparation_never_queries_or_downloads_a_simulator_runtime`
+- `test_required_passed_environment_does_not_install_or_modify_anything`
+- `test_missing_cocoapods_installs_with_existing_brew_and_rechecks_without_upgrade`
+- `test_android_required_kernel_installs_exact_project_components_and_preserves_project_java`
+- `test_cocoapods_probe_cancellation_does_not_continue_to_installation`
+- `test_bad_avd_does_not_block_new_creation_from_the_same_platform_menu`
+
+终端输出通过、失败和跳过；非零退出表示失败。临时夹具、日志及子进程按用例输出定位。目录迁移与语法检查不代表真实安装、设备、GUI或目标系统业务已验收。
+
+[返回测试目录](../README.md)。
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

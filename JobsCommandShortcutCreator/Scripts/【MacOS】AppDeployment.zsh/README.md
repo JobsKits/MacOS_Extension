@@ -82,4 +82,7 @@ zsh -n './【MacOS】AppDeployment.zsh'
 
 测试依赖 [**Ruby**](https://www.ruby-lang.org/) 与 macOS 原生 `PlistBuddy`、`ditto`；系统登记全部使用函数替身。签名流程通常隔离替换，专门的签名测试只在临时 Bundle 中实际签名，核对外层签名后内嵌扩展权限保留。清理测试实际删除临时 DerivedData 后执行联合 App 内宿主读取包内资源，兄弟目录保留；不构建工程、不写真实应用程序目录、不结束进程或重启 Finder。临时夹具通过不能代替真实 Finder 菜单或另一台机器验收。
 
+
+**联合 App 固定菜单清单：** 外层签名前按已安装且声明 `JobsOrderedDesktopMenuVersion=1` 的四个背景菜单宿主重建 `Contents/Resources/DesktopMenu.json`，仅写白名单模块名与固定优先级输出者。安装、卸载和回滚沿既有签名生命周期重建；卸载输出者改由下一项输出，最后移除本协议模块时删除清单。业务宿主、逐叶开关和独立安装单元保留。独立构建目录模式无联合清单，保留原菜单行为；系统手动禁用输出扩展会关闭整组背景展示，需按管理器明确选择更新／启用。更新完整顺序须更新四模块，旧协议模块混用不保证跨扩展顺序。
+
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

@@ -1,0 +1,1263 @@
+# frozen_string_literal: true
+# 隔离 SDK / HOME / PATH 回归；不调用真实 Android 组件安装、AVD 创建或启动。
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
+require 'minitest/autorun'
+require 'tmpdir'
+require 'fileutils'
+require 'open3'
+require 'pty'
+require 'timeout'
+require 'digest'
+require 'json'
+require 'shellwords'
+
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
+class CreateAndroidSimulatorTests < Minitest::Test
+  SCRIPT = File.expand_path('../Scripts/【MacOS】CreateAndroidSimulator.zsh/【MacOS】CreateAndroidSimulator.zsh', File.dirname(__dir__))
+  STANDALONE = File.expand_path('../../../../JobsCommand@Flutter/运行/【MacOS】🚀双击启动Android模拟器.command/【MacOS】🚀双击启动Android模拟器.command', File.dirname(__dir__))
+  PACKAGE = "system-images;android-36;google_apis;#{`/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null`.strip == '1' ? 'arm64-v8a' : 'x86_64'}"
+
+  def setup
+    @root = Dir.mktmpdir('Android SDK 中文 空格 ')
+    @sdk = File.join(@root, 'SDK 中文')
+    @avd = File.join(@root, 'AVD 空格')
+    @jdk = File.join(@root, 'JDK 中文')
+    @events = File.join(@root, 'events')
+    @emulator_template = File.join(@root, 'fake-emulator')
+    FileUtils.mkdir_p([File.join(@sdk, 'cmdline-tools', 'latest', 'bin'), @avd, File.join(@jdk, 'bin'), File.join(@root, 'logs')])
+    File.write(File.join(@avd, 'list'), '')
+    executable(File.join(@jdk, 'bin', 'java'), <<~'ZSH')
+      #!/bin/zsh
+      print -r -- 'fake Java version 21' >&2
+    ZSH
+    executable(@emulator_template, <<~'ZSH')
+      #!/bin/zsh
+      print -r -- "emulator:$*" >> "$FIXTURE_EVENTS"
+      case "$1" in
+        -version) [[ "${FIXTURE_EMULATOR_BROKEN:-0}" != 1 ]] || exit 8; print -r -- 'Android emulator fake version 36' ;;
+        -list-avds) /bin/cat "$ANDROID_AVD_HOME/list" ;;
+        -avd) print -r -- "launch:$2" >> "$FIXTURE_EVENTS"; exec /bin/sleep 3 ;;
+        *) exit 9 ;;
+      esac
+    ZSH
+    install_emulator
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'), <<~'ZSH')
+      #!/bin/zsh
+      print -r -- "sdk:$*" >> "$FIXTURE_EVENTS"
+      if [[ "$*" == *--version* ]]; then
+        if [[ "${FIXTURE_REQUIRE_JAVA21:-0}" == 1 && "$JAVA_HOME" == "$FIXTURE_OLD_JAVA" ]]; then
+          print -r -- 'UnsupportedClassVersionError: only recognizes class file versions' >&2
+          exit 13
+        fi
+        [[ "${FIXTURE_TOOLS_BROKEN:-0}" != 1 ]] || exit 7
+        print -r -- 19.0
+      elif [[ "$*" == *--list* ]]; then
+        [[ "${FIXTURE_LIST_FAIL:-0}" != 1 ]] || { print -r -- 'Permission denied: fixture repository' >&2; exit 6; }
+        count=$(/usr/bin/grep -c -- '--list --channel' "$FIXTURE_EVENTS")
+        (( count > ${FIXTURE_LIST_RETRY:-0} )) || { print -r -- 'network fixture failed' >&2; exit 6; }
+        (( count > ${FIXTURE_LIST_ZERO_RETRY:-0} )) || { print -r -- 'Warning: Failed to download any source lists! IO exception while downloading manifest' >&2; exit 0; }
+        print -r -- 'Available Packages:'
+        print -r -- "$FIXTURE_PACKAGE | 1 | Android image"
+        print -r -- 'system-images;android-99-preview;google_apis;arm64-v8a | 1 | preview'
+        print -r -- 'system-images;android-38;android-wear;arm64-v8a | 1 | watch'
+      elif [[ "$*" == *--install* ]]; then
+        [[ "${FIXTURE_INSTALL_FAIL:-0}" != 1 ]] || { print -r -- 'Permission denied: fixture SDK' >&2; exit 5; }
+        count=$(/usr/bin/grep -c -- '--install' "$FIXTURE_EVENTS")
+        (( count > ${FIXTURE_INSTALL_RETRY:-0} )) || { print -r -- 'download fixture failed' >&2; exit 5; }
+        (( count > ${FIXTURE_INSTALL_ZERO_RETRY:-0} )) || exit 0
+        if [[ "$*" == *'--install emulator'* ]]; then
+          /bin/mkdir -p "$ANDROID_HOME/emulator"
+          /bin/cp "$FIXTURE_EMULATOR_TEMPLATE" "$ANDROID_HOME/emulator/emulator"
+        else
+          image_dir="$ANDROID_HOME/${(j:/:)${(s:;:)FIXTURE_PACKAGE}}"
+          /bin/mkdir -p "$image_dir"
+          : > "$image_dir/system.img"
+          : > "$image_dir/source.properties"
+        fi
+      elif [[ "$*" == *'--uninstall emulator'* ]]; then
+        [[ "${FIXTURE_UNINSTALL_FAIL:-0}" != 1 ]] || exit 12
+        /bin/rm -r "$ANDROID_HOME/emulator"
+      else
+        exit 9
+      fi
+    ZSH
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'avdmanager'), <<~'ZSH')
+      #!/bin/zsh
+      print -r -- "avd:$*" >> "$FIXTURE_EVENTS"
+      if [[ "$*" == 'list device' ]]; then
+        print -r -- 'id: 0 or "pixel_9"'
+        print -r -- '    Name: Pixel 9'
+        print -r -- 'id: 1 or "pixel_10"'
+        print -r -- '    Name: Pixel 10'
+        print -r -- 'id: 2 or "pixel_watch"'
+        print -r -- '    Name: Pixel Watch'
+        print -r -- 'id: 3 or "Nexus_10"'
+        print -r -- '    Name: Nexus 10'
+      elif [[ "$1 $2" == 'create avd' ]]; then
+        name=''
+        while (( $# )); do
+          [[ "$1" != -n ]] || name="$2"
+          shift
+        done
+        [[ "${FIXTURE_CREATE_FAIL:-0}" != 1 ]] || exit 4
+        [[ "$name" != '' ]] || exit 3
+        if [[ "${FIXTURE_CREATE_NO_RESULT:-0}" != 1 ]]; then
+          print -r -- "$name" >> "$ANDROID_AVD_HOME/list"
+          /bin/mkdir "$ANDROID_AVD_HOME/$name.avd"
+          : > "$ANDROID_AVD_HOME/$name.ini"
+        fi
+        print -r -- "Created $name"
+      else
+        exit 9
+      fi
+    ZSH
+    @env = {
+      'HOME' => @root, 'JAVA_HOME' => @jdk, 'ANDROID_HOME' => @sdk,
+      'ANDROID_SDK_ROOT' => @sdk, 'ANDROID_AVD_HOME' => @avd,
+      'ANDROID_USER_HOME' => File.join(@root, '.android'), 'TMPDIR' => File.join(@root, 'logs'),
+      'JOBS_SDK_RETRY_DELAY' => '0', 'JOBS_SDK_RETRY_MAX_DELAY' => '1',
+      'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'NO_COLOR' => '1', 'TERM' => 'dumb',
+      'ANDROID_SIM_PROXY' => 'direct', 'https_proxy' => nil, 'HTTPS_PROXY' => nil,
+      'all_proxy' => nil, 'ALL_PROXY' => nil, 'no_proxy' => nil, 'NO_PROXY' => nil,
+      'FIXTURE_EVENTS' => @events, 'FIXTURE_PACKAGE' => PACKAGE,
+      'FIXTURE_EMULATOR_TEMPLATE' => @emulator_template
+    }
+    add_image
+  end
+
+  def teardown
+    FileUtils.remove_entry(@root) if @root && File.directory?(@root)
+  end
+
+  def executable(path, content)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, content)
+    File.chmod(0o755, path)
+  end
+
+  def install_emulator
+    FileUtils.mkdir_p(File.join(@sdk, 'emulator'))
+    JobsSourceLayout.copy(@emulator_template, File.join(@sdk, 'emulator', 'emulator'))
+  end
+
+  def add_image(package = PACKAGE)
+    path = File.join(@sdk, package.tr(';', '/'))
+    FileUtils.mkdir_p(path)
+    File.write(File.join(path, 'source.properties'), 'Pkg.Revision=1')
+    File.write(File.join(path, 'system.img'), '')
+  end
+
+  def events
+    File.exist?(@events) ? File.read(@events) : ''
+  end
+
+  def bootstrap_fixture(checksum: nil, archive_name: nil)
+    package_root = File.join(@root, 'official archive')
+    FileUtils.mkdir_p(package_root)
+    FileUtils.cp_r(File.join(@sdk, 'cmdline-tools', 'latest'), File.join(package_root, 'cmdline-tools'))
+    FileUtils.mkdir_p(File.join(package_root, 'cmdline-tools', 'lib'))
+    File.write(File.join(package_root, 'cmdline-tools', 'source.properties'), 'Pkg.Revision=21.0')
+    archive = File.join(@root, 'official-tools.zip')
+    _out, zip_status = Open3.capture2e('/usr/bin/zip', '-qr', archive, 'cmdline-tools', chdir: package_root)
+    assert zip_status.success?
+    checksum ||= Digest::SHA1.file(archive).hexdigest
+    xml = File.join(@root, 'repository.xml')
+    host_arch = PACKAGE.end_with?('arm64-v8a') ? 'aarch64' : 'x64'
+    archive_name ||= PACKAGE.end_with?('arm64-v8a') ? 'commandlinetools-mac_arm64-123_latest.zip' : 'commandlinetools-mac_x86_64-123_latest.zip'
+    File.write(xml, <<~XML)
+      <repository><remotePackage path="cmdline-tools;21.0"><revision><major>21</major><minor>0</minor></revision>
+      <channelRef ref="channel-0"/><archives><archive><host-os>macosx</host-os><host-arch>#{host_arch}</host-arch>
+      <complete><size>#{File.size(archive)}</size><checksum type="sha1">#{checksum}</checksum><url>#{archive_name}</url></complete>
+      </archive></archives></remotePackage></repository>
+    XML
+    @env['FIXTURE_BOOTSTRAP_XML'] = xml
+    @env['FIXTURE_BOOTSTRAP_ZIP'] = archive
+    write_download_fixture
+    FileUtils.rm_rf(File.join(@sdk, 'cmdline-tools', 'latest'))
+  end
+
+  def write_download_fixture
+    fakebin = File.join(@root, 'bin')
+    executable(File.join(fakebin, 'curl'), <<~'ZSH')
+      #!/bin/zsh
+      target='' url='' headers=''
+      [[ "$1" == --disable ]] || exit 17
+      while (( $# )); do
+        if [[ "$1" == --output ]]; then target="$2"; shift; fi
+        if [[ "$1" == --dump-header ]]; then headers="$2"; shift; fi
+        if [[ "$1" == https://* ]]; then url="$1"; fi
+        shift
+      done
+      print -r -- "curl:$url" >> "$FIXTURE_EVENTS"
+      print -r -- "curl-target:$target" >> "$FIXTURE_EVENTS"
+      print -r -- "stage-mode:$(/usr/bin/stat -f %Lp "${target:h}")" >> "$FIXTURE_EVENTS"
+      count=$(/usr/bin/grep -Fxc -- "curl:$url" "$FIXTURE_EVENTS")
+      (( count > ${FIXTURE_CURL_RETRY:-0} )) || { print -u2 -r -- 'Connection reset by peer: fixture archive'; exit 28; }
+      if [[ "$url" == https://dl.google.com/android/repository/repository2-3.xml ]]; then
+        /bin/cp "$FIXTURE_BOOTSTRAP_XML" "$target"
+      elif [[ "$url" == https://api.adoptium.net/* ]]; then
+        /bin/cp "$FIXTURE_JAVA_JSON" "$target"
+      elif [[ "$url" == https://github.com/* || "$url" == https://release-assets.githubusercontent.com/* ]]; then
+        [[ "${FIXTURE_JAVA_DOWNLOAD_FAIL:-0}" != 1 ]] || { print -u2 -r -- "Permission denied: fixture Java archive"; exit 22; }
+        if [[ "${FIXTURE_JAVA_REDIRECT:-0}" == 1 && "$url" == https://github.com/* ]]; then
+          print -r -- $'HTTP/1.1 302 Found\r\nLocation: https://release-assets.githubusercontent.com/fixture/java.tar.gz?signature=private-token\r\n' > "$headers"
+          print -rn -- 302
+          exit 0
+        fi
+        /bin/cp "$FIXTURE_JAVA_TAR" "$target"
+      else
+        [[ "${FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL:-0}" != 1 ]] || { print -u2 -r -- "Permission denied: fixture SDK archive"; exit 22; }
+        /bin/cp "$FIXTURE_BOOTSTRAP_ZIP" "$target"
+      fi
+      print -rn -- 200
+    ZSH
+    @env['PATH'] = "#{fakebin}:/usr/bin:/bin:/usr/sbin:/sbin"
+  end
+
+  def java_fixture(checksum: nil, unsafe_link: nil)
+    contents = File.join(@root, 'java archive', 'jdk-21.0.13+9', 'Contents', 'Home')
+    FileUtils.mkdir_p(File.join(contents, 'bin'))
+    JobsSourceLayout.copy(File.join(@jdk, 'bin', 'java'), File.join(contents, 'bin', 'java'))
+    File.symlink(unsafe_link, File.join(contents, 'unsafe')) if unsafe_link
+    archive = File.join(@root, 'official-java.tar.gz')
+    _output, result = Open3.capture2e('/usr/bin/tar', '-czf', archive, '-C', File.join(@root, 'java archive'), 'jdk-21.0.13+9')
+    assert result.success?
+    arch = PACKAGE.end_with?('arm64-v8a') ? 'aarch64' : 'x64'
+    json = File.join(@root, 'official-java.json')
+    File.write(json, JSON.generate([{ vendor: 'eclipse', version: { major: 21 }, release_name: 'jdk-21.0.13+9', binary: { os: 'mac', architecture: arch, image_type: 'jdk', jvm_impl: 'hotspot', package: { link: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_#{arch}_mac_hotspot_21.0.13_9.tar.gz", checksum: checksum || Digest::SHA256.file(archive).hexdigest, size: File.size(archive) } } }]))
+    @env['FIXTURE_JAVA_JSON'] = json
+    @env['FIXTURE_JAVA_TAR'] = archive
+    write_download_fixture
+  end
+
+  def java_bootstrap
+    command = <<~'ZSH'
+      source <(/usr/bin/sed '$d' "$1")
+      android_prepare_context
+      ANDROID_SIM_MODE=prepare
+      android_detect_architecture
+      android_find_java() {
+        [[ "${FIXTURE_JAVA_POSTFAIL:-0}" != 1 ]] && [[ "${JAVA_HOME:-}" == "$HOME/Library/Java/JavaVirtualMachines/temurin-21-"* ]] && [[ -x "$JAVA_HOME/bin/java" ]] && "$JAVA_HOME/bin/java" -version
+      }
+      android_ensure_java
+    ZSH
+    Open3.capture2e(@env, '/bin/zsh', '-c', JobsSourceLayout.shell(command), 'test', SCRIPT)
+  end
+
+  def interactive(input, *args)
+    output = +''
+    process_status = nil
+    PTY.spawn(@env, '/bin/zsh', SCRIPT, *args) do |reader, writer, pid|
+      writer.write(input)
+      Timeout.timeout(14) do
+        begin
+          loop { output << reader.readpartial(8192) }
+        rescue Errno::EIO, EOFError
+          _, process_status = Process.wait2(pid)
+        end
+      end
+    end
+    [output.force_encoding(Encoding::UTF_8), process_status]
+  end
+
+  def check(*args)
+    Open3.capture2e(@env, '/bin/zsh', SCRIPT, *(args.empty? ? ['--check'] : args))
+  end
+
+  def test_finder_and_bundled_simulator_resources_have_the_same_core
+    desktop = File.expand_path('../../JobsDesktopTools/Resource/【MacOS】CreateAndroidSimulator.zsh/【MacOS】CreateAndroidSimulator.zsh', File.dirname(__dir__))
+    support = File.expand_path('../../JobsFlutterTools/Scripts/Tools/【MacOS】AndroidSdkSupport.zsh/【MacOS】AndroidSdkSupport.zsh', File.dirname(__dir__))
+    assert_equal File.binread(SCRIPT), File.binread(desktop)
+    entry_core = File.binread(SCRIPT).split('# JOBS_SDK_RETRY_BEGIN', 2).last.split('# <<< Jobs Android simulator core <<<', 2).first
+    support_core = File.binread(support).split('# JOBS_SDK_RETRY_BEGIN', 2).last
+    assert_equal entry_core, support_core
+    refute_includes File.binread(support), 'jobs_terminal_style_bootstrap "$0"'
+  end
+
+  def test_full_health_check_is_read_only
+    output, result = check
+    assert result.success?, output
+    assert_includes output, '创建依赖已就绪'
+    assert_includes output, SCRIPT
+    refute_includes output, "\e["
+    refute_match(/--install|create avd|--list --channel/, events)
+    assert_empty Dir.children(File.join(@root, 'logs'))
+    assert_empty File.read(File.join(@avd, 'list'))
+  end
+
+  def launcher_fixture
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'), <<~'ZSH')
+      #!/bin/zsh
+      # Official v23 wrapper dispatches using ANDROID_CLI_BIN / run_android_cli.
+      print -r -- 'UNEXPECTED_CLI_DOWNLOAD' >> "$FIXTURE_EVENTS"
+      exit 1
+    ZSH
+    executable(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'avdmanager'), "#!/bin/zsh\nexit 99\n")
+  end
+
+  def test_check_never_executes_the_new_cli_download_launcher
+    launcher_fixture
+    output, result = check
+    refute result.success?, output
+    assert_includes output, '跳过 Android CLI 下载启动器'
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+    refute_includes events, 'curl:'
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_cli_launcher_does_not_hide_a_working_legacy_installation
+    FileUtils.cp_r(File.join(@sdk, 'cmdline-tools', 'latest'), File.join(@sdk, 'cmdline-tools', '21.0'))
+    launcher_fixture
+    output, result = check
+    assert result.success?, output
+    assert_includes output, '21.0/bin'
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+  end
+
+  def test_cli_launcher_is_preserved_and_compatible_tools_are_added_once
+    bootstrap_fixture
+    launcher_fixture
+    2.times do
+      output, result = interactive("\n", '--prepare')
+      assert result.success?, output
+    end
+    assert File.executable?(File.join(@sdk, 'cmdline-tools', 'latest', 'bin', 'sdkmanager'))
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    assert_equal 1, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
+    refute_includes events, 'UNEXPECTED_CLI_DOWNLOAD'
+  end
+
+  def test_metadata_without_the_compatible_package_stops_before_archive_download
+    bootstrap_fixture
+    xml = @env.fetch('FIXTURE_BOOTSTRAP_XML')
+    File.write(xml, File.read(xml).sub('cmdline-tools;21.0', 'cmdline-tools;latest').sub('<major>21', '<major>23'))
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_includes output, '缺少兼容版'
+    refute_match(/curl:.*\.zip/, events)
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+  end
+
+  def network_probe(source_transform: nil)
+    source = File.read(SCRIPT).sub(/^main "\$@"\s*\z/, '')
+    source = source_transform.call(source) if source_transform
+    library = File.join(@root, 'network.zsh')
+    File.write(library, source + <<~'ZSH')
+      android_prepare_context
+      android_configure_network || exit $?
+      print -rl -- "${ANDROID_SIM_CURL_PROXY[@]}" "${ANDROID_SIM_SDK_PROXY[@]}"
+    ZSH
+    Open3.capture2e(@env, '/bin/zsh', '-f', library)
+  end
+
+  def test_explicit_proxy_reaches_sdk_list_and_install
+    @env['ANDROID_SIM_PROXY'] = 'http://127.0.0.1:7990'
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    output, result = interactive("\n\n\n\n\n", '--create')
+    assert result.success?, output
+    operations = events.lines.select { |line| line.start_with?('sdk:') && line.match?(/--list |--install /) }
+    assert_equal 2, operations.length
+    operations.each { |line| assert_includes line, '--proxy=http --proxy_host=127.0.0.1 --proxy_port=7990' }
+    refute_match(/sdk:.*--version.*--proxy/, events)
+  end
+
+  def test_network_uses_environment_and_system_static_proxy_without_writing_settings
+    @env['ANDROID_SIM_PROXY'] = nil
+    @env['HTTPS_PROXY'] = 'socks5://localhost:1080'
+    output, result = network_probe
+    assert result.success?, output
+    assert_includes output, '--proxy=socks'
+    assert_includes output, '--proxy_host=localhost'
+    @env['HTTPS_PROXY'] = nil
+    scutil = File.join(@root, 'scutil')
+    executable(scutil, "#!/bin/zsh\nprint -r -- $'HTTPSEnable : 1\nHTTPSProxy : 127.0.0.1\nHTTPSPort : 7990'\n")
+    output, result = network_probe(source_transform: ->(source) { source.gsub('/usr/sbin/scutil', scutil.shellescape) })
+    assert result.success?, output
+    assert_includes output, '--proxy=http'
+    assert_includes output, '--proxy_port=7990'
+  end
+
+  def test_proxy_errors_do_not_leak_credentials_or_start_repairs
+    ['http://user:private-password@localhost:7890', 'http://localhost:65536', 'http://localhost:0'].each do |proxy|
+      @env['ANDROID_SIM_PROXY'] = proxy
+      output, result = interactive("\n", '--prepare')
+      refute result.success?, output
+      refute_includes output, 'private-password'
+      assert_empty events
+    end
+  end
+
+  def test_no_proxy_is_respected_for_sdk_repository
+    @env['ANDROID_SIM_PROXY'] = 'http://localhost:7990'
+    @env['NO_PROXY'] = '.google.com'
+    output, result = network_probe
+    assert result.success?, output
+    refute_includes output, '--proxy_host='
+    assert_includes output, '使用直连'
+  end
+
+  def test_check_does_not_install_missing_emulator
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    output, result = check
+    refute result.success?
+    assert_includes output, 'emulator 缺失'
+    refute_includes events, '--install'
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_check_missing_sdk_stops_before_downstream
+    @env['ANDROID_HOME'] = File.join(@root, '不存在')
+    output, result = check
+    refute result.success?
+    assert_includes output, 'SDK 根目录未就绪'
+    assert_empty events
+  end
+
+  def test_check_multiple_missing_layers_has_no_download
+    FileUtils.rm_rf(File.join(@sdk, 'cmdline-tools'))
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    output, result = check
+    refute result.success?
+    assert_includes output, 'Command-line Tools 缺失'
+    assert_includes output, 'emulator 缺失'
+    assert_empty events
+  end
+
+  def test_broken_sdk_tools_fail_health_check
+    @env['FIXTURE_TOOLS_BROKEN'] = '1'
+    output, result = check
+    refute result.success?
+    assert_includes output, '失败命令'
+    refute_includes events, 'create avd'
+  end
+
+  def test_help_and_invalid_argument_do_not_probe_or_write
+    output, result = check('--help')
+    assert result.success?, output
+    assert_empty events
+    output, result = check('--bad')
+    refute result.success?
+    assert_includes output, '不支持的参数'
+    assert_empty events
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_noninteractive_write_mode_rejects_before_probe
+    output, result = check('--create')
+    refute result.success?
+    assert_includes output, '可交互终端'
+    assert_empty events
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_intro_cancellation_has_no_side_effect
+    output, result = interactive("cancel\n", '--create')
+    assert result.success?, output
+    assert_empty events
+    assert_empty Dir.children(File.join(@root, 'logs'))
+  end
+
+  def test_create_uses_current_arch_image_and_all_enter_defaults
+    output, result = interactive("\n\n\n\n\n", '--create')
+    assert result.success?, output
+    assert_includes events, "create avd -n pixel_10_API_36_#{PACKAGE.split(';').last.tr('-', '_')} -k #{PACKAGE} --device pixel_10"
+    refute_includes events, '--install'
+    assert_includes output, '已新增 AVD'
+    assert_includes output, 'Android 开机仍需等待'
+    refute_match(/-f\b|--force|-wipe-data/, events)
+  end
+
+  def test_existing_name_and_orphan_directory_cannot_be_overwritten
+    name = "pixel_10_API_36_#{PACKAGE.split(';').last.tr('-', '_')}"
+    FileUtils.mkdir_p(File.join(@avd, "#{name}.avd"))
+    output, result = interactive("\n\n\n\nSafe_New\n\n", '--create')
+    assert result.success?, output
+    assert_includes output, '已存在同名 AVD'
+    assert File.directory?(File.join(@avd, "#{name}.avd"))
+    assert_includes events, 'create avd -n Safe_New'
+  end
+
+  def test_created_device_receipt_contains_exact_avd_after_launch
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    @env['JOBS_FLUTTER_CREATED_DEVICE_FILE'] = receipt
+    output, result = interactive("\n\n\n\n\n", '--create')
+    assert result.success?, output
+    expected = "pixel_10_API_36_#{PACKAGE.split(';').last.tr('-', '_')}"
+    assert_equal "android\t#{expected}\n", File.read(receipt)
+    assert_includes events, "launch:#{expected}"
+  end
+
+  def test_cancelled_create_does_not_publish_device_receipt
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    @env['JOBS_FLUTTER_CREATED_DEVICE_FILE'] = receipt
+    output, result = interactive("\n\n\n\nno\n", '--create')
+    assert result.success?, output
+    assert_empty File.read(receipt)
+    refute_includes events, 'create avd'
+  end
+
+  def test_failed_emulator_launch_never_publishes_device_receipt
+    receipt = File.join(@root, 'created-device')
+    File.write(receipt, '')
+    @env['JOBS_FLUTTER_CREATED_DEVICE_FILE'] = receipt
+    File.write(@emulator_template, File.read(@emulator_template).sub('exec /bin/sleep 3', 'exit 9'))
+    install_emulator
+    output, result = interactive("\n\n\n\n\n", '--create')
+    refute result.success?, output
+    assert_empty File.read(receipt)
+    assert_includes output, '模拟器进程已退出'
+  end
+
+  def test_device_receipt_rejects_missing_symlink_and_nonempty_files
+    target = File.join(@root, 'keep')
+    link = File.join(@root, 'linked-device')
+    File.write(target, 'preserve')
+    File.symlink(target, link)
+    [File.join(@root, 'missing-device'), link, target].each do |receipt|
+      command = 'source <(/usr/bin/sed \'$d\' "$1"); android_prepare_context; ANDROID_SIM_NEW_AVD=EXACT; android_publish_created_device'
+      output, result = Open3.capture2e(@env.merge('JOBS_FLUTTER_CREATED_DEVICE_FILE' => receipt), '/bin/zsh', '-c', JobsSourceLayout.shell(command), 'test', SCRIPT)
+      refute result.success?, output
+      assert_includes output, '设备交接文件无效'
+      assert_equal 'preserve', File.read(target)
+    end
+    refute File.exist?(File.join(@root, 'missing-device'))
+  end
+
+  def test_unsafe_name_is_rejected_before_create
+    output, result = interactive("\n\n\n../escape\nbad name\nSafe\n\n", '--create')
+    assert result.success?, output
+    assert_includes output, '名称须为'
+    assert_includes events, 'create avd -n Safe'
+    refute_includes events, '../escape'
+  end
+
+  def test_final_cancellation_does_not_create
+    output, result = interactive("\n\n\n\ncancel\n", '--create')
+    assert result.success?, output
+    refute_includes events, 'create avd'
+    assert_includes output, '已取消'
+  end
+
+  def test_empty_avds_enters_creation_and_selection_cancel_is_safe
+    output, result = interactive("\nq\n")
+    assert result.success?, output
+    assert_includes output, '当前没有 AVD'
+    refute_includes events, 'create avd'
+  end
+
+  def test_existing_avd_launch_checks_entire_toolchain_without_installing
+    File.write(File.join(@avd, 'list'), "Existing\n")
+    output, result = interactive("\n2\n")
+    assert result.success?, output
+    assert_includes events, 'launch:Existing'
+    assert_includes events, '--version'
+    refute_includes events, '--install'
+  end
+
+  def test_emulator_missing_installs_once_and_rechecks
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 1, events.scan('--install emulator').length
+    assert_includes output, '来源｜SDK 组件安装'
+    assert_operator output.index('来源｜SDK 组件安装'), :<, output.index('自动安装本次必要组件')
+    refute_includes events, 'create avd'
+  end
+
+  def test_emulator_install_failure_stops_downstream
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    @env['FIXTURE_INSTALL_FAIL'] = '1'
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, '组件安装失败'
+    assert_equal 1, events.scan('--install emulator').length
+    refute_includes events, 'create avd'
+  end
+
+  def test_emulator_download_retries_twice_then_continues_without_confirmation
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    @env['FIXTURE_INSTALL_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--install emulator').length
+    assert_includes output, '自动重试'
+    refute_includes events, 'create avd'
+  end
+
+  def test_remote_catalog_retries_twice_then_can_cancel_selection
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_LIST_RETRY'] = '2'
+    output, result = interactive("\n\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--list --channel').length
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_sdk_list_zero_exit_with_failed_source_lists_keeps_retrying
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_LIST_ZERO_RETRY'] = '2'
+    output, result = interactive("\n\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('--list --channel').length
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_component_metadata_only_zero_exit_retries_until_required_payload_is_ready
+    manager = File.join(@root, 'component-sdkmanager')
+    executable(manager, <<~'ZSH')
+      #!/bin/zsh
+      counter="$FIXTURE_COMPONENT_TARGET.calls"
+      count=0
+      [[ ! -f "$counter" ]] || count="$(/bin/cat "$counter")"
+      (( count += 1 ))
+      /bin/mkdir -p "${FIXTURE_COMPONENT_TARGET:h}" "$FIXTURE_COMPONENT_ROOT"
+      print -r -- "$count" > "$counter"
+      print -r -- 'Pkg.Revision=1' > "$FIXTURE_COMPONENT_ROOT/source.properties"
+      # 模拟SDK Manager退出零且先落元数据，第三次才真正补齐有效载荷。
+      (( count > 2 )) || exit 0
+      if [[ "$FIXTURE_COMPONENT_EXECUTABLE" == 1 ]]; then
+        print -r -- $'#!/bin/zsh\nexit 0' > "$FIXTURE_COMPONENT_TARGET"
+        /bin/chmod 700 "$FIXTURE_COMPONENT_TARGET"
+      else
+        : > "$FIXTURE_COMPONENT_TARGET"
+      fi
+    ZSH
+    components = [
+      ['platform-tools', 'adb', true],
+      ['platforms;android-36', 'android.jar', false],
+      ['build-tools;36.0.0', 'aapt2', true],
+      ['ndk;28.1.13356709', 'ndk-build', true],
+      ['cmake;3.31.6', 'bin/cmake', true]
+    ]
+    command = <<~'ZSH'
+      source <(/usr/bin/sed '$d' "$1")
+      android_prepare_context
+      ANDROID_SIM_SDK="$2"
+      ANDROID_SIM_SDKMANAGER="$3"
+      LOG_FILE="$5"
+      ANDROID_SIM_LOG_READY=1
+      android_install_package "$4"
+    ZSH
+    components.each do |package, payload, runnable|
+      directory = File.join(@sdk, package.tr(';', '/'))
+      target = File.join(directory, payload)
+      env = @env.merge('FIXTURE_COMPONENT_ROOT' => directory,
+                       'FIXTURE_COMPONENT_TARGET' => target,
+                       'FIXTURE_COMPONENT_EXECUTABLE' => runnable ? '1' : '0')
+      log = File.join(@root, 'logs', package.tr(';', '-') + '.log')
+      output, result = Timeout.timeout(8) do
+        Open3.capture2e(env, '/bin/zsh', '-c', JobsSourceLayout.shell(command), 'test', SCRIPT, @sdk, manager, package, log)
+      end
+      assert result.success?, "#{package}: #{output}"
+      assert_equal '3', File.read(target + '.calls').strip, package
+      assert File.file?(target), package
+      assert File.executable?(target), package if runnable
+      assert_includes output, 'SDK 获取未就绪'
+      assert File.file?(log + '.attempts.log'), package
+    end
+  end
+
+  def test_emulator_zero_exit_without_files_retries_until_ready
+    FileUtils.rm(File.join(@sdk, 'emulator', 'emulator'))
+    @env['FIXTURE_INSTALL_ZERO_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, 'SDK 获取未就绪'
+    assert_equal 3, events.scan('--install emulator').length
+    refute_includes events, 'create avd'
+  end
+
+  def test_missing_image_automatically_reads_remote_list_and_can_cancel_selection
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    output, result = interactive("\n\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, '查询稳定系统映像'
+    assert_includes events, '--list --channel'
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_remote_list_failure_does_not_create
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_LIST_FAIL'] = '1'
+    output, result = interactive("\n\n", '--create')
+    refute result.success?, output
+    assert_includes output, '读取 Google SDK 清单失败'
+    refute_includes events, '--install'
+    refute_includes events, 'create avd'
+  end
+
+  def test_image_download_and_creation
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    output, result = interactive("\n\n\n\n\n", '--create')
+    assert result.success?, output
+    assert_includes events, "--install #{PACKAGE}"
+    assert_includes events, 'create avd'
+    assert_includes output, '已新增 AVD'
+  end
+
+  def test_image_zero_exit_without_files_retries_until_ready_then_can_cancel
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    @env['FIXTURE_INSTALL_ZERO_RETRY'] = '2'
+    output, result = interactive("\n\n\n\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, 'SDK 获取未就绪'
+    assert_equal 3, events.scan("--install #{PACKAGE}").length
+    refute_includes events, 'create avd'
+  end
+
+  def test_avd_creation_failure_does_not_launch
+    @env['FIXTURE_CREATE_FAIL'] = '1'
+    output, result = interactive("\n\n\n\n\n", '--create')
+    refute result.success?, output
+    assert_includes output, '创建失败'
+    refute_includes events, 'launch:'
+  end
+
+  def test_avd_success_without_metadata_is_not_announced_as_created
+    @env['FIXTURE_CREATE_NO_RESULT'] = '1'
+    output, result = interactive("\n\n\n\n\n", '--create')
+    refute result.success?, output
+    assert_includes output, '列表未检出'
+    refute_includes events, 'launch:'
+  end
+
+  def test_wrong_arch_and_preview_images_are_excluded
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    opposite = PACKAGE.end_with?('arm64-v8a') ? 'x86_64' : 'arm64-v8a'
+    add_image("system-images;android-37;google_apis;#{opposite}")
+    add_image("system-images;android-99-preview;google_apis;#{PACKAGE.split(';').last}")
+    output, result = check
+    refute result.success?
+    assert_includes output, '尚无完整'
+  end
+
+  def test_broken_fzf_falls_back_to_number_selection
+    fakebin = File.join(@root, 'bin')
+    executable(File.join(fakebin, 'fzf'), "#!/bin/zsh\nexit 7\n")
+    @env['PATH'] = "#{fakebin}:#{@env['PATH']}"
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_includes output, 'fzf 缺失或不可用'
+  end
+
+  def test_missing_command_tools_is_automatically_prepared_after_single_entry_confirmation
+    bootstrap_fixture
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes events, 'curl:'
+    refute_includes events, 'create avd'
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    refute_includes output, '回车跳过'
+  end
+
+  def test_official_bootstrap_adds_a_version_and_rechecks
+    bootstrap_fixture
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 1, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    assert_includes output, '已新增官方命令行工具'
+    assert_includes output, 'SDK 命令行工具'
+    assert_match(%r{curl-target:.*SDK 中文/cmdline-tools/\.jobs-staging\.[^/]+/repository\.xml}, events)
+    assert_includes events, 'stage-mode:700'
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', '.jobs-staging.*'))
+    assert_empty Dir.glob(File.join(@root, 'logs', 'jobs-android-tools.*'))
+    refute_includes events, 'create avd'
+  end
+
+  def test_official_bootstrap_checksum_failure_leaves_sdk_untouched
+    bootstrap_fixture(checksum: '0' * 40)
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, '工具归档校验失败'
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+    assert_empty Dir.glob(File.join(@root, 'logs', 'jobs-android-tools.*'))
+    refute_includes events, 'create avd'
+  end
+
+  def test_official_bootstrap_rejects_external_archive_url
+    bootstrap_fixture(archive_name: 'https://example.invalid/tools.zip')
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, '元数据格式或归档地址不符合预期'
+    assert_equal 1, events.scan('curl:').length
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+  end
+
+  def test_google_metadata_and_archive_retry_until_both_succeed
+    bootstrap_fixture
+    @env['FIXTURE_CURL_RETRY'] = '2'
+    output, result = interactive("\nq\n", '--create')
+    assert result.success?, output
+    assert_equal 3, events.scan('curl:https://dl.google.com/android/repository/repository2-3.xml').length
+    assert_equal 6, events.scan('curl:').length
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    refute_includes events, 'create avd'
+  end
+
+  def test_official_bootstrap_local_download_error_stops_without_retries
+    bootstrap_fixture
+    @env['FIXTURE_BOOTSTRAP_DOWNLOAD_FAIL'] = '1'
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, 'Google 官方下载失败'
+    assert_equal 2, events.scan('curl:').length
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+  end
+
+  def test_bootstrap_preserves_broken_existing_tools_and_stops_if_recheck_fails
+    bootstrap_fixture
+    preserved = File.join(@sdk, 'cmdline-tools', 'old-version', 'keep.txt')
+    FileUtils.mkdir_p(File.dirname(preserved))
+    File.write(preserved, 'keep original')
+    @env['FIXTURE_TOOLS_BROKEN'] = '1'
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, '命令行工具安装后复检失败'
+    assert_equal 'keep original', File.read(preserved)
+    assert_equal 1, Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*')).length
+    assert_equal 1, events.scan('repository2-3.xml').length
+    refute_includes events, 'create avd'
+  end
+
+  def test_check_never_bootstraps_command_tools
+    bootstrap_fixture
+    output, result = check
+    refute result.success?, output
+    refute_includes events, 'curl:'
+    assert_empty Dir.children(File.join(@root, 'logs'))
+    assert_empty Dir.glob(File.join(@sdk, 'cmdline-tools', 'jobs-*'))
+  end
+
+  def test_stable_minor_and_extension_api_images_are_supported
+    FileUtils.rm_rf(File.join(@sdk, 'system-images'))
+    add_image("system-images;android-36.1;google_apis;#{PACKAGE.split(';').last}")
+    add_image("system-images;android-36-ext19;google_apis;#{PACKAGE.split(';').last}")
+    output, result = check
+    assert result.success?, output
+    assert_includes output, '系统映像：2 个'
+  end
+
+  def test_registered_broken_emulator_repairs_once_and_stops_if_recheck_still_fails
+    File.write(File.join(@sdk, 'emulator', 'source.properties'), 'Pkg.Revision=36')
+    @env['FIXTURE_EMULATOR_BROKEN'] = '1'
+    output, result = interactive("\n", '--create')
+    refute result.success?, output
+    assert_includes output, '自动通过官方 sdkmanager 卸载'
+    assert_includes output, '保留已有 AVD'
+    assert_equal 1, events.scan('--uninstall emulator').length
+    assert_equal 1, events.scan('--install emulator').length
+    assert_includes output, '安装后复检仍失败'
+    refute_includes events, 'create avd'
+  end
+
+  def test_directory_publish_rejects_existing_destination_instead_of_nesting
+    source = File.join(@sdk, 'cmdline-tools', '.jobs-staging.collision', 'cmdline-tools')
+    destination = File.join(@sdk, 'cmdline-tools', 'jobs-existing')
+    FileUtils.mkdir_p([source, destination])
+    File.write(File.join(source, 'source.properties'), 'new')
+    File.write(File.join(destination, 'keep.txt'), 'original')
+    command = %q{source <(/usr/bin/sed '$d' "$1"); android_publish_tools_directory "$2" "$3"}
+    _output, result = Open3.capture2e(@env, '/bin/zsh', '-c', JobsSourceLayout.shell(command), 'test', SCRIPT, source, destination)
+    refute result.success?
+    assert File.directory?(source)
+    assert_equal 'original', File.read(File.join(destination, 'keep.txt'))
+    refute File.exist?(File.join(destination, 'cmdline-tools'))
+  end
+
+  def test_prepare_healthy_uses_only_the_entry_confirmation_and_never_queries_images
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '--prepare 已完成'
+    refute_includes events, '--install'
+    refute_includes events, '--list --channel'
+    refute_includes events, 'create avd'
+    refute_includes output, 'T//'
+  end
+
+  def test_prepare_recovers_missing_sdk_tools_and_emulator_without_extra_input
+    bootstrap_fixture
+    FileUtils.rm_rf(@sdk)
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '自动补齐 SDK 根目录'
+    assert_includes output, '--prepare 已完成'
+    assert_equal 1, events.scan('--install emulator').length
+    assert_equal 1, events.scan('repository2-3.xml').length
+    refute_includes events, '--list --channel'
+    refute_includes events, 'create avd'
+  end
+
+  def test_invalid_sdk_root_is_preserved_and_failure_shows_stage_and_log
+    FileUtils.rm_rf(@sdk)
+    File.write(@sdk, 'original data')
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_equal 'original data', File.read(@sdk)
+    assert_includes output, 'SDK 根目录补齐'
+    assert_includes output, '操作结束；日志'
+  end
+
+  def test_registered_damaged_emulator_is_reinstalled_once_and_preserves_avds
+    executable(File.join(@sdk, 'emulator', 'emulator'), "#!/bin/zsh\nprint -r -- 'broken emulator' >&2\nexit 8\n")
+    File.write(File.join(@sdk, 'emulator', 'source.properties'), 'Pkg.Revision=36')
+    File.write(File.join(@avd, 'keep.txt'), 'my device data')
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_equal 1, events.scan('--uninstall emulator').length
+    assert_equal 1, events.scan('--install emulator').length
+    assert_equal 'my device data', File.read(File.join(@avd, 'keep.txt'))
+    assert_includes output, '--prepare 已完成'
+  end
+
+  def test_damaged_emulator_uninstall_failure_prevents_install_and_creation
+    executable(File.join(@sdk, 'emulator', 'emulator'), "#!/bin/zsh\nexit 8\n")
+    @env['FIXTURE_UNINSTALL_FAIL'] = '1'
+    output, result = interactive("\n", '--prepare')
+    refute result.success?, output
+    assert_includes output, '官方卸载失败'
+    refute_includes events, '--install emulator'
+    assert_includes output, '操作结束；日志'
+  end
+
+  def test_installation_and_remote_query_have_no_secondary_read_gates
+    source = File.read(SCRIPT)
+    refute_includes source, 'android_ask_install'
+    refute_includes source, '回车跳过'
+    refute_includes source, '是否联网'
+    refute_includes source, '是否下载'
+    refute_match(/yes\s*\|/, source)
+  end
+
+  def test_temurin_java_is_downloaded_verified_and_published_in_user_directory
+    java_fixture
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, '已补齐官方 Temurin 21'
+    assert_equal 1, Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk')).length
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', '.jobs-staging.*'))
+    assert_includes events, 'stage-mode:700'
+  end
+
+  def test_temurin_checksum_mismatch_does_not_publish
+    java_fixture(checksum: '0' * 64)
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'SHA256 与官方元数据不符'
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_metadata_and_archive_retry_until_both_succeed
+    java_fixture
+    @env['FIXTURE_CURL_RETRY'] = '2'
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_equal 3, events.scan('curl:https://api.adoptium.net/').length
+    assert_equal 3, events.scan('curl:https://github.com/').length
+    assert_equal 1, Dir.glob(File.join(@root, 'Library/Java/JavaVirtualMachines/temurin-21-*.jdk')).length
+  end
+
+  def test_temurin_local_download_error_is_not_retried_or_published
+    java_fixture
+    @env['FIXTURE_JAVA_DOWNLOAD_FAIL'] = '1'
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'Temurin 官方下载失败'
+    assert_equal 1, events.scan('curl:https://github.com/').length
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_official_redirect_is_checked_and_signed_query_is_not_logged
+    java_fixture
+    @env['FIXTURE_JAVA_REDIRECT'] = '1'
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, 'release-assets.githubusercontent.com'
+    refute_includes output, 'private-token'
+    assert_equal 1, events.scan('curl:https://release-assets.githubusercontent.com/').length
+  end
+
+  def test_temurin_dangling_external_symlink_is_rejected
+    java_fixture(unsafe_link: '/tmp/jobs-nonexistent-outside-jdk')
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, '悬空或绝对符号链接'
+    assert_empty Dir.glob(File.join(@root, 'Library', 'Java', 'JavaVirtualMachines', 'temurin-21-*.jdk'))
+  end
+
+  def test_temurin_internal_existing_symlink_is_allowed
+    java_fixture(unsafe_link: 'bin/java')
+    output, result = java_bootstrap
+    assert result.success?, output
+    assert_includes output, '已补齐官方 Temurin 21'
+  end
+
+  def test_temurin_post_install_health_failure_stops_without_recursive_install
+    java_fixture
+    @env['FIXTURE_JAVA_POSTFAIL'] = '1'
+    output, result = java_bootstrap
+    refute result.success?, output
+    assert_includes output, 'Java 安装后复检仍失败'
+    assert_equal 1, events.scan('curl:https://github.com/').length
+  end
+
+  def test_new_command_tools_can_switch_java_after_first_post_install_class_error
+    fallback_java = File.join(@root, 'Applications', 'Android Studio.app', 'Contents', 'jbr', 'Contents', 'Home', 'bin', 'java')
+    executable(fallback_java, "#!/bin/zsh\nprint -r -- 'fake Java version 21' >&2\n")
+    executable(File.join(@jdk, 'bin', 'java'), "#!/bin/zsh\nprint -r -- 'fake Java version 17' >&2\n")
+    @env['FIXTURE_REQUIRE_JAVA21'] = '1'
+    @env['FIXTURE_OLD_JAVA'] = File.realpath(@jdk)
+    bootstrap_fixture
+    output, result = interactive("\n", '--prepare')
+    assert result.success?, output
+    assert_includes output, '新命令行工具需要更高 Java'
+    assert_equal 1, events.scan('repository2-3.xml').length
+    refute_includes events, 'api.adoptium.net'
+    assert_includes output, '--prepare 已完成'
+  end
+end

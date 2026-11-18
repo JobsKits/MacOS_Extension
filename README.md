@@ -41,9 +41,17 @@
 </details>
 <!-- jobs-toc:end -->
 
+**原生面板交付：** [完整界面源码](./Scripts/SelectFinderExtensionFeatures.swift)、[构建与装配入口](./Scripts/【MacOS】FinderManagerGUI.zsh/README.md)及[已编译签名成品](./work/Jobs右键菜单管理面板.app)供核验；既有缓存成品为 arm64＋x86_64 通用／MacOS 12+。[构建回执](./work/EnvironmentUpdateManagerBuildReceipt.json)记录此前源码、二进制与签名摘要及 88 项功能目录；[构建及运行说明](./Scripts/README.md#run-and-check)给出入口和直接启动参数。当前源码包含所选项目隐藏属性与发送到菜单，共 90 项，既有 88 项 work 缓存未在本轮重建；正常使用从本目录原管理 App 进入，按源码时间自动重建缓存。旧窗口不会热加载新代码，须完全退出后重开。
+
+**单一 Dock 图标：** 公开管理 App 使用 `LSUIElement=true`，通过 LaunchServices 将实际原生面板作为独立 App 进程打开后结束启动壳，避免 `exec` 沿用原启动身份而留下两个图标。实际面板保留普通应用策略，退到后台后点击面板图标恢复同一窗口、任务和日志。联合 App 的私有管理快照保留独立监督等待，直到实际面板退出才清理；内部同步调用继续保留标准输出与退出码合同。运行中的旧面板保持原会话，正常完全退出后再打开采用新的启动链。
+
 ---
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
+
+**固定菜单顺序：** 应用程序联合 App 路线下，“新建文件 → iOS／Android／Harmony 新建 → Android／Harmony 修复 → 显示／隐藏文件 → update → 磁盘剩余”由同一背景菜单输出，功能仍独立安装／卸载并转交各自宿主。首次应用完整排序需更新 JobsFileCreator、JobsDesktopTools、JobsEnvironmentUpdater、JobsDiskSpaceInfo 四个模块；清单在安装、卸载、回滚时同步重建。普通目录只显示适用项，独立构建目录保留原单项菜单；系统手动禁用输出扩展会关闭整组背景展示，不能视为功能已卸载。代码、默认值和验证状态见[顺序资产盘点](../项目相关报告/右键菜单顺序资产盘点.md)。
+
+**桌面 update：** [JobsEnvironmentUpdater](./JobsEnvironmentUpdater/README.md) 提供独立的“🔄 更新开发环境（update）”，仅在系统桌面空白处显示。在总管理面板“文件与通用工具”勾选“更新开发环境（update）”，或打开[单项管理入口](./JobsEnvironmentUpdater/【MacOS】管理开发环境更新Finder扩展.command)安装／更新或卸载。点击在新 Terminal 会话执行随 App 打包的完整更新脚本与私有依赖，与终端直接输入 `update` 一样默认低打扰；不再使用 `-t`，显示自述后自动执行，启动时可能需要一次管理员密码，本轮保活、后续使用 `sudo -n`。没有逐项确认、收尾重试询问和手动下载页弹出；未完成项汇总并返回非零，需重试时重新执行 `update`。安装、初始化与卸载不执行升级。菜单无需终端 `update` alias，也不依赖配置源码仓；两份实现各自独立，遵循同一默认交互约定。源码与成品、来源副本、验证及已安装状态见[资产盘点](../项目相关报告/update桌面菜单资产盘点.md)。
 
 <span id="sidebar-folder-menu">**侧边栏文件夹菜单：**</span> 支持对 Finder 侧边栏收藏的真实本地文件夹右键，显示与选中文件夹相同的适用菜单，包括终端、复制路径及符合条件的 IDE、Git、Flutter、iOS 工具。通过 [Apple 侧边栏菜单接口](https://developer.apple.com/documentation/findersync/fimenukind/contextualmenuforsidebar)读取实际右键目标，主区域选中其它项目不影响操作对象。功能开关与工程类型过滤继续生效；目标不可用、失效收藏及最近使用、标签、隔空投送等虚拟位置隐藏路径菜单。新建文件、文件显示开关和桌面模拟器工具保留原背景入口；文件专用动作不出现在文件夹菜单。更新安装后生效，隔离菜单测试与真实 Finder 交互分别验收。
 
@@ -52,6 +60,10 @@
 “📃 新建文件…”由独立的 [JobsFileCreator](./JobsFileCreator/README.md) 提供，仅在桌面和普通文件夹空白处显示。在总管理面板“文件与通用工具”中勾选“新建文件”，或打开[独立管理入口](./JobsFileCreator/【MacOS】管理新建文件Finder扩展.command)安装 / 卸载。点击菜单后在原生输入框输入文件名，默认 `未命名.txt`，可自定扩展名；确认后创建零字节文件并在 Finder 中选中，取消不创建。无效文件名明确提示，同名文件、目录及符号链接均拒绝覆盖。Windows 使用系统自带“新建”，不增加对应扩展。真实 Finder 菜单和创建交互须在安装后验收，构建与隔离测试不替代实机验收。
 
 “创建脚本快捷入口”由独立 [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md) 提供：对含同名普通脚本的 `.command` 文件夹右键，在原生窗口确认入口名称后，将可执行的 `.command` 转发脚本放在该文件夹同级。入口通过相对路径调用包内原脚本，传递全部参数和退出码；原脚本与 README 保留，创建时不运行源脚本。默认名称避开已占用的同名文件夹，已有文件、目录及链接均不覆盖。总面板“文件与通用工具”可独立安装 / 卸载；功能窗口和管理面板均支持十语言与白天 / 黑夜 / 跟随系统。
+
+“🙈 隐藏所选项目”和“👁️ 显示所选项目”由独立 [JobsFileVisibility](./JobsFileVisibility/README.md) 提供，功能 ID 为 `file-visibility`。选中一个或多个普通文件／文件夹后，可明确统一设为隐藏或取消隐藏；仅修改所选对象的隐藏标记，不递归、不改名、不修改 Finder 的全局隐藏文件显示偏好。链接与特殊对象不处理，执行前复核；点号开头的名称仍受系统命名规则隐藏，取消标记不会自动改名。隐藏后可先用既有背景菜单显示隐藏文件，再选中项目恢复。总面板“文件与通用工具”及包内管理入口均可独立安装／卸载。
+
+“📨 发送到”由独立 [JobsSendTo](./JobsSendTo/README.md) 提供，功能 ID 为 `send-to`。选中文件或文件夹（支持多选）后，子菜单列出当前已挂载的外部磁盘、U 盘、移动硬盘及网络卷，包括已挂载的 Time Capsule 共享；点击目标卷后复制源项目，保留原件。同名默认自动增加序号，保留两份，不直接覆盖已有内容；未挂载的设备不会被自动连接。具体资格、失败与取消边界见包内说明。本功能仅覆盖 MacOS，可在总管理面板“文件与通用工具”或包内管理入口独立安装／卸载。
 
 IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 的目录，其余隐藏项（含 `.git`）算内容；普通文件、链接、多选不显示三个 IDE 入口。具体工程标记与工作区引用规则见 [IDE 说明](./JobsProjectTools/README.md)。
 
@@ -62,7 +74,7 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 右键菜单在名称前使用功能对应的 emoji，不同功能不重复，同一功能的兼容入口和 Windows 入口保持一致。任意单个普通文件均显示“🔎 查看文件指纹 Hash（SHA-256）”“➕ 授予执行权限（chmod +x）”和“➖ 移除执行权限（chmod -x）”；权限操作可幂等点击，不受扩展名或格式限制，目录、目录包、符号链接、多选与空白处隐藏。
 
-33 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
+37 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
 
@@ -82,20 +94,20 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **86 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 12 个现行安装单元；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
+> **90 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 16 个现行安装单元（依据当前清单，2026-11-18）；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
 
 | 功能分组 | 选项数 | 可逐项勾选的功能 |
 | --- | --- | --- |
 | IDE | 3 | 用 Android Studio / VSCode / Xcode 打开项目 |
 | Git | 6 | 拉取到最新、提交回退、打开远程地址、复制远程地址、动态代理、空白 Commit 并 Push |
-| 通用 | 13 | 复制绝对路径、创建脚本快捷入口、新建文件、查看文件指纹 Hash、授予执行权限、移除执行权限、显示 / 隐藏文件、用终端打开、用终端查看文件内容、合并分卷、拆分文件、清理 Android / OpenHarmony 构建产物、更新代码地图 |
+| 通用 | 17 | 更新开发环境（update）、磁盘空间总览、复制绝对路径、创建脚本快捷入口、新建文件、查看文件指纹 Hash、隐藏 / 显示所选项目、发送到外部磁盘或网络卷、授予执行权限、移除执行权限、显示 / 隐藏文件、用终端打开、用终端查看文件内容、合并分卷、拆分文件、清理 Android / OpenHarmony 构建产物、更新代码地图 |
 | Flutter | 47 | Flutter开发相关辅助工具；一键配置、一键提取 / 导入、Gradle 分发 / 构建插件、Pub、私库迁移、Android 原生、Pods、SPM、OpenHarmony、原生库构建、平台资源、Web 依赖，以及运行、SDK、打包、体检、生成、修复和清理 |
 | iOS / CocoaPods | 12 | `Pod Install`、`Pod Update` 相邻，iOS 构建产物清理、其它 iOS 辅助工具及 IPA 免编译重签分别勾选 |
 | 模拟器 | 5 | 新建 iOS / Android / Harmony 模拟器、Android / Harmony 模拟器检测与修复 |
 
 “🧳 一键提取 Flutter 依赖”和“📥 一键导入 Flutter 依赖”位于提取 / 导入组首项，默认私库，支持 ZIP 及按内容识别改名的原始 Pub / Gradle 缓存。专用 Pub 私库叶子继续支持 Git、path、自建 hosted 包及间接依赖。完整预检后精确输入 `YES` 才导入，冲突不覆盖；不迁移机器凭据、不自动 `pub get`。底稿清单与范围见 [Flutter 私库迁移](./JobsFlutterTools/README.md#private-dependency-migration)。
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 33 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 12 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 37 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 16 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 [JobsIOSTools](./JobsIOSTools/README.md) 在“iOS / CocoaPods 辅助工具”子菜单提供以下十一项功能，全部业务资源随 App 打包；安装菜单本身不执行清理、依赖安装或工程改写。`Pod Install` 和 iOS 构建产物清理也在此子菜单内。
 
@@ -119,10 +131,13 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 
 | 右键入口 | 检查与执行结果 |
 | --- | --- |
+| [🔄 更新开发环境（update）](./JobsEnvironmentUpdater/README.md) | 仅系统桌面空白处；新 Terminal 无参数运行随包脚本与依赖，与终端 `update` 同样默认低打扰，最多启动阶段系统密码；自动执行并汇总，不等待逐项／重试确认，安装与卸载不维护或移除已有工具。 |
 | [创建脚本快捷入口](./JobsCommandShortcutCreator/README.md) | 对 `.command` 文件夹生成同级相对路径 `.command` 入口；须有同名普通脚本，命名确认后排他创建并定位，不运行源脚本，不覆盖已有对象。 |
 | [📃 新建文件…](./JobsFileCreator/README.md) | 仅桌面和普通文件夹背景，原生输入框默认 `未命名.txt`，可自定扩展名；确认后创建零字节文件并由 Finder 定位，取消不写入，同名对象拒绝覆盖。 |
 | [🧩 合并分卷 / ✂️ 拆分文件](./JobsTerminalOpener/README.md#file-volumes) | 完整选中同组分卷才合并；单个普通文件才拆分，原件始终保留，已有结果拒绝覆盖。 |
 | [🔎 查看文件指纹 Hash（SHA-256）](./JobsFileHasher/README.md) | 任意单个普通文件；新 Terminal 显示路径与 SHA-256，成功后复制纯 64 位摘要。只读源文件，失败保留剪贴板；目录、符号链接、多选和空白隐藏。独立安装 / 卸载。 |
+| [🙈 隐藏／👁️ 显示所选项目](./JobsFileVisibility/README.md) | 一个或多个普通文件／文件夹；明确设置或取消隐藏标记，保留其它标记，不递归、不改名、不改 Finder 全局显示偏好。独立安装／卸载。 |
+| [📨 发送到](./JobsSendTo/README.md) | 文件／文件夹多选复制至当前已挂载的外部磁盘或网络卷；保留源件，同名自动序号保留两份。仅 MacOS，独立安装／卸载。 |
 | [📄 用终端查看文件内容](./JobsTerminalOpener/README.md) | 仅单个普通文件；Terminal 只读显示，默认超过 1 MiB 先输入 `YES` 确认，回车取消；二进制 / 未知编码另行确认，`Ctrl+C` 中止。 |
 | [显示 / 隐藏文件](./JobsHiddenFilesToggler/README.md) | 系统桌面或任意文件夹空白处按状态显示“👁️ 显示文件”或“🙈 隐藏文件”，点击应用标题对应的目标并刷新 Finder，不弹终端。文件、文件夹及多选的选中项菜单均不显示。刷新时 Finder 窗口可能短暂消失，避免在 Finder 复制、移动文件时切换。 |
 | [新建 iOS 模拟器](./JobsIOSSimulatorCreator/README.md) | 仅桌面空白处右键打开 Terminal，读取本机可用 iOS Runtime，选择兼容 iPhone / iPad 并创建、启动；不关闭已有设备，不自动下载运行时。 |
@@ -132,6 +147,7 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 | [Harmony 模拟器检测与修复](./JobsHarmonySimulatorRepairer/README.md) | 仅系统桌面空白；检查官方 Emulator、镜像和实例状态，按精确实例启动或确认后冷启动，完整备份后可修复失效 SDK 路径，不重置用户数据。Windows [对应包](../WindowsOS@Extension/JobsHarmonySimulatorRepairer/README.md)独立安装。 |
 | [➕ 授予执行权限（chmod +x）](./JobsRunAuthorizer/README.md) | 任意单个普通文件均显示，Terminal 展示目标并等待确认后执行 `chmod +x`，按进程 `umask` 添加执行位；不递归、不运行文件，不改隔离属性。目录、目录包、符号链接、多选和空白处隐藏。 |
 | [➖ 移除执行权限（chmod -x）](./JobsRunAuthorizationRevoker/README.md) | 任意单个普通文件均可点击；Terminal 确认后执行 `chmod -x`，其移除范围受 `umask` 影响；保留读写位、内容与隔离属性，不执行文件。与授予执行权限分别安装；Windows 对应当前用户执行 ACL。 |
+| [磁盘空间总览](./JobsDiskSpaceInfo/README.md) | 在文件、文件夹、多选、桌面／目录背景及侧边栏右键菜单显示本地磁盘总余量／总容量与两位小数百分比；点击打开独立 Terminal，先选择 Xcode 六组清理，再经 YES 确认执行终端 clean 六类业务，不逐盘展开。 |
 | [IPA 免编译重签](./JobsIPAResigner/README.md) | 仅单个 `.ipa` 普通文件显示，后缀大小写均可；目录、包、符号链接、多选和空白隐藏。Terminal 承接完整重签流程，确认后处理，验证成功原路径替换 IPA，再回车可选安装到设备。 |
 | [Git操作](./JobsProjectTools/README.md) | 仅有效 Git 普通文件夹及其内部空白处显示，含拉取到最新、提交回退、打开 / 复制远程地址、动态代理、空白 Commit 并 Push。仓库根、子目录、子模块和 worktree 均检测；普通非 Git 目录、文件、多选和桌面空白隐藏。 |
 | [配置 Git 动态代理](./JobsGitProxyConfigurator/README.md) | 从“Git操作”进入 Terminal，安装、只读检查或恢复用户级 Git 入口。系统代理可用时优先，失败再直连；不固定 VPN 品牌或端口。Windows [对应独立包](../WindowsOS@Extension/JobsGitProxyConfigurator/README.md)继续提供其桌面入口。 |
@@ -158,7 +174,7 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 
 | 右键场景 | 本仓加入的菜单 |
 | --- | --- |
-| 系统桌面空白处 | 独立“📃 新建文件…”；桌面聚合菜单固定按新建 iOS → Android → Harmony、Android 修复 → Harmony 修复、动态显示／隐藏文件排列，仅过滤未启用叶子 |
+| 系统桌面空白处 | 独立“📃 新建文件…”与“🔄 更新开发环境（update）”；桌面聚合菜单固定按新建 iOS → Android → Harmony、Android 修复 → Harmony 修复、动态显示／隐藏文件排列，仅过滤未启用叶子 |
 | 普通文件夹背景 | 提供“📃 新建文件…”；按状态提供“👁️ 显示文件”或“🙈 隐藏文件”，按项目条件显示开发菜单；有效 Git 工作树显示“Git操作”，不加入模拟器创建或检测修复 |
 | 选中一个本地普通文件（含桌面上的文件） | 显示“查看文件指纹 Hash（SHA-256）”“授予执行权限（chmod +x）”与“移除执行权限（chmod -x）”；权限操作可重复点击；仅 `.ipa` 文件另提供“IPA 免编译重签” |
 | 选中文件夹、目录包、多选或空白处 | 保留原有条件菜单，“查看文件指纹 Hash”“授予执行权限”“移除执行权限”和“IPA 免编译重签”隐藏；选中项菜单不加入模拟器创建或检测修复菜单 |
@@ -170,19 +186,25 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 桌面范围隔离回归直接编译菜单源码，验证桌面专用功能的显示范围；Git 仓库门禁与子菜单顺序另由 `JobsProjectTools/Tests/MenuTests.py` 覆盖：
 
 ```shell
-ruby ./Tests/DesktopFinderMenuTests.rb
+ruby Tests/DesktopFinderMenuTests.rb/DesktopFinderMenuTests.rb
 ```
 
 <strong id="single-repository-quick-look">源码与工程边界速览</strong>
 
-31 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。各功能工程使用普通目录，不使用工程内 `.gitmodules`、gitlink 或 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
+37 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。各功能工程使用普通目录，不使用工程内 `.gitmodules`、gitlink 或 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
 
-安装面板按叶功能独立选择，并按十一个现行安装单元去重构建。桌面、IDE／Git、Flutter、iOS 分别由聚合包维持菜单顺序；旧工程保留兼容源码，每个功能目录只保留一个管理入口，六个桌面功能入口只启停各自叶子。Terminal 当前三项、iOS 辅助十一项均可逐项选择。文档目录转换统一使用工程外的工具，见 [单仓管理与外置目录工具](#single-repository-management)。
+安装面板按叶功能独立选择，并按十四个现行安装单元去重构建。桌面、IDE／Git、Flutter、iOS 分别由聚合包维持菜单顺序；旧工程保留兼容源码，每个功能目录只保留一个管理入口，六个桌面功能入口只启停各自叶子。Terminal 当前三项、iOS 辅助十一项均可逐项选择。文档目录转换统一使用工程外的工具，见 [单仓管理与外置目录工具](#single-repository-management)。
 
 
 **面板与状态：** 主标题为“自定义Finder右键菜单”（繁体：自定義Finder右鍵菜單；英文：Customize Finder Context Menu）。安装 / 更新与卸载之间切换保留当前全部功能勾选；状态图标与活动指示器居中共用固定列，状态文字保持同一左边界。 功能分组支持按住标题拖动排序及跨列移动，布局保存在当前用户偏好中；默认右列仅放 Flutter，其余分组在左列。拖动和切换主题、语言或操作模式保留功能勾选、执行状态和日志；窄窗按布局顺序显示为单列。
 
+**整行选择：** 点击功能复选框、标题、图标、普通状态区或行内空白都可切换该项，单次完整点击只切换一次；失败日志入口仍只读日志。拖动、滚动、移出、失焦或执行中不会误改选择，键盘与原生无障碍操作保留。完整需求、现有平台差异及验证见[面板需求资产盘点](../项目相关报告/安装卸载管理面板需求资产盘点.md)。
+
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 藏文 / 英文 / 日文 / 法文 / 西班牙文 / 德文 / 俄罗斯文 / 韩文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
+
+**日志配色与滚动：** 日志有白天浅底深字、黑夜深底浅字两套配色，并区分成功、警告、错误、提示和阶段标题；切换主题时已有日志同步换色，保持文字选区和浏览位置。触摸板、滚轮、滚动条及导航键均可浏览；手动滚动暂停“自动滚动”，重新勾选后恢复追尾。完整磁盘日志及复制内容保持纯文本，见[日志说明](./Scripts/README.md#logs-and-troubleshooting)及[资产盘点](../项目相关报告/管理面板日志资产盘点.md)。
+
+**关闭与后台驻留：** 没有任务进行时，关闭窗口、底部“关闭”或 `⌘Q` 会询问退到 Dock（程序坞）及系统状态栏还是完全退出，默认后台，取消则保留窗口。安装／卸载／构建清理未结束时不询问，直接隐藏窗口并保留 Dock 和状态栏入口，保留任务、日志与计时；完成后继续驻留。状态项可恢复原窗口，忙碌时禁用完全退出，空闲可退出并移除状态项。选择不持久化，也不新增开机启动；内部只返回计划的兼容选择器保持原关闭约定。行为与验证见[后台驻留资产盘点](../项目相关报告/管理面板后台驻留资产盘点.md)。
 
 **安装 / 卸载位置：** 面板提供“使用「应用程序」中的联合 App 安装 / 卸载”复选框，首次打开默认勾选，可手动取消。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
 
@@ -227,11 +249,11 @@ osascript -e 'return "AppKit UI 可用"'
 在本仓根目录运行安装器集成回归，核对当前选择器与现行安装工程的映射，以及工程缺失时的停止提示；测试只使用隔离目录，不构建或注册扩展：
 
 ```shell
-ruby ./Tests/FlutterInstallerIntegrationTests.rb
-ruby ./Tests/AndroidSimulatorInstallerIntegrationTests.rb
-ruby ./Tests/HarmonySimulatorInstallerIntegrationTests.rb
-ruby ./Tests/IOSToolsInstallerIntegrationTests.rb
-ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
+ruby Tests/FlutterInstallerIntegrationTests.rb/FlutterInstallerIntegrationTests.rb
+ruby Tests/AndroidSimulatorInstallerIntegrationTests.rb/AndroidSimulatorInstallerIntegrationTests.rb
+ruby Tests/HarmonySimulatorInstallerIntegrationTests.rb/HarmonySimulatorInstallerIntegrationTests.rb
+ruby Tests/IOSToolsInstallerIntegrationTests.rb/IOSToolsInstallerIntegrationTests.rb
+ruby Tests/FileCreatorInstallerIntegrationTests.rb/FileCreatorInstallerIntegrationTests.rb
 ```
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、工程索引 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -245,12 +267,16 @@ ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
 | `./JobsGitRemoteCopier` | `复制 Git 远程地址` | 常规入口转交 Git 子菜单；旧源码保留远程地址解析与复制实现。 | `./JobsGitRemoteCopier/JobsGitRemoteCopier.xcodeproj` |
 | `./JobsPathCopier` | `复制绝对路径` | 右键任意一个本地文件或文件夹，把绝对路径写入剪贴板。 | `./JobsPathCopier/JobsPathCopier.xcodeproj` |
 | [JobsFileHasher](./JobsFileHasher/README.md) | `🔎 查看文件指纹 Hash（SHA-256）` | 新终端计算 SHA-256 并复制纯摘要；任意单个普通文件，独立安装 / 卸载。 | `./JobsFileHasher/JobsFileHasher.xcodeproj` |
+| [JobsFileVisibility](./JobsFileVisibility/README.md) | `🙈 隐藏所选项目`／`👁️ 显示所选项目` | 文件／文件夹单选、多选隐藏属性，独立安装／卸载。 | `./JobsFileVisibility/JobsFileVisibility.xcodeproj` |
+| [JobsSendTo](./JobsSendTo/README.md) | `📨 发送到` | 多选复制至已挂载外部磁盘或网络卷，同名保留两份。 | `./JobsSendTo/JobsSendTo.xcodeproj` |
 | [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md) | `创建脚本快捷入口` | 为同名 `.command` 脚本包生成同级转发脚本，独立安装 / 卸载。 | `./JobsCommandShortcutCreator/JobsCommandShortcutCreator.xcodeproj` |
 | [JobsFileCreator](./JobsFileCreator/README.md) | `📃 新建文件…` | 桌面和普通文件夹背景输入文件名，排他创建空文件并由 Finder 定位；可独立安装 / 卸载。 | `./JobsFileCreator/JobsFileCreator.xcodeproj` |
 | [JobsDesktopTools](./JobsDesktopTools/README.md) | 六项桌面功能聚合 | 三项新建连续、再两项修复及动态隐藏开关，逐叶选装；普通目录背景仅保留隐藏开关。 | `./JobsDesktopTools/JobsDesktopTools.xcodeproj` |
 | [JobsHiddenFilesToggler](./JobsHiddenFilesToggler/README.md) | `显示 / 隐藏文件` | 仅桌面及文件夹空白处，直接切换 Finder 隐藏文件显示并刷新。 | `./JobsHiddenFilesToggler/JobsHiddenFilesToggler.xcodeproj` |
 | [JobsRunAuthorizer](./JobsRunAuthorizer/README.md) | `➕ 授予执行权限（chmod +x）` | 任意单个普通文件；终端确认后执行 `chmod +x`，不递归、不运行文件。 | `./JobsRunAuthorizer/JobsRunAuthorizer.xcodeproj` |
 | [JobsRunAuthorizationRevoker](./JobsRunAuthorizationRevoker/README.md) | `➖ 移除执行权限（chmod -x）` | 任意单个普通文件；终端确认执行 `chmod -x`，不递归、不运行文件。 | `./JobsRunAuthorizationRevoker/JobsRunAuthorizationRevoker.xcodeproj` |
+| [JobsEnvironmentUpdater](./JobsEnvironmentUpdater/README.md) | `🔄 更新开发环境（update）` | 系统桌面空白菜单；独立 Terminal 无参数运行随包完整 update，自动维护、直接汇总，最多启动阶段系统密码，不依赖外部命令别名。 | `./JobsEnvironmentUpdater/JobsEnvironmentUpdater.xcodeproj` |
+| [JobsDiskSpaceInfo](./JobsDiskSpaceInfo/README.md) | 磁盘空间总览 | 容量汇总、APFS 去重；点击打开随包清理，先问 Xcode 六组，再经 YES 确认清理历史／缓存及失效开发登记。 | `./JobsDiskSpaceInfo/JobsDiskSpaceInfo.xcodeproj` |
 | [JobsIPAResigner](./JobsIPAResigner/README.md) | `IPA 免编译重签` | 仅单个 `.ipa` 普通文件；终端确认后重签、验证、原路径替换，可选安装到设备。 | `./JobsIPAResigner/JobsIPAResigner.xcodeproj` |
 | `./JobsXcodeOpener` | `用 Xcode 打开项目` | 仅非空的明确 iOS 工程目录或有效关联工作区/工程包；Flutter 根目录排除，纯 macOS 工程及 Package.swift 不自动当 iOS。 | `./JobsXcodeOpener/JobsXcodeOpener.xcodeproj` |
 | `./JobsVSCodeOpener` | `用 VSCode 打开项目` | 非空、非 iOS 普通目录；菜单、点击和宿主复核。IDE 缺失时打开官方下载页。 | `./JobsVSCodeOpener/JobsVSCodeOpener.xcodeproj` |
@@ -272,7 +298,7 @@ ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
 | [JobsGitProxyConfigurator](./JobsGitProxyConfigurator/README.md) | `配置 Git 动态代理` | 常规入口转交 Git 子菜单，Terminal 安装、检查或恢复用户级动态入口；保留完整业务源码。 | `./JobsGitProxyConfigurator/JobsGitProxyConfigurator.xcodeproj` |
 | `./JobsTerminalOpener` | 4 个可独立勾选的 Terminal 功能 | `用终端打开`、`📄 用终端查看文件内容`、Android / OpenHarmony构建产物清理、`更新代码地图（.codegraph）`；iOS、Git 和 Flutter 专属动作由对应子菜单提供。 | `./JobsTerminalOpener/JobsTerminalOpener.xcodeproj` |
 
-31 个工程均为本仓管理的普通源码目录；旧工程保留构建与卸载能力，现行安装按统一单元处理。每个工程根目录提供一个裸露管理脚本及同名 `.app`，统一接管安装 / 更新与卸载，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
+34 个工程均为本仓管理的普通源码目录；旧工程保留构建与卸载能力，现行安装按统一单元处理。每个工程根目录提供一个裸露管理脚本及同名 `.app`，统一接管安装 / 更新与卸载，说明见各自 README 的「安装与卸载」章节；使用、自检与项目选择说明同样见各自 README。
 
 总目录和每个功能目录各保留一个管理脚本及同名图形 App。总入口与单功能入口统一使用原生面板，单功能仅展示所属范围；默认空选，支持单项、多项、组内或全部选择。点击操作按钮后面板持续显示，后台执行并逐叶更新等待、正在安装 / 卸载、成功或失败；共享工程只执行一次，其所选叶同步更新状态。无法准确测量的构建阶段使用活动指示器。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。
 
@@ -286,7 +312,7 @@ ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
 
 2、原生面板顶部选择“安装 / 更新”或“卸载”，再在六组中勾选一个或多个菜单功能。面板默认全部不勾选；切换操作保留全部已勾选功能，操作按钮按当前页签执行安装 / 更新或卸载。每组“全选 / 全不选”仅影响本组，底部按钮影响当前范围内全部功能；空选禁用执行，取消或关闭窗口不执行操作。底栏固定，超高列表可滚动。
 
-3、点击操作按钮后，任务在后台执行，面板保留每项状态；底部实时合并显示标准输出和错误输出，支持自动滚动、暂停跟随、选择复制、复制当前显示日志及定位完整日志。上下拖动日志上方的分隔条可调整高度，也可缩放窗口；功能列表和日志分别滚动，操作按钮保留可见。日志右键提供“全选”，支持 `⌘A` 全选及 `⌘C` 复制。失败行的红字“失败，见日志”可点击，在新的 Terminal 会话中通过 `cat` 读取本次完整日志；日志内容只作显示，原管理任务继续运行。面板为普通窗口，不置顶，切换其它应用时任务继续。运行中锁定操作、勾选和关闭，防止中断后留下半完成状态；结束后可复制日志或重新选择。取消、空选或关闭尚未执行的面板均不修改扩展。
+3、点击操作按钮后，任务在后台执行，面板保留每项状态；底部实时合并显示标准输出和错误输出，支持自动滚动、暂停跟随、选择复制、复制当前显示日志及定位完整日志。上下拖动日志上方的分隔条可调整高度，也可缩放窗口；功能列表和日志分别滚动，操作按钮保留可见。日志右键提供“全选”，支持 `⌘A` 全选及 `⌘C` 复制。失败行的红字“失败，见日志”可点击，在新的 Terminal 会话中通过 `cat` 读取本次完整日志；日志内容只作显示，原管理任务继续运行。面板为普通窗口，不置顶，切换其它应用时任务继续。运行中锁定操作和勾选，关闭直接退到 Dock（程序坞）及系统状态栏继续执行；空闲关闭时询问后台或完全退出。状态项可恢复原面板，结束后继续保留结果，供复制日志或重新选择。取消、空选或关闭尚未执行的面板均不修改扩展。
 
 4、安装按十一个现行单元去重，只构建、注册所选功能涉及的 App，清理同 Bundle ID 的旧登记，保留同包其它已启用功能。系统或全局必需工具缺失时停止；某个所选工程缺少源码或配置时列出准确路径，只将该工程所选功能标记失败，继续其它完整工程，不自动下载缺失源码。未选工程的缺失不阻止当前安装。卸载不执行 `xcodebuild`、不要求全部工程配置齐全，按叶功能减去所选配置，仍有兄弟功能时保留共享 App 和扩展登记，最后一项才停用、注销对应扩展。
 
@@ -308,7 +334,7 @@ ruby ./Tests/FileCreatorInstallerIntegrationTests.rb
 | --- | --- |
 | `--action install\|uninstall` | 预设安装 / 更新或卸载；省略时为安装 / 更新 |
 | `--scope <叶ID,...>` | 仅显示范围内选项；未知或空标识停止 |
-| 内部 `Scripts/ManageFinderExtensions.zsh` 的 `--features <叶ID,...> --non-interactive` | 仅供面板提交已确认计划；必须同时明确 `--action`，会实际执行，不能用于只读检查。公开启动入口只唤起 GUI，不接受此绕过面板的开关 |
+| 内部 `Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh` 的 `--features <叶ID,...> --non-interactive` | 仅供面板提交已确认计划；必须同时明确 `--action`，会实际执行，不能用于只读检查。公开启动入口只唤起 GUI，不接受此绕过面板的开关 |
 
 总入口不接受 `--skip-finder-restart`；该参数只供单功能内部管理器把刷新交给上级统一处理。现存 Flutter / Terminal 功能配置损坏时停止，避免覆盖未能识别的选择。
 
@@ -387,8 +413,11 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
 ├── JobsGitRemoteOpener/  # 本仓普通源码目录
 ├── JobsPathCopier/  # 本仓普通源码目录
 ├── JobsFileHasher/  # 单文件 SHA-256 显示与复制
+├── JobsFileVisibility/  # 所选文件／文件夹隐藏属性
+├── JobsSendTo/  # 多选复制至外部磁盘或网络卷
 ├── JobsCommandShortcutCreator/  # 同级相对路径脚本快捷入口
 ├── JobsFileCreator/  # 桌面 / 普通文件夹背景新建空文件
+├── JobsDiskSpaceInfo/     # 磁盘容量汇总与点击清理
 ├── JobsDesktopTools/      # 六项桌面功能统一排序、逐叶选装
 ├── JobsHiddenFilesToggler/  # 桌面 / 文件夹空白处切换隐藏文件显示
 ├── JobsRunAuthorizer/  # 单文件运行授权
@@ -449,7 +478,7 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
 * [Scripts 目录说明](./Scripts/README.md)：安装器使用的原生功能选择界面及调用约定。
 - [外置目录工具](#external-markdown-toc)：工具与精确文档清单保存在工程外，本机 Git 属性指向外置转换器；本地保留 `[toc]`，整文件暂存时自动生成折叠目录。新增文档按精确清单登记。
 * [work 目录说明](./work/README.md)：本地 DerivedData、生成 App 与扩展的保存位置及 Git 忽略边界。未勾选“使用「应用程序」文件夹安装 / 卸载”时，安装器直接注册其中的 App / appex，正在使用时不能当作纯缓存删除；勾选后登记 `/Applications` 中的副本，构建输出可清理；复制 Git 地址可在总面板或单功能管理入口逐项卸载。
-* 总管理面板安装和卸载共用同一份 82 叶功能清单；支持选择一个、多个、整组或全部功能，共享工程只移除所选配置。
+* 总管理面板安装和卸载共用同一份 87 叶功能清单（依据当前选择器和管理器映射，2026-11-15）；支持选择一个、多个、整组或全部功能，共享工程只移除所选配置。
 
 ### <span id="jobs-toc-heading-11" data-jobs-toc="v2">[【MacOS】🧩管理Finder扩展.command](./【MacOS】🧩管理Finder扩展.command)</span><!-- jobs-toc:heading-end -->
 
@@ -475,7 +504,7 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
 | 安装 / 维护 | 系统 zsh、osascript、swiftc、PlugInKit、Git；Ruby 用于隔离测试 | 未设精确版本；本机版本由环境自检确认，不把本机输出视为仓库版本约束。 |
 | Node 工具链 | 文档 Node.js `20+`；CodeGraph `1.6.2` 安装链要求 `>=20 <25`，修复使用 Homebrew `node@24` | 外置目录工具说明与 Terminal 工程 `TerminalOpener.swift`；CodeGraph 兼容范围于 2026-10-20 复核，健康既有工具先复用，非精确补丁版本锁。 |
 | 功能工具 | FVM / fzf / Flutter / Dart；Pod 功能直接使用终端环境中的 CocoaPods；CodeGraph 经健康检查复用 | 工具按功能使用现有环境或原有安装链，版本来源与风险见[依赖清单](#direct-dependencies)。 |
-| Android 模拟器工具链 | SDK Command-line Tools、Java / Android Studio JBR、Android Emulator 与系统映像均未锁精确版本 | `JobsAndroidSimulatorCreator/Scripts/CreateAndroidSimulator.zsh` 逐层体检并自动补齐，按主机硬件选择 `arm64-v8a` / `x86_64` 映像；只使用选定 SDK，SDK 许可证由本人确认。 |
+| Android 模拟器工具链 | SDK Command-line Tools、Java / Android Studio JBR、Android Emulator 与系统映像均未锁精确版本 | `./JobsAndroidSimulatorCreator/Scripts/【MacOS】CreateAndroidSimulator.zsh/【MacOS】CreateAndroidSimulator.zsh` 逐层体检并自动补齐，按主机硬件选择 `arm64-v8a` / `x86_64` 映像；只使用选定 SDK，SDK 许可证由本人确认。 |
 | 依赖锁定 | 无已入库 `Package.resolved`、`Podfile.lock`、`pubspec.lock` 或 npm 锁文件 | 扩展源码没有第三方 SPM / Pod 包依赖；目标项目自己的锁文件属于操作对象，不属于扩展依赖。源码版本统一由本仓提交记录；这不替代外部工具自身的版本锁。 |
 
 ### <span id="jobs-toc-heading-14" data-jobs-toc="v2">7.2、源码与部署管理 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
@@ -553,7 +582,7 @@ flowchart TD
 
 | 类目 | 是否涉及 / 实现方式与证据 |
 | --- | --- |
-| 网络与安全 | 涉及出站 HTTPS、Git 认证复用；无自有 OAuth / JWT / Session 服务、接口加解密或证书绑定实现。FVM 官方清单和来源校验在 `JobsFlutterVersionMgr/Scripts/ManageFlutterVersion.zsh`；Git 网络能力由 Git 承担，不复制用户密钥。 |
+| 网络与安全 | 涉及出站 HTTPS、Git 认证复用；无自有 OAuth / JWT / Session 服务、接口加解密或证书绑定实现。FVM 官方清单和来源校验在 `./JobsFlutterVersionMgr/Scripts/【MacOS】ManageFlutterVersion.zsh/【MacOS】ManageFlutterVersion.zsh`；Git 网络能力由 Git 承担，不复制用户密钥。 |
 | 持久化 / 缓存 / 迁移 | 涉及功能选择配置、终端日志、恢复快照、构建缓存；`JobsTerminalShared/FinderMenuFeatureConfiguration.swift` 位于 Terminal 工程，FVM 脚本保留项目配置字段；无自有数据库 / 通用数据库迁移层。 |
 | 端能力 | 涉及 Finder Sync、剪贴板、LaunchServices、AppleEvent / Terminal，见各 `FinderSync.swift`、宿主 `AppDelegate.swift`；蓝牙、推送、定位、相机、相册、生物识别、扫码、NFC、支付未实现，复制路径不计系统分享能力。 |
 | 国际化 / 埋点 / 崩溃 | 管理面板通过 `Scripts/SelectFinderExtensionFeatures.swift` 内置翻译表提供简体中文、繁体中文、藏文、英文、日文、法文、西班牙文、德文、俄罗斯文、韩文及跟随系统；总面板、随包面板与联合 App 内置面板共用。系统右键业务菜单及工具输出保留各功能原文。未引入分析 SDK 或崩溃上传 SDK；系统 Console / 终端日志用于诊断。 |
@@ -626,7 +655,7 @@ xcodebuild \
 | --- | --- |
 | dev / test / prod | 未设置服务器环境；Debug / Release 在各 `project.pbxproj`。Terminal 功能配置由安装选择与 `FinderMenuFeatureConfiguration.swift` 管理；测试使用临时项目，避免写真实仓库。 |
 | 启动 | 用 Xcode 运行同名宿主 Scheme，或按第三章根管理入口部署；FVM、拉取、提取、模拟器创建宿主只做后台转发，不应期待独立管理窗口。 |
-| 测试 | 本仓运行 `ruby ./Tests/FlutterInstallerIntegrationTests.rb`；工程 `Tests/` 按各自 README 运行；文档只读检查见 [外置目录工具](#external-markdown-toc) 的 `verify` 命令。 |
+| 测试 | 本仓运行 `ruby Tests/FlutterInstallerIntegrationTests.rb/FlutterInstallerIntegrationTests.rb`；工程 `Tests/` 按各自 README 运行；文档只读检查见 [外置目录工具](#external-markdown-toc) 的 `verify` 命令。 |
 | 菜单缺失 | 检查 Finder 扩展启用、签名与同 Bundle ID 旧注册；按既有维护章节处理，不能仅以构建成功认定真实菜单可用。 |
 | 找不到子工程 / 工具 | 工程缺失时恢复本仓完整源码；缺 Xcode Command Line Tools 或对应 SDK 时先修环境。目标路径、Pod 同层 `Podfile` / `*.xcodeproj` 或 Flutter 根声明不合法时修目标，不绕过门禁。 |
 | 网络 / 离线 | 本仓没有 API 假数据模式；FVM 官方列表失败仅可选就绪缓存，其余联网工具依原实现停止并展示来源与错误。 |

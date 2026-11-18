@@ -5,9 +5,11 @@ require 'fileutils'
 require 'open3'
 require 'shellwords'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class HarmonyRunPreparationTests < Minitest::Test
   PACKAGE = File.expand_path('../../Scripts/【MacOS】Flutter运行前体检.zsh/【MacOS】鸿蒙运行环境准备.zsh', __dir__)
-  ENTRY = File.join(PACKAGE, '【MacOS】鸿蒙运行环境准备.zsh')
+  ENTRY = JobsSourceLayout.file(File.join(PACKAGE, '【MacOS】鸿蒙运行环境准备.zsh'))
 
   def setup
     @root = File.realpath(Dir.mktmpdir('harmony-run-preparation-'))
@@ -147,6 +149,36 @@ class HarmonyRunPreparationTests < Minitest::Test
     refute_includes calls, 'MANAGER'
     refute_includes calls, 'CREATE'
     assert_equal '{}', File.read(File.join(@project, 'ohos/build-profile.json5'))
+  end
+
+  def test_private_background_preparation_never_executes_the_original_shared_sdk
+    executable(File.join(@original_sdk, 'bin/flutter'), 'print ORIGINAL_SHARED_SDK_EXECUTED >> "$FAKE_TRACE"; exit 91')
+    out, err, result = shell('jobs_hpr_prepare_sdk || exit $?; print -r -- "SDK=$FLUTTER_BIN"', env: {'JOBS_HARMONY_PREPARE_FORCE_PRIVATE' => '1'})
+    assert result.success?, out + err
+    assert_includes calls, 'MANAGER'
+    refute_includes calls, 'ORIGINAL_SHARED_SDK_EXECUTED'
+    refute_includes calls, 'VERIFY_CURRENT_SDK'
+    assert_includes out, "SDK=#{@ohos_sdk}/bin/flutter"
+  end
+
+  def test_private_toolchain_discovery_does_not_reuse_a_shared_deveco_installation
+    packages = [PACKAGE, PACKAGE.sub('/JobsFlutterRunner/Scripts/', '/JobsFlutterTools/Scripts/Tools/')]
+    packages.each_with_index do |package, index|
+      creator = File.read(File.join(package, 'Resources/Tools/CreateHarmonySimulator.zsh'))
+      discovery = creator[/^hs_find_toolchain_root\(\) \{\n.*?^\}/m]
+      refute_nil discovery
+      library = File.join(@root, "private-discovery-#{index}.zsh")
+      File.write(library, discovery + "\n")
+      out, err, result = shell(<<~ZSH, env: {'JOBS_HARMONY_PREPARE_FORCE_PRIVATE' => '1'})
+        source #{library.shellescape}
+        DEVECO_STUDIO_HOME=#{@toolchain.shellescape}
+        HS_TOOLS_HOME=#{File.join(@root, 'empty private cache').shellescape}
+        hs_find_toolchain_root
+        print RESULT=$?
+      ZSH
+      assert result.success?, out + err
+      assert_includes out, 'RESULT=3', '缺少私有工具链必须进入私有安装，不能选用显式共享DevEco'
+    end
   end
 
   def test_installed_hap_sdk_below_project_constraint_enters_upgrade_chain

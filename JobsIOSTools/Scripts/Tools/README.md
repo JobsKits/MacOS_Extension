@@ -16,11 +16,11 @@
 
 ---
 
-这里保存 JobsCommand@iOS 中用户明确指定的业务脚本副本、完整构建产物清理核心及 `DispatchIOSTools.zsh`。`SourceManifest.json` 逐项列出脚本功能 ID、规范源相对路径、原始 SHA-256 与副本 SHA-256；原脚本未被迁移或删除。具体功能与副作用见[功能总览](../../README.md#前言)与[菜单范围](../../README.md#project-scope)。
+这里保存 JobsCommand@iOS 中用户明确指定的业务脚本副本、完整构建产物清理核心及 `./【MacOS】DispatchIOSTools.zsh/【MacOS】DispatchIOSTools.zsh`。`SourceManifest.json` 逐项列出脚本功能 ID、规范源相对路径、原始 SHA-256 与副本 SHA-256；原脚本未被迁移或删除。具体功能与副作用见[功能总览](../../README.md#前言)与[菜单范围](../../README.md#project-scope)。
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">一、分发与适用目录</span><!-- jobs-toc:heading-end -->
 
-`DispatchIOSTools.zsh` 只接受一个固定动作和一个绝对路径目录，重新检查同层 iOS 工程标记；本地 Pod 编译检查额外要求同层 `*.podspec`，产物清理另要求识别为 iOS/Xcode 工程。`--plan` 只显示动作、目标与脚本映射，不运行业务，不写项目或用户配置。实际运行必须拥有交互终端，直接调用原业务副本，不用管道自动输入确认。
+`./【MacOS】DispatchIOSTools.zsh/【MacOS】DispatchIOSTools.zsh` 只接受一个固定动作和一个绝对路径目录，重新检查同层 iOS 工程标记；本地 Pod 编译检查额外要求同层 `*.podspec`，产物清理另要求识别为 iOS/Xcode 工程。`--plan` 只显示动作、目标与脚本映射，不运行业务，不写项目或用户配置。实际运行必须拥有交互终端，直接调用原业务副本，不用管道自动输入确认。
 
 旧 `ios-clean-cache` 请求归一为 `ios-clean-build-artifacts`，使用同一份白名单清理核心与 `CLEAN` 确认，不再随包携带删除 Pods、锁文件及全局 DerivedData 的缓存脚本。
 
@@ -35,7 +35,7 @@
 - 本地 Pod 检查直接采用当前目录的 podspec；多个时选择一个，用父目录扫描兄弟依赖。Finder 入口跳过其它仓库 `x.command` 等待文案修补。
 - 安装 CocoaPods、切换 Specs 源保留原全局环境流程；目标工作目录由分发器设置。
 - JobsCodeSnippets 使用 `--finder <项目路径>`，项目只决定菜单资格；实际安装 / 升级固定处理当前用户 Xcode `UserData/CodeSnippets`。完整脚本与规范源逐字节同步，失败保留原片段目录，不在所选工程提交或拉取。
-- `CleanBuildArtifacts.zsh` 与 Terminal 工程的核心逐字节一致，以 Finder 项目路径为唯一清理根，保留类型复检、归属检查、白名单预览与 `CLEAN` 门禁；Flutter 根由统一 Flutter 子菜单处理。
+- `./【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh` 与 Terminal 工程的核心逐字节一致，以 Finder 项目路径为唯一清理根，保留类型复检、归属检查、白名单预览与 `CLEAN` 门禁；Flutter 根由统一 Flutter 子菜单处理。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">三、载体和依赖</span><!-- jobs-toc:heading-end -->
 

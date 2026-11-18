@@ -23,6 +23,10 @@
 一个 [**Finder Sync**](https://developer.apple.com/documentation/findersync) 扩展统一生成六项菜单，确保三个“新建模拟器”连续排列。功能仍可在上级安装面板逐叶选择；只选一项也能运行，不依赖其它旧宿主 App。已安装 App 内含五份完整业务脚本和隐藏文件偏好服务，运行时不读取源码仓库。
 
 
+**本轮可运行成品：** [JobsDesktopTools.app](../work/FixedDesktopMenu-20261118/JobsDesktopTools.app) 与[源码 / 产物回执](../work/FixedDesktopMenu-20261118/receipt.json)对应，包含双架构宿主、FinderSync 与业务资源；仅完成隔离构建，安装和真实菜单验收另列。
+
+**固定顺序背景菜单：** 使用应用程序中的联合 App 安装时，安装事务会维护包内 `Contents/Resources/DesktopMenu.json`，由唯一的展示扩展按“新建文件 → 新建 iOS / Android / Harmony 模拟器 → Android / Harmony 模拟器检测与修复 → 显示 / 隐藏文件 → 更新开发环境（update）→ 磁盘剩余”生成完整菜单；只显示已安装且适用的功能，原独立宿主、叶开关与安装 / 卸载边界保留。普通文件夹背景按同一顺序显示新建文件、文件显示开关和磁盘剩余。跨模块固定顺序需要将这四个模块均更新到支持该清单的版本；独立构建目录路线继续使用各功能原菜单。系统手动停用当前展示扩展会暂时隐藏整组背景菜单，重新启用该扩展或从面板安装 / 更新可恢复；管理面板卸载模块时自动重选展示扩展。文件、多选和侧边栏继续沿用本功能原资格。清单损坏、身份变化和过期点击均不会派发业务。详见[右键菜单顺序资产盘点](../../项目相关报告/右键菜单顺序资产盘点.md)。
+
 **主题与语言：** 面板右上角可选择“黑夜 / 白天 / 跟随系统”和“简体中文 / 繁体中文 / 英文 / 跟随系统”，默认均为“跟随系统”。主题和语言下拉入口紧凑显示，当前文字居中；窄窗无法与标题同排时，工具组移至标题下一行并保持右对齐。选择后即时更新并保存，下次打开自动恢复；总面板、随包面板及联合 App 内置面板共用当前用户设置。切换保留勾选、安装 / 卸载任务、进度与日志；界面功能名称、状态和对话框按所选语言显示，后台工具原始日志保留原文。系统主题变化随原生外观更新，跟随系统语言在系统区域通知或窗口重新激活时重新读取。
 
 **安装 / 卸载位置：** 面板提供“使用「应用程序」中的联合 App 安装 / 卸载”复选框，首次打开默认勾选，可手动取消。不勾选时沿用本地 `work` 内的构建产物；勾选时将所选功能统一安装到 `/Applications/Jobs自定义右键菜单.app`，面板同时显示这个联合 App 的名字。完整宿主及其扩展收在联合 App 内，不再为本轮所选功能生成其它顶层 App。安装到应用程序后，清理仓库构建输出或移走源码不影响已安装功能；构建目录模式仍须保留正在使用的 App。两种方式都保留各功能自身的工具链依赖。
@@ -57,19 +61,19 @@
 
 ## 二、<span id="install">安装、卸载与兼容入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理桌面工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理桌面工具Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
 每项失败后，点击红色带下划线的“失败，见日志”，会新建 Terminal 会话并用 `cat` 显示本次完整会话日志；现有任务继续，已有终端保留。“日志文件”按钮仍用于在 Finder 中定位原始日志。
 
-要求 [**macOS**](https://www.apple.com/macos/) 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。上级[总管理面板](../【MacOS】🧩管理Finder扩展.command)保留六项独立选项，选择后只构建、注册本聚合工程一次；内部 `../Scripts/ManageFinderExtensions.zsh` 顶部的“维护索引”说明面板、叶 ID、工程、菜单、宿主、资源及配置之间的对应关系。
+要求 [**macOS**](https://www.apple.com/macos/) 12+、完整 [**Xcode**](https://developer.apple.com/xcode/) 与 macOS SDK。上级[总管理面板](../【MacOS】🧩管理Finder扩展.command)保留六项独立选项，选择后只构建、注册本聚合工程一次；内部 `../Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh` 顶部的“维护索引”说明面板、叶 ID、工程、菜单、宿主、资源及配置之间的对应关系。
 
 本目录只保留 [桌面工具管理入口](./【MacOS】管理桌面工具Finder扩展.command)，省略 `--features` 时面板显示六项且默认空选，后台编排处理全部六项，指定时仅处理所列叶子。六个功能目录各有一个管理入口，只影响各自一叶；这些入口需要同仓 `JobsDesktopTools/`，缺失时明确停止，不启用旧的重复菜单。
 
-管理入口直接显示面板，选择操作与功能后点击按钮执行；状态和日志保留在面板中。`--action` 可预设操作，`--features` 限定逗号分隔的功能 ID；内部 `Scripts/ManageExtension.zsh` 承接面板已确认的 `--action ... --non-interactive`；其 `--skip-finder-restart` 将 Finder 刷新交给外层，保留登记及身份核验。公开启动器不接受非交互执行开关。
+管理入口直接显示面板，选择操作与功能后点击按钮执行；状态和日志保留在面板中。`--action` 可预设操作，`--features` 限定逗号分隔的功能 ID；内部 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` 承接面板已确认的 `--action ... --non-interactive`；其 `--skip-finder-restart` 将 Finder 刷新交给外层，保留登记及身份核验。公开启动器不接受非交互执行开关。
 
 只安装、卸载指定一项的可复制命令如下；不传 `--non-interactive` 时打开面板，并把 `--features` 限定为可见范围，仍需勾选并点击操作按钮：
 
@@ -104,13 +108,13 @@
 
 ## 四、<span id="maintenance">源码与验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-`Shared/DesktopMenuAction/` 是菜单固定顺序唯一来源；`JobsDesktopToolsFinderSync/FinderSync.swift` 负责资格、动态标题和点击；`DesktopActionExecutor` 负责宿主派发。`Resource/` 与 `Core/` 的原功能副本来源、目标路径及 SHA-256 记录在 [SourceManifest.json](./SourceManifest.json)，更新核心时同步副本并逐字节核对。脚本与旧启动器保持原样，不为聚合改动其业务语义。
+独立构建目录路线由 `Shared/DesktopMenuAction/` 维护六项内部顺序；联合 App 路线由四个相关功能内同源的 `Shared/OrderedDesktopMenu/OrderedDesktopMenuCoordinator.swift` 统一维护跨模块顺序与精确宿主派发。`JobsDesktopToolsFinderSync/FinderSync.swift` 负责资格、动态标题和点击；`DesktopActionExecutor` 负责宿主派发。`Resource/` 与 `Core/` 的原功能副本来源、目标路径及 SHA-256 记录在 [SourceManifest.json](./SourceManifest.json)，更新核心时同步副本并逐字节核对。脚本与旧启动器保持原样，不为聚合改动其业务语义。
 
 以下验证只使用临时程序、文件和系统边界替身，不运行安装器、不注册扩展、不刷新 Finder、不切换隐藏文件或操作模拟器：
 
 ```shell
-ruby ./Tests/MenuTests.rb
-ruby ./Tests/InstallerTests.rb
+ruby Tests/MenuTests.rb/MenuTests.rb
+ruby Tests/InstallerTests.rb/InstallerTests.rb
 ```
 
 菜单回归覆盖全部 64 种叶子组合、固定顺序、动态隐藏状态、读失败禁用、普通目录背景、失效上下文及固定请求。安装回归覆盖首次迁移、部分卸载、最后一项关闭、配置／标记失败回滚、外部并发修改保护、临时路径及资源字节一致。旧目录安装测试继续验证原构建 helper 和真实兼容入口转发；真实 Finder 加载与模拟器业务验收单独记录。

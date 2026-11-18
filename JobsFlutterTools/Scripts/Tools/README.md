@@ -25,7 +25,9 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**鸿蒙连接可见性：** “目前已有的设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+**独立 Dart Demo：** 在 Finder 中右键 Flutter 工程内单个真实 `.dart` 文件，选择“🦋 Flutter开发相关辅助工具 → ▶️ 从终端运行 Flutter Demo”。文件菜单只开放已启用的运行功能；最近的 `pubspec.yaml` 必须声明 Flutter SDK，不越过嵌套的其它包。Terminal 确认后沿用现有 FVM、环境体检和设备选择，将选中文件作为 `flutter run -t` 的真实目标；运行前拒绝无可识别 `main()` 的辅助文件。不同项目、设备和入口各自保存后台会话，重新打开同一入口才重连该入口日志。主题由 Finder 跟随系统；新增 Demo 标题支持管理面板的十种语言选择。源码与隔离验证通过不代表当前已安装菜单已更新。
+
+**鸿蒙连接可见性：** “目前已有的真实设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
 
 **运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。失败、超时、结果无法解析或体检资源缺失时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；先使用“一键配置 Flutter 项目”及对应平台体检入口处理缺项，再重新运行。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
 
@@ -41,7 +43,7 @@
 
 运行器的设备、型号和系统选择使用 fzf 全屏临时界面，退出后恢复原日志，避免 Terminal 内嵌高度模式重绘时留下重复菜单。iOS 列表来自当前 Xcode 的 CoreSimulator，包含已关闭的模拟器；Device Hub 看不到时，检查过滤器是否为 `All Devices` / `Simulators`，并展开 `Available` 分组。历史测试设备需要按 UUID 注销，不能直接删除设备目录或共享 Runtime。
 
-“从终端运行 Flutter 项目”由 [RunFlutterProject.zsh](./RunFlutterProject.zsh) 承接。项目 FVM SDK 缺失或断链时，自动用本机 [**fvm**](https://fvm.app) 下载 / 初始化并绑定声明版本；安装与绑定前显示版本、FVM 路径和完整日志路径。工具原始输出约每秒显示到终端，保留工具提供的下载百分比、速度、剩余时间及回车刷新，同时分别落盘到 `<操作日志>.fvminstall` / `<操作日志>.fvmuse`。已有 SDK 的首次版本检查可能补下载 Dart / SDK 组件，同样显示并保存到 `<操作日志>.version`；后台日志按回车 / 换行分帧，下载进度不必等任务结束。工具没有输出时不伪造进度。安装 / 初始化、绑定与版本首启的单次窗口均为 1800 秒；超时结束当次后自动继续重试，
+“从终端运行 Flutter 项目”由 [RunFlutterProject.zsh](./【MacOS】RunFlutterProject.zsh/【MacOS】RunFlutterProject.zsh) 承接。项目 FVM SDK 缺失或断链时，自动用本机 [**fvm**](https://fvm.app) 下载 / 初始化并绑定声明版本；安装与绑定前显示版本、FVM 路径和完整日志路径。工具原始输出约每秒显示到终端，保留工具提供的下载百分比、速度、剩余时间及回车刷新，同时分别落盘到 `<操作日志>.fvminstall` / `<操作日志>.fvmuse`。已有 SDK 的首次版本检查可能补下载 Dart / SDK 组件，同样显示并保存到 `<操作日志>.version`；后台日志按回车 / 换行分帧，下载进度不必等任务结束。工具没有输出时不伪造进度。安装 / 初始化、绑定与版本首启的单次窗口均为 1800 秒；超时结束当次后自动继续重试，
 
 设备枚举前先检查所选 SDK 的公共缓存；完整本地 stamp、组件目录及工具依赖均就绪时直接复用，不新增联网前提。否则先执行 `flutter precache --universal`，沿用本次网络选路、真实进度和持续重试，单次窗口为 1800 秒，直到就绪或 `Ctrl+C` 结束；这一步不下载所有目标平台。输出保存到 `<操作日志>.discovery-sdk`；每次尝试结束后，将输出和退出码追加到 `<操作日志>.discovery-sdk.attempts.log`，中断时保留当次日志。公共组件完成后才运行短时 `flutter devices --machine`，避免机器模式下的隐式下载被设备查询超时反复中止。设备 JSON 查询仍只写机器输出文件，不将下载进度混入 JSON。已打开终端不会更新脚本副本；菜单安装 / 更新后重新发起才加载修改，已有下载可在另一终端执行 `tail -f '<本次操作日志>.fvminstall'` 查看，`Ctrl+C` 仅退出该查看窗口。
 
@@ -55,17 +57,23 @@ SDK 安装 / 切换的最终版本核验和 SDK 查看器的候选探针同样�
 
 一键导入的计划扫描和确认后的校验、备份与合并分别显示已耗时 `HH:mm:ss`：交互终端每秒更新单行，纯文本和日志每十秒记录一次等待，结束显示阶段总用时。等待用户选择或输入时停止刷新；不估算百分比或剩余时间，Ctrl+C 继续取消本轮操作。
 
-**从终端运行的设备分组：** 设备选择分为“目前已有的设备”“新建设备”和独立的“启动虚拟设备”。已有组只显示当前已连接 / 正在运行的设备及鸿蒙连接诊断，可重新加载；启动组二级固定提供 iOS、Android、鸿蒙模拟器，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再列出、启动已有实例。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件。空清单不会隐式新建；启动就绪后才进入工程运行门禁，失败不改选其它设备。新建组始终提供 iOS、Android、Harmony（鸿蒙）三项，直接在当前终端复用桌面右键的创建脚本和原有自述、许可及最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，创建器通过本轮私有回执交接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 目标核验后等待同一 Flutter ID；就绪后自动继续原工程的预缓存与 `flutter run`，不再要求二次选择。取消、缺少有效回执、等待失败均不运行其它设备；没有对应平台目录的工程仍可新建设备，完成后保留设备并返回分组，不自动运行。 根层 `Esc` 或“取消本轮运行”结束；已有／新建子层用 `←` 或“返回设备分组”回根层，启动平台层用 `←` 返回根层，实例层用 `←` 返回启动平台层；返回保留已准备工具，本轮复用已通过的准备。`↑/↓` 移动、回车选择，搜索可选；创建器内部沿用其原有按键和确认。 鸿蒙创建资源与使用边界见[随包 Harmony 创建器](./SetupCreateHarmonySimulator.zsh/README.md)。
+**从终端运行的设备分组：** 设备选择分为“目前已有的真实设备”“虚拟设备”和“其他运行目标（桌面 / Web）”，另有重新加载入口。真实设备组只展示当前已连接的手机及鸿蒙连接诊断，不混入模拟器；桌面、浏览器和自定义平台保留在其他目标中。虚拟设备组按 iOS、Android、Harmony 分别进入子菜单，每组先列已有实例，最后一项为“新建 iOS / Android / Harmony 虚拟设备”（按所在系统显示实际名称）；无已有实例时仍可选择新建，不隐式执行创建。
+
+选定虚拟设备系统后，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再展示已有实例及新建入口。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件；已有实例、数据及镜像保持原样，运行中的实例直接复用，失败不改选其它设备。新建在当前终端复用桌面创建器及原有自述、许可和最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，通过本轮私有回执承接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 核验同一 Flutter ID；就绪后自动继续原工程预缓存与 `flutter run`，无需二次选择。取消、无有效回执或等待失败均不运行其它设备；工程缺对应平台目录时保留新设备并返回分组。
+
+菜单不再显示“取消本轮运行”；`Esc` / `Ctrl+C` 结束选择，`←` 逐层返回真正上一层，文本模式用 `b` 返回。平台实例列表最后始终为新建项，返回通过按键完成；返回保留本轮已准备并复检的工具。`↑/↓` 移动、回车确认、输入可筛选；创建器继续沿用各自原有确认。SDK 下载上下文、环境准备与 Flutter 构建运行等里程碑标题统一红色粗体；正文保留原信息配色，纯文本环境和落盘日志不含颜色控制码。
+
+**体检、准备与日志：** 每个平台的缺项逐行显示，合格为绿色勾、失败为红色叉。所选 iOS / Android 环境缺失时直接补齐并复检；所选 Harmony 沿原设备身份准备 SDK、工具、平台和依赖。其它未就绪平台按“回车后台补齐；任意字符加回车不补”选择，运行日志可输入 `e` 停止经身份复核的本工程后台任务；后台只写隔离缓存和工程草稿，不修改当前运行工程、FVM 或依赖索引；实际选用时再应用项目集成并复检，插件适配、许可和授权不冒充自动完成。SDK 下载上下文对照官网当前最新稳定 SDK、本机环境和工程 FVM 声明／解析结果，官网查询失败明确未知，不自动升级工程绑定。URL 统一绿色下划线，错误正文红色，结构日志保留原标签并加 emoji；纯文本及原始日志不含 ANSI。iOS Pod 下载遇到明确网络断流会保留锁及原设备，在本任务内切换 Git HTTP/1.1 并持续重试依赖获取，成功后继续原设备；认证、校验、版本冲突与编译错误不误重试。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、入口与执行顺序 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./SetupFlutterProject.zsh) 承接。先选择工程已有目标及 Flutter 来源；Android / OpenHarmony 再选择 Java，其它目标跳过 JDK。准备 SDK、平台工具链及平台资源，下载所需 Gradle，解析 Pub，再选择启动配置、准备目标依赖并实际构建，最后选择设备进行运行验证。Apple 配置生成也共用选定入口、flavor、模式和 defines。macOS 处理 Android、iOS、macOS、Web、OpenHarmony 已有目标，不自动生成平台源码；鸿蒙须使用适配 Flutter，DevEco / SDK 许可保留官方流程。
+Finder 的“🚀 一键配置 Flutter 项目”由 [SetupFlutterProject.zsh](./【MacOS】SetupFlutterProject.zsh/【MacOS】SetupFlutterProject.zsh) 承接。先选择工程已有目标及 Flutter 来源；Android / OpenHarmony 再选择 Java，其它目标跳过 JDK。准备 SDK、平台工具链及平台资源，下载所需 Gradle，解析 Pub，再选择启动配置、准备目标依赖并实际构建，最后选择设备进行运行验证。Apple 配置生成也共用选定入口、flavor、模式和 defines。macOS 处理 Android、iOS、macOS、Web、OpenHarmony 已有目标，不自动生成平台源码；鸿蒙须使用适配 Flutter，DevEco / SDK 许可保留官方流程。
 
 Web / 鸿蒙工具准备由 [工程依赖工具链模块](./【MacOS】工程依赖工具链.zsh/README.md) 承接。额外 JS 工程检查 Node 版本文件、`engines.node` 与锁定包管理器，复用健康候选，缺失时提供安装 / 选择并复检；没有 `package.json` 时不要求 Node。鸿蒙发现 DevEco / CLT 并在本进程激活和核验 SDK、Node、OHPM、Hvigor、HDC、Java；缺少专有组件时打开官方安装 / SDK Manager，完成后可在本流程复检，不把目录存在或平台预缓存成功视为工具链完成。
 
-“📚 下载Gradled分发与构建插件”由 [DownloadProjectGradle.zsh](./DownloadProjectGradle.zsh) 承接，只准备 Android 项目固定 Wrapper 版本和配置阶段构建插件。它优先读取本机环境记录中的 Java，其次解析 `.java-version`，均未配置时才使用当前系统 JDK。
+“📚 下载Gradled分发与构建插件”由 [DownloadProjectGradle.zsh](./【MacOS】DownloadProjectGradle.zsh/【MacOS】DownloadProjectGradle.zsh) 承接，只准备 Android 项目固定 Wrapper 版本和配置阶段构建插件。它优先读取本机环境记录中的 Java，其次解析 `.java-version`，均未配置时才使用当前系统 JDK。
 
-“拉取Flutter项目工程相关依赖”包含六类包源；“提取Flutter项目工程依赖”和“导入Flutter项目工程依赖”处理本地快照。“安装/切换Flutter运行环境”统一三类 SDK 切换；“Flutter 资源与构建依赖”依次提供 Gradle 下载、Flutter 平台资源下载和“准备原生库与构建依赖（组合操作）”。各类依赖独立入口由 [FetchProjectDependencies.zsh](./FetchProjectDependencies.zsh) 承接，与一键配置共用 [ProjectDependencies.zsh](./ProjectDependencies.zsh)。`--kind android|pods|spm|ohos|native|precache|web` 固定对应菜单动作，`--platform` 可预先指定适用目标；未指定且存在多个适用目录时使用 fzf 选择。只为所选类别准备必要前置条件，现存健康本机环境记录可复用，失效记录停止并提示重新一键配置。Web 额外 JS 安装不要求 Flutter SDK，其他类别按需校验或准备项目 SDK。
+“拉取Flutter项目工程相关依赖”包含六类包源；“提取Flutter项目工程依赖”和“导入Flutter项目工程依赖”处理本地快照。“安装/切换Flutter运行环境”统一三类 SDK 切换；“Flutter 资源与构建依赖”依次提供 Gradle 下载、Flutter 平台资源下载和“准备原生库与构建依赖（组合操作）”。各类依赖独立入口由 [FetchProjectDependencies.zsh](./【MacOS】FetchProjectDependencies.zsh/【MacOS】FetchProjectDependencies.zsh) 承接，与一键配置共用 [ProjectDependencies.zsh](./【MacOS】ProjectDependencies.zsh/【MacOS】ProjectDependencies.zsh)。`--kind android|pods|spm|ohos|native|precache|web` 固定对应菜单动作，`--platform` 可预先指定适用目标；未指定且存在多个适用目录时使用 fzf 选择。只为所选类别准备必要前置条件，现存健康本机环境记录可复用，失效记录停止并提示重新一键配置。Web 额外 JS 安装不要求 Flutter SDK，其他类别按需校验或准备项目 SDK。
 
 ```shell
 /bin/zsh ./SetupFlutterProject.zsh \
@@ -90,7 +98,7 @@ Web / 鸿蒙工具准备由 [工程依赖工具链模块](./【MacOS】工程依
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、SDK、配置与交互 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - Flutter 默认 FVM，可复用健康项目 SDK，或调用现有安装 / 切换工具；选择系统模式时可以复用 PATH、指定本机 SDK 或通过 Homebrew 安装 Flutter。Java 默认 jEnv，可选择健康本机 JDK 或安装指定主版本；系统模式保持原 `.java-version` 不变，不读取其损坏的 jEnv 声明。
-- 单选统一使用 fzf：Enter 选择，← 返回上一层，Esc 取消。来源选择阶段取消不修改项目；后续已完成的安装 / 绑定不会因返回或取消自动撤销。缺少 fzf 时可确认通过健康 Homebrew 安装；Homebrew 也缺失时由 [SetupHomebrew.zsh](./SetupHomebrew.zsh) 复用原安装内核，精确 `YES` 选择系统标准目录，其它输入选择用户目录，安装失败不改走其它位置。缺 CLT 时自动打开 Apple 官方界面并每 10 秒复检，安装和本人许可完成后自动继续；不写 Shell 启动文件。
+- 单选统一使用 fzf：Enter 选择，← 返回上一层，Esc 取消。来源选择阶段取消不修改项目；后续已完成的安装 / 绑定不会因返回或取消自动撤销。缺少 fzf 时可确认通过健康 Homebrew 安装；Homebrew 也缺失时由 [SetupHomebrew.zsh](./【MacOS】SetupHomebrew.zsh/【MacOS】SetupHomebrew.zsh) 复用原安装内核，精确 `YES` 选择系统标准目录，其它输入选择用户目录，安装失败不改走其它位置。缺 CLT 时自动打开 Apple 官方界面并每 10 秒复检，安装和本人许可完成后自动继续；不写 Shell 启动文件。
 - 本机选择保存在工程 `.jobs/flutter-environment.json`，字段为 `Platform`、`FlutterMode`、`FlutterPath`、`JavaMode`、`JavaHome`。系统模式作用于本流程、后续 Gradle 下载和单类依赖入口；其它原有运行 / 打包菜单仍遵循各自 FVM / jEnv 规则，已有终端与 IDE 不会切换。
 - Android `local.properties` 只更新本机 `flutter.sdk`，平台模块再合并 `sdk.dir`；原有其它字段保留。环境记录与本机配置写前留快照并检查并发、链接、硬链接及异常文件；不改全局 Flutter、jEnv global、Shell 启动文件或系统代理。
 - 跨电脑或跨系统路径失效时停止使用旧环境；重跑配置可以重新选择本机 SDK，并先保存旧配置。取消、失败与后续诊断不回滚已完成的安装和依赖解析；恢复文件前请核对快照和当前内容，保留并发修改。
@@ -110,7 +118,7 @@ Web / 鸿蒙工具准备由 [工程依赖工具链模块](./【MacOS】工程依
 | `JOBS_PUB_GET_TIMEOUT` | 900 秒 | 30–7200 秒 |
 | `JOBS_FLUTTER_RUN_TIMEOUT` | 1800 秒 | 30–7200 秒 |
 
-已验分发包保存在用户 Library 的 `Caches/JobsFlutterTools/gradle`，随后由 [WrapperDistributionCache.zsh](./WrapperDistributionCache.zsh) 按 Wrapper URL 散列、`distributionBase/path`、`zipStoreBase/path` 和有效 `GRADLE_USER_HOME` 安全预置到真实 Wrapper ZIP 缓存。它使用与 Wrapper 相同的 Java 文件锁，不覆盖在途或摘要不同的缓存，不伪造 `.ok`；再用所选 Java 启动项目实际 Wrapper `--version`，60 秒内核对版本与本地缓存复用。
+已验分发包保存在用户 Library 的 `Caches/JobsFlutterTools/gradle`，随后由 [WrapperDistributionCache.zsh](./【MacOS】WrapperDistributionCache.zsh/【MacOS】WrapperDistributionCache.zsh) 按 Wrapper URL 散列、`distributionBase/path`、`zipStoreBase/path` 和有效 `GRADLE_USER_HOME` 安全预置到真实 Wrapper ZIP 缓存。它使用与 Wrapper 相同的 Java 文件锁，不覆盖在途或摘要不同的缓存，不伪造 `.ok`；再用所选 Java 启动项目实际 Wrapper `--version`，60 秒内核对版本与本地缓存复用。
 
 Gradle `help` 会执行当前工程构建配置，下载 / 解析 AGP、Kotlin 等配置阶段插件并写正常缓存。成功不代表全部 App 编译依赖、所有 flavor、签名、安装或业务功能通过。新工程先准备分发包，再 `pub get`，最后预热插件，避免 Flutter 插件索引尚未生成导致误报。独立下载入口若缺少 Android SDK、Flutter 本机配置或 Pub 索引，会返回真实失败并提示先一键配置。
 
@@ -130,7 +138,7 @@ Gradle `help` 会执行当前工程构建配置，下载 / 解析 AGP、Kotlin �
 
 ### 3.1、<span id="platform-archives">平台快照提取与导入</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-[ArchiveProjectDependencies.zsh](./ArchiveProjectDependencies.zsh) 接收 `--mode export|import`、`--kind gradle|pods|spm|ohos|native|precache|web`、`--project`，可用 `--platform` 指定当前工程适用目标，`--directory` 指定已存在的输出父目录或完整输入快照；缺少目录参数时在终端输入 / 拖入，空输入取消。`--check` 只展示静态计划，不调用 SDK、联网、写日志或复制文件。运行时复用本机环境记录或项目 FVM 的健康 Flutter / Dart，不在此入口安装另一套 SDK。
+[ArchiveProjectDependencies.zsh](./【MacOS】ArchiveProjectDependencies.zsh/【MacOS】ArchiveProjectDependencies.zsh) 接收 `--mode export|import`、`--kind gradle|pods|spm|ohos|native|precache|web`、`--project`，可用 `--platform` 指定当前工程适用目标，`--directory` 指定已存在的输出父目录或完整输入快照；缺少目录参数时在终端输入 / 拖入，空输入取消。`--check` 只展示静态计划，不调用 SDK、联网、写日志或复制文件。运行时复用本机环境记录或项目 FVM 的健康 Flutter / Dart，不在此入口安装另一套 SDK。
 
 ```shell
 /bin/zsh ./ArchiveProjectDependencies.zsh \
@@ -170,9 +178,9 @@ Gradle 在 Maven `modules-2` 与固定 Wrapper 分发间选择组件；OHOS 在 
 
 ## <span id="jobs-toc-heading-8" data-jobs-toc="v2">四、平台准备、设备与实际运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-[SetupFlutterPlatform.zsh](./SetupFlutterPlatform.zsh) 组合现有 Android 完整工具内核，准备 SDK / 命令行工具、读取项目和 Flutter 默认的 compileSdk / NDK / CMake 需求，再精确安装所需组件。许可证由本人阅读选择，未确认全部许可接受不标记完成。工具所需临时 Java 不覆盖构建选择的 Java。
+[SetupFlutterPlatform.zsh](./【MacOS】SetupFlutterPlatform.zsh/【MacOS】SetupFlutterPlatform.zsh) 组合现有 Android 完整工具内核，准备 SDK / 命令行工具、读取项目和 Flutter 默认的 compileSdk / NDK / CMake 需求，再精确安装所需组件。许可证由本人阅读选择，未确认全部许可接受不标记完成。工具所需临时 Java 不覆盖构建选择的 Java。
 
-[SetupFlutterRun.zsh](./SetupFlutterRun.zsh) 为 Apple 平台发现完整 Xcode，必要时选择其它安装或打开 Mac App Store；`DEVELOPER_DIR` 仅对本流程生效。首次组件与许可必须本人在 Xcode 完成。存在 Podfile 时准备 CocoaPods，再在 Pub 之后执行 `pod install`；优先平台目录的 Gemfile，其次工程根 Gemfile，存在固定 CocoaPods 的声明时沿用 Bundler。缺少 Bundler 时依 `Gemfile.lock` 的 `BUNDLED WITH` 补齐对应版本到当前 Ruby 的用户级 Gem 目录，安装后复检，不忽略锁定版本。安装复用原 Jobs CocoaPods 脚本的“Homebrew 优先 → Homebrew Ruby 用户级 Gem 兜底 → pod 二次复检”核心，健康组件不升级，不自动按 IP 改全局 Gem 源，不写 Shell 配置。
+[SetupFlutterRun.zsh](./【MacOS】SetupFlutterRun.zsh/【MacOS】SetupFlutterRun.zsh) 为 Apple 平台发现完整 Xcode，必要时选择其它安装或打开 Mac App Store；`DEVELOPER_DIR` 仅对本流程生效。首次组件与许可必须本人在 Xcode 完成。存在 Podfile 时准备 CocoaPods，再在 Pub 之后执行 `pod install`；优先平台目录的 Gemfile，其次工程根 Gemfile，存在固定 CocoaPods 的声明时沿用 Bundler。缺少 Bundler 时依 `Gemfile.lock` 的 `BUNDLED WITH` 补齐对应版本到当前 Ruby 的用户级 Gem 目录，安装后复检，不忽略锁定版本。安装复用原 Jobs CocoaPods 脚本的“Homebrew 优先 → Homebrew Ruby 用户级 Gem 兜底 → pod 二次复检”核心，健康组件不升级，不自动按 IP 改全局 Gem 源，不写 Shell 配置。
 
 Web 目标先验证 Chrome / Edge 可执行性，缺少浏览器时可选择通过 Homebrew 官方 Cask 安装 Chrome，或指定本机已有可执行文件；复检通过才继续。`CHROME_EXECUTABLE` 仅对本流程生效，不会因为存在 `web/` 就宣称浏览器已就绪。
 
@@ -180,20 +188,20 @@ Web 目标先验证 Chrome / Edge 可执行性，缺少浏览器时可选择通�
 
 | 组合模块 | 复用来源与边界 |
 | --- | --- |
-| [SetupHomebrew.zsh](./SetupHomebrew.zsh) | 复用用户指定 [CocoaPods 安装脚本](../../../../../JobsCommand@iOS/Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command) 的健康检测、官方安装及复检核心；精确 `YES` 为系统目录，其它输入为用户目录；CLT 由 Apple 官方界面处理，每 10 秒自动复检后继续；仅当前进程激活 PATH，不写 profile。fzf 已健康但后续 jEnv/JDK、系统 Flutter、CocoaPods 缺 Brew 时同样进入该引导。 |
+| [SetupHomebrew.zsh](./【MacOS】SetupHomebrew.zsh/【MacOS】SetupHomebrew.zsh) | 复用用户指定 [CocoaPods 安装脚本](../../../../../JobsCommand@iOS/Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command) 的健康检测、官方安装及复检核心；精确 `YES` 为系统目录，其它输入为用户目录；CLT 由 Apple 官方界面处理，每 10 秒自动复检后继续；仅当前进程激活 PATH，不写 profile。fzf 已健康但后续 jEnv/JDK、系统 Flutter、CocoaPods 缺 Brew 时同样进入该引导。 |
 | Apple 平台 / CocoaPods | 同一原脚本的 Homebrew 优先、Homebrew Ruby / 用户级 Gem 兜底及安装后复检；按工程 Ruby 与锁定 Bundler 版本检查兼容，保留项目 Pod 锁定策略。 |
-| Android 工具链与 AVD | [AndroidSdkSupport.zsh](./AndroidSdkSupport.zsh) 的 SDK / Java / 命令行工具 / emulator 和完整设备、映像选择内核；平台组件由工程及同套 Flutter 配置确定。 |
-| iOS 模拟器 | [现用完整模拟器脚本](../../../JobsIOSSimulatorCreator/Scripts/CreateIOSSimulator.zsh) 的随包副本，保留型号 / Runtime / 创建 / 启动交互和取消边界。 |
+| Android 工具链与 AVD | [AndroidSdkSupport.zsh](./【MacOS】AndroidSdkSupport.zsh/【MacOS】AndroidSdkSupport.zsh) 的 SDK / Java / 命令行工具 / emulator 和完整设备、映像选择内核；平台组件由工程及同套 Flutter 配置确定。 |
+| iOS 模拟器 | [现用完整模拟器脚本](../../../JobsIOSSimulatorCreator/Scripts/【MacOS】CreateIOSSimulator.zsh/【MacOS】CreateIOSSimulator.zsh) 的随包副本，保留型号 / Runtime / 创建 / 启动交互和取消边界。 |
 
-设备列表按目标平台过滤，空列表提供重载及模拟器完整入口。iOS 由随包 [SetupCreateIOSSimulator.zsh](./SetupCreateIOSSimulator.zsh) 提供完整型号、Runtime、创建与启动交互，源码与现用 [iOS 模拟器脚本](../../../JobsIOSSimulatorCreator/Scripts/CreateIOSSimulator.zsh) 一致；Android 的 [SetupCreateAndroidSimulator.zsh](./SetupCreateAndroidSimulator.zsh) 显式展示自述后执行 [AndroidSdkSupport.zsh](./AndroidSdkSupport.zsh) 的完整已有 AVD / 新建流程，不以只加载函数冒充已创建设备，不依赖其它仓库绝对路径。
+设备列表按目标平台过滤，空列表提供重载及模拟器完整入口。iOS 由随包 [SetupCreateIOSSimulator.zsh](./【MacOS】SetupCreateIOSSimulator.zsh/【MacOS】SetupCreateIOSSimulator.zsh) 提供完整型号、Runtime、创建与启动交互，源码与现用 [iOS 模拟器脚本](../../../JobsIOSSimulatorCreator/Scripts/【MacOS】CreateIOSSimulator.zsh/【MacOS】CreateIOSSimulator.zsh) 一致；Android 的 [SetupCreateAndroidSimulator.zsh](./【MacOS】SetupCreateAndroidSimulator.zsh/【MacOS】SetupCreateAndroidSimulator.zsh) 显式展示自述后执行 [AndroidSdkSupport.zsh](./【MacOS】AndroidSdkSupport.zsh/【MacOS】AndroidSdkSupport.zsh) 的完整已有 AVD / 新建流程，不以只加载函数冒充已创建设备，不依赖其它仓库绝对路径。
 
-[SetupFlutterRun.jxa](./SetupFlutterRun.jxa) 读取 `.vscode/launch.json` 的 JSONC 和 `.run/*.run.xml`，只解析 `target`、`flavor`、debug / profile / release、dart-define 及 verbose / no-pub 白名单数据；不执行 tasks、Shell、命令替换或 XML 外部实体。入口及 define 文件必须为工程内普通文件。也可以手动填写启动参数，define 不写入项目文件。
+[SetupFlutterRun.jxa](./SetupFlutterRun.jxa/SetupFlutterRun.jxa) 读取 `.vscode/launch.json` 的 JSONC 和 `.run/*.run.xml`，只解析 `target`、`flavor`、debug / profile / release、dart-define 及 verbose / no-pub 白名单数据；不执行 tasks、Shell、命令替换或 XML 外部实体。入口及 define 文件必须为工程内普通文件。也可以手动填写启动参数，define 不写入项目文件。
 
 最终先选“实际启动验证”或“仅准备”。实际验证前明确确认构建、签名及安装影响；确认后复用运行器的只读环境体检，展示三端状态，并要求本次目标平台通过，失败、超时或体检资源缺失时不创建运行通道、不构建或启动 App。GUI 单独显示“运行前环境健康体检”节点，原始结果保存在运行目录的 `run.preflight.*` 文件；收尾诊断和环境准备完成不能代替这道门禁。通过后使用所选 SDK、Java、设备与启动配置执行 `flutter run --machine`。只有收到匹配设备与 appId 的 `app.started`，并正常 detach 才报告实际启动通过；`app.start`、任务提交、doctor 或编译成功均不算。detach 后设备 App 保留运行，业务功能仍需本人验收。签名、描述文件、设备资格、许可、供应商模拟器切片及私有仓库权限不能由脚本绕过。
 
 ## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、里程碑、日志与退出码 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-GUI 通过 `JOBS_FLUTTER_SETUP_EVENTS` 指定私有 JSONL 文件；[ProjectEnvironment.zsh](./ProjectEnvironment.zsh) 写 `id/parent/title/state/message/version` 事件，Flutter、Java、Gradle、Pub、平台工具链、设备、启动配置及实际运行均有父子节点。成功节点的可见版本来自所选工具真实输出或已核对元数据，包括 Flutter / Dart、FVM、Java / jEnv、实际 Wrapper、静态 AGP、Xcode Build、实际执行的 CocoaPods / Bundler、浏览器及同套 Flutter 平台资源；未检测到的版本保持空值，不猜数字。后续父阶段完成事件保留已检测版本。没有该变量时仍可直接在终端运行。fzf、输入、许可证及原始日志由同一终端会话处理。
+GUI 通过 `JOBS_FLUTTER_SETUP_EVENTS` 指定私有 JSONL 文件；[ProjectEnvironment.zsh](./【MacOS】ProjectEnvironment.zsh/【MacOS】ProjectEnvironment.zsh) 写 `id/parent/title/state/message/version` 事件，Flutter、Java、Gradle、Pub、平台工具链、设备、启动配置及实际运行均有父子节点。成功节点的可见版本来自所选工具真实输出或已核对元数据，包括 Flutter / Dart、FVM、Java / jEnv、实际 Wrapper、静态 AGP、Xcode Build、实际执行的 CocoaPods / Bundler、浏览器及同套 Flutter 平台资源；未检测到的版本保持空值，不猜数字。后续父阶段完成事件保留已检测版本。没有该变量时仍可直接在终端运行。fzf、输入、许可证及原始日志由同一终端会话处理。
 
 [SetupProjectWindow.swift](./SetupProjectWindow.swift) 将窗口标题、项目 / 工具版本与水平任务线分开展示，阶段名称和状态分行排布。任务线默认按内容取紧凑高度，随子节点适度增长，超出可用高度时滚动；保留真实分隔条，用户拖动后沿用手动高度并同步 PTY 行列数。仅进行中节点循环显示 0～5 个圆点，预留宽度保持布局稳定；节点转为其它状态或任务结束时清除圆点并停止动画。实际版本、分类子节点与等宽 ASCII `>>>>>` 连接符保留。
 
@@ -205,7 +213,7 @@ GUI 通过 `JOBS_FLUTTER_SETUP_EVENTS` 指定私有 JSONL 文件；[ProjectEnvir
 
 通过假 SDK、假网络、假 Wrapper、临时项目和 PTY 验证核心顺序、取消、SHA256、官方回退、兼容检查、Pub 失败停止、doctor 缺项、启动事件与 detach；Wrapper 缓存另有真实本机 Java 文件锁回归。解析器只读核对当前工程的 JSONC / XML 配置。没有通过本次源码测试安装真实 SDK、接受许可、修改业务工程配置、构建安装真实 App 或验证 Windows 桌面菜单。平台工具和真实设备最终以目标机器执行结果为准。
 
-`ruby ../../Tests/ProjectDependencyTests.rb` 用假原生工具核对 Maven 解析任务、Pods install / Bundler、SPM 容器与锁文件、OHPM / Hvigor 顺序、npm / pnpm / Yarn 锁定安装、平台过滤与原生 build 参数；覆盖失败 / 取消停止和单项 Web 不准备无关 SDK。`--check` 只读与共用内核的执行顺序单独验证，不以假命令成功声称真实平台制品已经下载。
+`ruby ../../Tests/ProjectDependencyTests.rb/ProjectDependencyTests.rb` 用假原生工具核对 Maven 解析任务、Pods install / Bundler、SPM 容器与锁文件、OHPM / Hvigor 顺序、npm / pnpm / Yarn 锁定安装、平台过滤与原生 build 参数；覆盖失败 / 取消停止和单项 Web 不准备无关 SDK。`--check` 只读与共用内核的执行顺序单独验证，不以假命令成功声称真实平台制品已经下载。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 

@@ -23,9 +23,9 @@
 
 **SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-`InspectFlutterSdkVersion.zsh` 是 Finder“查看当前 Flutter SDK 版本”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再判定 SDK 来源（[**FVM**](https://fvm.app) 项目 SDK 或系统 SDK），实际执行该 SDK 的 `flutter --version --machine`，最后与 `.fvmrc` 配置和 `pubspec.yaml` 的 `environment` 约束核对。不安装或切换 SDK，不改写项目版本配置；实际调用 Flutter 时，缺失的 Dart / 引擎缓存可能由 Flutter 自行补齐，终端同步显示其原始进度。
+`./【MacOS】InspectFlutterSdkVersion.zsh/【MacOS】InspectFlutterSdkVersion.zsh` 是 Finder“查看当前 Flutter SDK 版本”的终端业务入口。先确认指定文件夹自身是 [**Flutter**](https://flutter.dev/) 项目，再判定 SDK 来源（[**FVM**](https://fvm.app) 项目 SDK 或系统 SDK），实际执行该 SDK 的 `flutter --version --machine`，最后与 `.fvmrc` 配置和 `pubspec.yaml` 的 `environment` 约束核对。不安装或切换 SDK，不改写项目版本配置；实际调用 Flutter 时，缺失的 Dart / 引擎缓存可能由 Flutter 自行补齐，终端同步显示其原始进度。
 
 
 **安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，非交互调用默认 `build`。GUI 首次打开默认使用应用程序中的联合 App，并勾选安装成功后清理；显式参数或环境设置优先，用户可在面板手动取消。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
@@ -46,7 +46,7 @@
 ```text
 Scripts/
 ├── InspectFlutterSdkVersion.zsh   # 查询业务入口（宿主打包为 App 资源）
-├── EnableFinderExtension.zsh      # Xcode 构建后注册扩展的挂载脚本
+├── 【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh      # Xcode 构建后注册扩展的挂载脚本
 └── README.md
 ```
 

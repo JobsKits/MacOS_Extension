@@ -10,6 +10,8 @@ import FinderSync
 
 final class FinderSync: FIFinderSync {
 
+    private lazy var orderedDesktopMenu = OrderedDesktopMenuCoordinator(extensionURL: Bundle.main.bundleURL)
+
     private var nextRequestTag = 0
     private var requests: [Int: FileCreationRequest] = [:]
     private let requestLimit = 64
@@ -21,6 +23,15 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
+        let coordinated = orderedDesktopMenu.menu(
+            isContainer: menuKind == .contextualMenuForContainer,
+            targetedURL: FIFinderSyncController.default().targetedURL(),
+            actionTarget: self
+        )
+        if coordinated.handled {
+            return coordinated.menu
+        }
+
         guard let directory = FileCreationContext.directory(isContainer: menuKind == .contextualMenuForContainer,
                                                               targetedURL: FIFinderSyncController.default().targetedURL()),
               let request = FileCreationRequest(directoryURL: directory),
@@ -39,6 +50,11 @@ final class FinderSync: FIFinderSync {
                                         action: #selector(createFile(_:)),
                                         target: self)
                 .byTag(tag))
+    }
+
+    // Finder 将菜单 selector 派发给扩展主对象，再由协调器核验原始 tag 快照。
+    @objc func performOrderedAction(_ sender: NSMenuItem) {
+        orderedDesktopMenu.performOrderedAction(sender)
     }
 
     @objc private func createFile(_ sender: NSMenuItem) {

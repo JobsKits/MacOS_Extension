@@ -245,16 +245,18 @@ require 'tmpdir'
 require 'fileutils'
 require 'shellwords'
 
+require_relative '../SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class PackageInstallLocationTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
   REAL_PACKAGES = %w[JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsPathCopier JobsTerminalOpener JobsFlutterTools JobsIOSTools JobsFileCreator].freeze
 
   def definitions(package)
-    File.read(File.join(ROOT, package, 'Scripts/ManageExtension.zsh')).sub(/^(?:manager_)?main "\$@"\s*\z/, '')
+    File.read(JobsSourceLayout.file(File.join(ROOT, package, 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).sub(/^(?:manager_)?main "\$@"\s*\z/, '')
   end
 
   def execute(source, *args, env: {})
-    Open3.capture3(env, '/bin/zsh', '-c', source, 'fixture', *args)
+    Open3.capture3(env, '/bin/zsh', '-c', JobsSourceLayout.shell(source), 'fixture', *args)
   end
 
   def fixture_environment(directory)
@@ -288,14 +290,14 @@ class PackageInstallLocationTests < Minitest::Test
   end
 
   def test_all_package_parsers_accept_both_locations_and_reject_unknown_before_dispatch
-    Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-      package = File.basename(File.dirname(File.dirname(path)))
+    Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+      package = File.basename(File.dirname(File.dirname(File.dirname(path))))
       source = definitions(package) + <<~'ZSH'
         manager_open_gui() { print -r -- "GUI=$JOBS_FINDER_INSTALL_LOCATION"; }
         open_management_panel() { print -r -- "GUI=$JOBS_FINDER_INSTALL_LOCATION"; }
         manager_main() { manager_parse_options "$@" || return $?; manager_open_gui; }
       ZSH
-      entry = package == 'JobsFileCreator' ? 'main "$@"' : 'manager_main "$@"'
+      entry = %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator JobsDiskSpaceInfo].include?(package) ? 'main "$@"' : 'manager_main "$@"'
       %w[build applications].each do |location|
         output, error, result = execute(source + "\n#{entry}\n", '--install-location', location)
         assert result.success?, "#{package}: #{error}"
@@ -437,7 +439,7 @@ class PackageInstallLocationTests < Minitest::Test
           jobs_deployment_enabled_extension_paths() { return 0; }
           jobs_deployment_rollback() { return 0; }
         ZSH
-        source = File.read(File.join(ROOT, package, 'Scripts', operation)).sub(/^main "\$@"\s*\z/, '')
+        source = File.read(JobsSourceLayout.file(File.join(ROOT, package, 'Scripts', operation))).sub(/^main "\$@"\s*\z/, '')
         # 所有非文件操作均使用替身；实际rm也只能作用于上面创建的App夹具。
         source += <<~'ZSH'
           retire_legacy() { return 0; }
@@ -572,8 +574,8 @@ class PackageInstallLocationTests < Minitest::Test
 
   def test_cleanup_option_requires_applications_install_before_any_business_in_every_package
     Dir.mktmpdir('jobs-package-cleanup-options-') do |dir|
-      Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-        package = File.basename(File.dirname(File.dirname(path)))
+      Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+        package = File.basename(File.dirname(File.dirname(File.dirname(path))))
         source = definitions(package) + <<~'ZSH'
           manager_open_gui() { print -r -- "GUI_CLEANUP=$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS"; }
           open_management_panel() { print -r -- "GUI_CLEANUP=$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS"; }
@@ -582,7 +584,7 @@ class PackageInstallLocationTests < Minitest::Test
           run_uninstall_operation() { print -r -- unexpected-uninstall; }
           run_worker() { print -r -- "BUSINESS_CLEANUP=$JOBS_FINDER_CLEANUP_BUILD_PRODUCTS"; }
         ZSH
-        source += package == 'JobsFileCreator' ? "\nmain \"$@\"\n" : "\nmanager_main \"$@\"\n"
+        source += %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator JobsDiskSpaceInfo].include?(package) ? "\nmain \"$@\"\n" : "\nmanager_main \"$@\"\n"
         environment = fixture_environment(dir).merge('JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '0')
         output, error, result = execute(source, '--action', 'install', '--install-location', 'applications', '--cleanup-build-products', '--non-interactive', env: environment)
         assert result.success?, "#{package}: #{error}"
@@ -630,7 +632,7 @@ class PackageInstallLocationTests < Minitest::Test
     %w[JobsProjectTools JobsDesktopTools].each do |package|
       project = package == 'JobsProjectTools'
       filename = project ? 'ManageProjectTools.zsh' : 'ManageDesktopTools.zsh'
-      source = File.read(File.join(ROOT, package, 'Scripts', filename)).sub(/^main "\$@"\s*\z/, '')
+      source = File.read(JobsSourceLayout.file(File.join(ROOT, package, 'Scripts', "【MacOS】#{filename}", "【MacOS】#{filename}"))).sub(/^main "\$@"\s*\z/, '')
       parser = project ? 'parse_operation' : 'prepare_context'
       source += "\n#{parser} \"$@\"\n"
       leaf = project ? 'vscode_opener' : 'hidden-files-toggle'
@@ -655,9 +657,14 @@ class PackageInstallLocationTests < Minitest::Test
       binary = File.join(cache, 'ManagementPanel')
       File.write(binary, "#!/bin/zsh\n/usr/bin/printf '%s\\0' \"$@\"\n")
       File.chmod(0o755, binary)
-      helper = File.read(File.join(ROOT, 'Scripts/FinderManagerGUI.zsh'))
+      helper = File.read(JobsSourceLayout.file(File.join(ROOT, 'Scripts/【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh')))
+      host = File.join(cache, 'FixtureHost.app')
+      FileUtils.mkdir_p(File.join(host, 'Contents/MacOS'))
+      JobsSourceLayout.copy(binary, File.join(host, 'Contents/MacOS/JobsFinderManager'))
+      # Native host signing/icon identity has its own suite; this case isolates cache placement and arguments.
+      helper += "\njobs_manager_gui_icon_is_valid() { return 0; }\njobs_manager_prepare_gui_app() { print -r -- \"$JOBS_FIXTURE_HOST\"; }\njobs_manager_launch_error() { print -u2 -r -- \"$1 $2\"; return 1; }\n"
       output, error, result = execute(helper + "\njobs_launch_finder_manager_gui \"$1\" file-create install 1\n", entry,
-                                      env: fixture_environment(dir).merge('JOBS_FINDER_MANAGER_CACHE_DIR' => cache, 'JOBS_FINDER_INSTALL_LOCATION' => 'applications', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '1'))
+                                      env: fixture_environment(dir).merge('JOBS_FIXTURE_HOST' => host, 'JOBS_FINDER_MANAGER_CACHE_DIR' => cache, 'JOBS_FINDER_INSTALL_LOCATION' => 'applications', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '1'))
       assert result.success?, error
       assert_equal ['--manager', entry, '--action', 'install', '--install-location', 'applications', '--cleanup-build-products', '--scope', 'file-create'], output.split("\0")
       refute File.exist?(File.join(package, 'work'))
@@ -668,7 +675,7 @@ class PackageInstallLocationTests < Minitest::Test
   def test_aggregate_cleanup_failure_is_a_warning_and_keeps_committed_install_success
     %w[JobsProjectTools JobsDesktopTools].each do |package|
       filename = package == 'JobsProjectTools' ? 'ManageProjectTools.zsh' : 'ManageDesktopTools.zsh'
-      source = File.read(File.join(ROOT, package, 'Scripts', filename)).sub(/^main "\$@"\s*\z/, '')
+      source = File.read(JobsSourceLayout.file(File.join(ROOT, package, 'Scripts', "【MacOS】#{filename}", "【MacOS】#{filename}"))).sub(/^main "\$@"\s*\z/, '')
       source += <<~'ZSH'
         PROJECT_ROOT="$HOME/Package"
         BUILT_APP_PATH="$PROJECT_ROOT/work/DerivedData/Build/Products/Debug/$1.app"
@@ -727,8 +734,8 @@ class PackageInstallLocationTests < Minitest::Test
     Dir.mktmpdir('jobs-package-independent-cleanup-') do |dir|
       stop = File.join(dir, '停止 this batch.request')
       File.write(stop, 'stop')
-      Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-        package = File.basename(File.dirname(File.dirname(path)))
+      Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+        package = File.basename(File.dirname(File.dirname(File.dirname(path))))
         source = definitions(package) + <<~'ZSH'
           manager_choose_action() { return 0; }
           manager_validate_existing_configuration() { print -u2 unexpected-config; return 97; }
@@ -738,7 +745,7 @@ class PackageInstallLocationTests < Minitest::Test
           run_uninstall_operation() { print -u2 unexpected-uninstall; return 97; }
           run_worker() { print -u2 unexpected-worker; return 97; }
         ZSH
-        source += package == 'JobsFileCreator' ? "\nmain \"$@\"\n" : "\nmanager_main \"$@\"\n"
+        source += %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator JobsDiskSpaceInfo].include?(package) ? "\nmain \"$@\"\n" : "\nmanager_main \"$@\"\n"
         output, error, result = execute(source, '--action', 'cleanup', '--install-location', 'applications', '--stop-request-file', stop, '--non-interactive', env: fixture_environment(dir))
         assert result.success?, "#{package}: #{error}"
         assert_includes output, "CLEANUP=applications|0|#{stop}", package
@@ -757,10 +764,10 @@ class PackageInstallLocationTests < Minitest::Test
   end
 
   def test_all_entry_parsers_reject_missing_or_relative_stop_files_before_business
-    Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-      package = File.basename(File.dirname(File.dirname(path)))
+    Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+      package = File.basename(File.dirname(File.dirname(File.dirname(path))))
       source = definitions(package)
-      source += package == 'JobsFileCreator' ? "\nparse_options \"$@\"\n" : "\nmanager_parse_options \"$@\"\n"
+      source += %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator JobsDiskSpaceInfo].include?(package) ? "\nparse_options \"$@\"\n" : "\nmanager_parse_options \"$@\"\n"
       %w[install uninstall cleanup].each do |action|
         [['--stop-request-file', '/tmp/jobs batch.stop'], ['--stop-request-file=/tmp/jobs batch.stop']].each do |arguments|
           output, error, result = execute(source + "\nprint -r -- \"STOP=$JOBS_FINDER_STOP_REQUEST_FILE\"\n", '--action', action, '--install-location', 'applications', *arguments)
@@ -811,8 +818,8 @@ class PackageInstallLocationTests < Minitest::Test
   def test_forwarding_entries_preserve_cleanup_scope_stop_file_and_blocked_result
     Dir.mktmpdir('jobs-package-forward-cleanup-') do |dir|
       stop = File.join(dir, '停止 batch.request')
-      Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-        package = File.basename(File.dirname(File.dirname(path)))
+      Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+        package = File.basename(File.dirname(File.dirname(File.dirname(path))))
         source = definitions(package)
         next unless source.include?('run_feature_operation() {') || source.include?('run_flutter_operation() {')
         target = if source.include?('run_flutter_operation() {')
@@ -856,10 +863,10 @@ class PackageInstallLocationTests < Minitest::Test
       manager = File.join(dir, 'Scripts/ManageFinderExtensions.zsh')
       FileUtils.mkdir_p(File.dirname(manager))
       File.write(manager, "printf 'ARG=%s\\n' \"$@\"\nprint -r -- \"STOP_ENV=$JOBS_FINDER_STOP_REQUEST_FILE\"\n")
-      Dir.glob(File.join(ROOT, 'Jobs*', 'Scripts/ManageExtension.zsh')).each do |path|
-        package = File.basename(File.dirname(File.dirname(path)))
+      Dir.glob(JobsSourceLayout.file(File.join(ROOT, 'Jobs*', 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'))).each do |path|
+        package = File.basename(File.dirname(File.dirname(File.dirname(path))))
         source = definitions(package)
-        source += if package == 'JobsFileCreator'
+        source += if %w[JobsFileCreator JobsFileHasher JobsCommandShortcutCreator JobsDiskSpaceInfo].include?(package)
                     <<~'ZSH'
                       parse_options --action cleanup --install-location applications --stop-request-file="$2" || exit $?
                       PROJECT_DIR="$HOME/$1"
@@ -879,7 +886,7 @@ class PackageInstallLocationTests < Minitest::Test
         assert_equal 'cleanup', arguments[arguments.index('--action') + 1], package
         refute_includes arguments, '--stop-request-file', package
         assert_includes output, "STOP_ENV=\n", package
-        scope = package == 'JobsFileCreator' ? 'file-create' : File.read(path)[/MANAGER_UI_SCOPE="([^"]+)"/, 1]
+        scope = File.read(path)[/MANAGER_UI_SCOPE="([^"]+)"/, 1] || File.read(path)[/local scope="([^"]+)"/, 1]
         assert_equal scope, arguments[arguments.index('--scope') + 1], package
       end
     end
@@ -906,7 +913,7 @@ class PackageInstallLocationTests < Minitest::Test
             jobs_deployment_rollback() { print -u2 unexpected-rollback; return 97; }
             jobs_deployment_install() { print -u2 unexpected-install; return 97; }
           ZSH
-          source = File.read(File.join(ROOT, package, 'Scripts', filename)).sub(/^main "\$@"\s*\z/, '')
+          source = File.read(JobsSourceLayout.file(File.join(ROOT, package, 'Scripts', "【MacOS】#{filename}", "【MacOS】#{filename}"))).sub(/^main "\$@"\s*\z/, '')
           source += <<~'ZSH'
             read_configuration() { print -u2 unexpected-config; return 97; }
             install_features() { print -u2 unexpected-install; return 97; }

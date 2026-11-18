@@ -19,13 +19,13 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
+本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
 
 日志区上方的分隔条可上下拖动，窗口也可调整大小；功能列表与日志分别滚动，并保留操作按钮。日志右键提供“全选”，也可用 `⌘A` 全选后 `⌘C` 复制；拖动不会清空日志或改变功能勾选。
 
-[ManageProjectTools.zsh](./ManageProjectTools.zsh) 由上级图形管理器调用，负责九项 IDE / Git 功能的统一构建、注册与逐项状态管理；三个 IDE 保留一级入口，Git 六项集中在“Git操作”子菜单。“用 [**Sourcetree**](https://www.sourcetreeapp.com/) 打开”已从菜单与管理选择中移除。本脚本不是 Finder 点击后的任意命令执行器。
+[ManageProjectTools.zsh](./【MacOS】ManageProjectTools.zsh/【MacOS】ManageProjectTools.zsh) 由上级图形管理器调用，负责九项 IDE / Git 功能的统一构建、注册与逐项状态管理；三个 IDE 保留一级入口，Git 六项集中在“Git操作”子菜单。“用 [**Sourcetree**](https://www.sourcetreeapp.com/) 打开”已从菜单与管理选择中移除。本脚本不是 Finder 点击后的任意命令执行器。
 
 
 **面板与状态：** 主标题为“自定义Finder右键菜单”（繁体：自定義Finder右鍵菜單；英文：Customize Finder Context Menu）。安装 / 更新与卸载之间切换保留当前全部功能勾选；状态图标与活动指示器居中共用固定列，状态文字保持同一左边界。 功能分组支持按住标题拖动排序及跨列移动，布局保存在当前用户偏好中；默认右列仅放 Flutter，其余分组在左列。拖动和切换主题、语言或操作模式保留功能勾选、执行状态和日志；窄窗按布局顺序显示为单列。
@@ -57,6 +57,7 @@
 - 提交回退菜单独立迁移一次：只合并系统明确启用的旧 `JobsGitRollback` 扩展；统一扩展成功后精确停用旧回退宿主和扩展，后续安装不重新打开已关闭项。
 - 使用完整 Xcode 构建到上级 `./work/DerivedData/`，注册并等待当前精确扩展路径启用成功，再原子保存 `EnabledFeatures.txt`，停用对应独立扩展。
 - 卸载只删选择的功能配置与启用状态；最后一项关闭后注销统一扩展，保留源码和构建缓存。
+- 已下线的 `git-sourcetree` 配置不再计为启用项，不阻止最后一项现行功能移除共享模块；再次卸载已关闭项显示“未安装，无需卸载”，不重复增加卸载成功数。未知、重复、链接和损坏配置仍拒绝处理并保留原文件。
 - 配置在当前用户 Application Support 的 JobsProjectTools 目录中；两种模式最后刷新 Finder。终端显示状态与错误，没有单独业务日志文件。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、依赖、副作用与验证 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->

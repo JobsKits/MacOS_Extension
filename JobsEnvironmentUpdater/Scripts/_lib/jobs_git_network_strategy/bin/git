@@ -1,0 +1,15 @@
+#!/bin/zsh
+# 固定PATH命令git的协议转发器；参数、标准流和退出码交给唯一同名包装实现。
+# 不增加提示、日志、依赖检查或第二层终端配色接管。
+GIT_FORWARDER_SOURCE="${(%):-%x}"
+# 从自身位置定位实现；整体目录复制或改名后仍保留相对关系。
+run_git_network_strategy() {
+  local implementation="${GIT_FORWARDER_SOURCE:A:h}/【MacOS】git.zsh/【MacOS】git.zsh"
+  [[ -f "$implementation" && ! -L "$implementation" ]] || { print -u2 -r -- "git: 缺少配套网络策略实现：$implementation"; return 127; }
+  exec /bin/zsh "$implementation" "$@"
+}
+# 公开命令只转交原生协议。
+main() {
+  run_git_network_strategy "$@" # 原样保留Git参数、标准流和退出码。
+}
+main "$@"

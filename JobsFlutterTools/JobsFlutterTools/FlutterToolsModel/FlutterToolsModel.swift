@@ -29,7 +29,7 @@ final class FlutterToolsModel {
 
     /// 校验项目仍是可识别的 Flutter 项目后，把本次 Flutter 开发辅助工具交给 Terminal 执行。
     func diagnose(_ projectURL: URL, action: FlutterToolsAction, completion: @escaping () -> Void) {
-        guard FlutterProjectValidator().isFlutterProject(at: projectURL) else {
+        guard (action == .run ? FlutterProjectValidator().runProjectURL(for: projectURL) != nil : FlutterProjectValidator().isFlutterProject(at: projectURL)) else {
             record("当前文件夹不是可识别的 Flutter 项目：\(projectURL.path)")
             completion()
             return

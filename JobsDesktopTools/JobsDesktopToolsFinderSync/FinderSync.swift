@@ -9,6 +9,8 @@ import AppKit
 import FinderSync
 
 final class FinderSync: FIFinderSync {
+
+    private lazy var orderedDesktopMenu = OrderedDesktopMenuCoordinator(extensionURL: Bundle.main.bundleURL)
     var enabledFeatures: () -> Set<DesktopMenuAction> = {
         return DesktopMenuConfiguration.enabledFeatures()
     }
@@ -21,6 +23,15 @@ final class FinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
+        let coordinated = orderedDesktopMenu.menu(
+            isContainer: menuKind == .contextualMenuForContainer,
+            targetedURL: FIFinderSyncController.default().targetedURL(),
+            actionTarget: self
+        )
+        if coordinated.handled {
+            return coordinated.menu
+        }
+
         guard menuKind == .contextualMenuForContainer else {
             return nil
         }
@@ -47,6 +58,11 @@ final class FinderSync: FIFinderSync {
             }
         }
         return menu
+    }
+
+    // Finder 将菜单 selector 派发给扩展主对象，再由协调器核验原始 tag 快照。
+    @objc func performOrderedAction(_ sender: NSMenuItem) {
+        orderedDesktopMenu.performOrderedAction(sender)
     }
 
     private func visibleActions() -> [DesktopMenuAction] {

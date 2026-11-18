@@ -1,5 +1,7 @@
 {
   "bo": {
+    "Update development environment (update)": "གསར་སྤེལ་ཁོར་ཡུག་གསར་བཅོས། (update)",
+    "Total disk space": "གསོག་སྡུད་སྡེར་མའི་བར་སྟོང་བསྡོམས།",
     "Create script launcher": "སྒྲིག་ཡིག་འཕྲལ་འཇུག་བཟོ།",
     "Theme": "མངོན་ཚུལ།",
     "Language": "སྐད་ཡིག",
@@ -352,9 +354,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} བྱེད་བཞིན། གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}",
+    "Close management panel": "དོ་དམ་པང་ལེབ་ཁ་རྒྱག",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "མ་ལག་གི་གནས་ཚུལ་ཐོ་བྱང་ནང་རྒྱབ་ལྗོངས་སུ་འཁོར་སྐྱོད་བྱེད་དམ། ཡང་ན་སྒྲིག་འཇུག / སུབ་པའི་པང་ལེབ་ནས་རྦད་དེ་ཕྱིར་འདོན་བྱེད།",
+    "Run in background": "རྒྱབ་ལྗོངས་སུ་འཁོར་སྐྱོད།",
+    "Quit completely": "རྦད་དེ་ཕྱིར་འདོན།",
+    "Show management panel": "དོ་དམ་པང་ལེབ་སྟོན།",
+    "Status: {0}": "གནས་ཚུལ། {0}",
+    "A task is running. You can quit after it finishes.": "ལས་ཀ་འཁོར་སྐྱོད་བཞིན་ཡོད། ལེགས་འགྲུབ་རྗེས་རྦད་དེ་ཕྱིར་འདོན་བྱེད་ཆོག",
+    "Hide / show selected items": "བདམས་པའི་རྣམ་གྲངས་སྦེད / སྟོན།",
+    "Send to external disk or network volume": "ཕྱིའི་སྡེར་མའམ་དྲ་རྒྱའི་གསོག་སྡུད་སྡེ་ཚན་ལ་གཏོང་།",
+    "Permanently delete selected items": "བདམས་པ་རྩ་བ་ནས་སུབ།"
   },
   "ja": {
+    "Update development environment (update)": "開発環境を更新（update）",
+    "Total disk space": "ディスク空き容量の合計",
     "Create script launcher": "スクリプト起動ファイルを作成",
     "Theme": "テーマ",
     "Language": "言語",
@@ -707,9 +721,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0}を実行中；完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}",
+    "Close management panel": "管理パネルを閉じる",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "メニューバーで実行を続けますか？ それともインストール／アンインストールパネルを完全に終了しますか？",
+    "Run in background": "バックグラウンドで実行",
+    "Quit completely": "完全に終了",
+    "Show management panel": "管理パネルを表示",
+    "Status: {0}": "状態：{0}",
+    "A task is running. You can quit after it finishes.": "タスクを実行中です。完了後に完全に終了できます。",
+    "Hide / show selected items": "選択した項目を非表示 / 表示",
+    "Send to external disk or network volume": "外部ディスクまたはネットワークボリュームに送る",
+    "Permanently delete selected items": "選択項目を完全に削除"
   },
   "fr": {
+    "Update development environment (update)": "Mettre à jour l’environnement de développement (update)",
+    "Total disk space": "Espace disque total disponible",
     "Create script launcher": "Créer un lanceur de script",
     "Theme": "Thème",
     "Language": "Langue",
@@ -1062,9 +1088,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} en cours ; terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}",
+    "Close management panel": "Fermer le panneau de gestion",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "Continuer dans la barre des menus ou quitter complètement le panneau d’installation / désinstallation ?",
+    "Run in background": "Exécuter en arrière-plan",
+    "Quit completely": "Quitter complètement",
+    "Show management panel": "Afficher le panneau de gestion",
+    "Status: {0}": "État : {0}",
+    "A task is running. You can quit after it finishes.": "Une tâche est en cours. Vous pourrez quitter une fois celle-ci terminée.",
+    "Hide / show selected items": "Masquer / afficher les éléments sélectionnés",
+    "Send to external disk or network volume": "Envoyer vers un disque externe ou un volume réseau",
+    "Permanently delete selected items": "Supprimer définitivement la sélection"
   },
   "es": {
+    "Update development environment (update)": "Actualizar el entorno de desarrollo (update)",
+    "Total disk space": "Espacio libre total en discos",
     "Create script launcher": "Crear acceso al script",
     "Theme": "Tema",
     "Language": "Idioma",
@@ -1417,9 +1455,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} en curso; completados {1} / {2} ({3}% por elementos completados); {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Completados {1} / {2} ({3}% por elementos completados); {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Completados {1} / {2} ({3}% por elementos completados); {4} {5}",
+    "Close management panel": "Cerrar el panel de gestión",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "¿Continuar en la barra de menús o salir completamente del panel de instalación / desinstalación?",
+    "Run in background": "Ejecutar en segundo plano",
+    "Quit completely": "Salir completamente",
+    "Show management panel": "Mostrar el panel de gestión",
+    "Status: {0}": "Estado: {0}",
+    "A task is running. You can quit after it finishes.": "Hay una tarea en curso. Podrá salir cuando termine.",
+    "Hide / show selected items": "Ocultar / mostrar los elementos seleccionados",
+    "Send to external disk or network volume": "Enviar a un disco externo o volumen de red",
+    "Permanently delete selected items": "Eliminar permanentemente la selección"
   },
   "de": {
+    "Update development environment (update)": "Entwicklungsumgebung aktualisieren (update)",
+    "Total disk space": "Gesamter freier Speicherplatz",
     "Create script launcher": "Skriptstarter erstellen",
     "Theme": "Design",
     "Language": "Sprache",
@@ -1772,9 +1822,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} läuft; abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}",
+    "Close management panel": "Verwaltungsfenster schließen",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "In der Menüleiste weiterlaufen lassen oder das Installations- / Deinstallationsfenster vollständig beenden?",
+    "Run in background": "Im Hintergrund ausführen",
+    "Quit completely": "Vollständig beenden",
+    "Show management panel": "Verwaltungsfenster anzeigen",
+    "Status: {0}": "Status: {0}",
+    "A task is running. You can quit after it finishes.": "Eine Aufgabe wird ausgeführt. Nach ihrem Abschluss können Sie beenden.",
+    "Hide / show selected items": "Ausgewählte Elemente ausblenden / einblenden",
+    "Send to external disk or network volume": "An externen Datenträger oder Netzwerkvolume senden",
+    "Permanently delete selected items": "Auswahl endgültig löschen"
   },
   "ru": {
+    "Update development environment (update)": "Обновить среду разработки (update)",
+    "Total disk space": "Общее свободное место на дисках",
     "Create script launcher": "Создать ярлык скрипта",
     "Theme": "Тема",
     "Language": "Язык",
@@ -2127,9 +2189,21 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "Выполняется {0}; завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}",
+    "Close management panel": "Закрыть панель управления",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "Продолжить работу в строке меню или полностью закрыть панель установки / удаления?",
+    "Run in background": "Продолжить в фоне",
+    "Quit completely": "Полностью выйти",
+    "Show management panel": "Показать панель управления",
+    "Status: {0}": "Состояние: {0}",
+    "A task is running. You can quit after it finishes.": "Выполняется задача. Выйти можно после её завершения.",
+    "Hide / show selected items": "Скрыть / показать выбранные объекты",
+    "Send to external disk or network volume": "Отправить на внешний диск или сетевой том",
+    "Permanently delete selected items": "Удалить выбранное навсегда"
   },
   "ko": {
+    "Update development environment (update)": "개발 환경 업데이트 (update)",
+    "Total disk space": "전체 디스크 여유 공간",
     "Create script launcher": "스크립트 실행 파일 만들기",
     "Theme": "테마",
     "Language": "언어",
@@ -2482,6 +2556,16 @@
     "{0} {1}": "{0} {1}",
     "{0}{1} {2}": "{0}{1} {2}",
     "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 진행 중; 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}",
-    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}"
+    "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}",
+    "Close management panel": "관리 패널 닫기",
+    "Run in the menu bar, or quit the installation / uninstallation panel?": "메뉴 막대에서 계속 실행할까요, 아니면 설치 / 제거 패널을 완전히 종료할까요?",
+    "Run in background": "백그라운드에서 실행",
+    "Quit completely": "완전히 종료",
+    "Show management panel": "관리 패널 표시",
+    "Status: {0}": "상태: {0}",
+    "A task is running. You can quit after it finishes.": "작업이 실행 중입니다. 완료된 후 완전히 종료할 수 있습니다.",
+    "Hide / show selected items": "선택한 항목 숨기기 / 표시",
+    "Send to external disk or network volume": "외장 디스크 또는 네트워크 볼륨으로 보내기",
+    "Permanently delete selected items": "선택 항목 영구 삭제"
   }
 }

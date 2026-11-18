@@ -58,6 +58,7 @@ jobs_terminal_style_run() {
     jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
     jobs_style_saved=''
     jobs_style_saved_rows=''
+    jobs_style_original_rows=''
     jobs_style_applied_rows=''
     jobs_style_changed=0
     jobs_style_applied_complete=0
@@ -66,7 +67,7 @@ jobs_terminal_style_run() {
     jobs_style_exit_status=0
     jobs_style_esc=$(printf '\033')
     jobs_style_bel=$(printf '\007')
-    # 完整颜色帧有界重发；仅退出恢复容忍帧外回车和明确方向键。
+    # 完整颜色帧有界重发；设置核验与退出恢复容忍帧外回车和明确方向键。
     jobs_terminal_style_query() {
         jobs_style_query_key=$1
         jobs_style_reply=''
@@ -92,8 +93,8 @@ jobs_terminal_style_run() {
                 jobs_style_piece=${jobs_style_piece%.}
                 jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
                 while [ -n "$jobs_style_query_buffer" ]; do
-                    # 仅退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
-                    if [ "$jobs_style_query_phase" = cleanup ]; then
+                    # 设置核验与退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ] || [ "$jobs_style_query_phase" = applied ]; then
                         jobs_style_query_control_sequence=''
                         jobs_style_query_control_partial=0
                         case $jobs_style_query_buffer in
@@ -125,9 +126,9 @@ jobs_terminal_style_run() {
                             done
                         fi
                         if [ -n "$jobs_style_query_control_sequence" ]; then
-                            jobs_style_cleanup_control_keys=$(( ${jobs_style_cleanup_control_keys:-0} + 1 ))
-                            if [ "$jobs_style_cleanup_control_keys" -gt 64 ]; then
-                                jobs_style_query_failure='退出恢复期间已识别控制键超过 64 个，已停止自动恢复'
+                            jobs_style_phase_control_keys=$(( ${jobs_style_phase_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_phase_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='本阶段已识别控制键超过 64 个，已停止自动恢复'
                                 return 1
                             fi
                             jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
@@ -261,6 +262,48 @@ jobs_terminal_style_run() {
             }
         '
     }
+    # 核验中断时重新读取当前值，只撤回仍等于本轮目标值的颜色。
+    jobs_terminal_style_rollback() {
+        jobs_style_rollback_issue='无法读取或设置原终端输入模式'
+        jobs_style_rollback_safe=''
+        jobs_style_rollback_conflicts=''
+        jobs_style_phase_control_keys=0
+        jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+        if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+            jobs_style_query_active=1
+            jobs_style_rollback_ok=1
+            while IFS='|' read -r jobs_style_key jobs_style_original_normalized jobs_style_original; do
+                [ -n "$jobs_style_key" ] || continue
+                if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
+                    jobs_style_rollback_ok=0
+                    jobs_style_rollback_issue="回退颜色项 $jobs_style_key：$jobs_style_query_failure"
+                    break
+                fi
+                if [ "$jobs_style_normalized" = "$jobs_style_original_normalized" ]; then
+                    continue
+                elif jobs_terminal_style_accepts_target "$jobs_style_key"; then
+                    jobs_style_rollback_safe=$jobs_style_rollback_safe$jobs_style_original
+                else
+                    jobs_style_rollback_conflicts="$jobs_style_rollback_conflicts $jobs_style_key"
+                fi
+            done <<JOBS_STYLE_ROLLBACK
+$jobs_style_original_rows
+JOBS_STYLE_ROLLBACK
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_rollback_ok=0; jobs_style_rollback_issue='无法恢复原终端输入模式'; }
+            jobs_style_query_active=0
+            if [ "$jobs_style_rollback_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_rollback_safe" > /dev/tty; then
+                if [ -z "$jobs_style_rollback_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                    return 0
+                fi
+                printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_rollback_conflicts" >&2
+                jobs_style_rollback_issue="核验中断后检测到其它配色变更：$jobs_style_rollback_conflicts"
+            fi
+        fi
+        printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_rollback_issue" "$jobs_style_recovery" >&2
+        return 1
+    }
     # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
     jobs_terminal_style_cleanup() {
         jobs_style_result=$1
@@ -269,12 +312,24 @@ jobs_terminal_style_run() {
             stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
             jobs_style_query_active=0
         fi
+        if [ "$jobs_style_changed" = 1 ] && [ "$jobs_style_applied_complete" != 1 ]; then
+            if jobs_terminal_style_rollback; then
+                jobs_style_changed=0
+            else
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+            if [ "${2:-}" = continue ]; then
+                jobs_style_cleanup_status=$jobs_style_result
+                return 0
+            fi
+            exit "$jobs_style_result"
+        fi
         if [ "$jobs_style_changed" = 1 ]; then
             jobs_style_cleanup_ok=0
             jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
             jobs_style_conflicts=''
             jobs_style_restore_safe=''
-            jobs_style_cleanup_control_keys=0
+            jobs_style_phase_control_keys=0
             if [ "$jobs_style_applied_complete" = 1 ]; then
                 jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
                 if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
@@ -334,6 +389,8 @@ JOBS_STYLE_APPLIED
             break
         fi
         jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_original_rows="$jobs_style_original_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_reply
+"
         jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
 "
     done
@@ -369,9 +426,10 @@ JOBS_STYLE_APPLIED
     jobs_style_query_active=1
     jobs_style_probe_ok=1
     jobs_style_targets_ok=1
+    jobs_style_phase_control_keys=0
     while IFS='|' read -r jobs_style_key jobs_style_original; do
         [ -n "$jobs_style_key" ] || continue
-        if ! jobs_terminal_style_query "$jobs_style_key"; then
+        if ! jobs_terminal_style_query "$jobs_style_key" applied; then
             jobs_style_probe_ok=0
             break
         fi
@@ -386,11 +444,19 @@ JOBS_STYLE_ORIGINAL
     stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
     jobs_style_query_active=0
     if [ "$jobs_style_probe_ok" != 1 ]; then
-        printf '%s\n' '无法核实本次临时配色，已停止启动业务。' >&2
-        jobs_style_exit_status=1
-        exit 1
+        printf '临时配色核验失败（颜色项 %s：%s），正在核对原色恢复。\n' "$jobs_style_key" "$jobs_style_query_failure" >&2
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
+        printf '%s\n' '已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
     fi
-    jobs_style_applied_complete=1
     if [ "$jobs_style_targets_ok" != 1 ]; then
         jobs_terminal_style_cleanup 0 continue
         jobs_style_changed=0
@@ -404,6 +470,7 @@ JOBS_STYLE_ORIGINAL
         printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
         jobs_terminal_style_plain "$@"
     fi
+    jobs_style_applied_complete=1
     printf '%s\n' '本次终端已临时使用黑底白字。' >&2
     JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
     JOBS_TERMINAL_STYLE_OWNER=$$

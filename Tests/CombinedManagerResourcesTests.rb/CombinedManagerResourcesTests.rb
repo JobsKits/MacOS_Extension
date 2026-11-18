@@ -244,25 +244,34 @@ require 'tmpdir'
 require 'fileutils'
 require 'open3'
 
+require_relative '../SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class CombinedManagerResourcesTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
   LIBRARY = '【MacOS】联合App管理.zsh'
   DEPLOYMENT = '【MacOS】AppDeployment.zsh'
-  PACKAGES = %w[JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools].freeze
+  PACKAGES = %w[JobsProjectTools JobsPathCopier JobsCommandShortcutCreator JobsFileCreator JobsFileHasher JobsFileVisibility JobsSendTo JobsDiskSpaceInfo JobsEnvironmentUpdater JobsRunAuthorizer JobsRunAuthorizationRevoker JobsIPAResigner JobsDesktopTools JobsFlutterTools JobsTerminalOpener JobsIOSTools].freeze
 
   def fixture
     Dir.mktmpdir('jobs-combined-manager-') do |directory|
       directory = File.realpath(directory)
       source = File.join(directory, 'source 中文')
       FileUtils.mkdir_p(File.join(source, 'Scripts'))
-      FileUtils.cp_r(File.join(ROOT, 'Scripts', LIBRARY), File.join(source, 'Scripts'))
-      FileUtils.cp_r(File.join(ROOT, 'Scripts', DEPLOYMENT), File.join(source, 'Scripts'))
+      FileUtils.cp_r(JobsSourceLayout.file(File.join(ROOT, 'Scripts', LIBRARY)), File.join(source, 'Scripts'))
+      FileUtils.cp_r(JobsSourceLayout.file(File.join(ROOT, 'Scripts', DEPLOYMENT)), File.join(source, 'Scripts'))
       File.write(File.join(source, 'Scripts/ManageFinderExtensions.zsh'), '# full source marker')
       PACKAGES.each { |name| prepare_package(File.join(source, name), name) }
       app = File.join(directory, 'Jobs自定义右键菜单.app')
       FileUtils.mkdir_p(File.join(app, 'Contents/Resources'))
       File.write(File.join(app, 'Contents/Info.plist'), '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.jobs.finderextensions.manager</string></dict></plist>')
       yield directory, source, app
+    ensure
+      if directory && File.directory?(directory)
+        Dir.glob(File.join(directory, '**/Jobs右键菜单管理面板.app')).each do |temporary_app|
+          system('/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister',
+                 '-u', temporary_app, out: File::NULL, err: File::NULL)
+        end
+      end
     end
   end
 
@@ -270,7 +279,7 @@ class CombinedManagerResourcesTests < Minitest::Test
     FileUtils.mkdir_p(File.join(path, 'Scripts/Tools'))
     File.write(File.join(path, 'Scripts/ManageExtension.zsh'), "# #{contents}\n")
     File.write(File.join(path, 'Scripts/Tools/business.zsh'), 'must not be copied')
-    FileUtils.cp_r(File.join(ROOT, 'Scripts', DEPLOYMENT), File.join(path, 'Scripts'))
+    FileUtils.cp_r(JobsSourceLayout.file(File.join(ROOT, 'Scripts', DEPLOYMENT)), File.join(path, 'Scripts'))
     if File.basename(path) == 'JobsProjectTools'
       File.write(File.join(path, 'Scripts/ManageProjectTools.zsh'), '# project manager')
     elsif File.basename(path) == 'JobsDesktopTools'
@@ -332,6 +341,7 @@ class CombinedManagerResourcesTests < Minitest::Test
       File.write(worker, <<~'ZSH')
         print -r -- "BUILT=${JOBS_FINDER_BUILT_APP_PATH-unset}" > "$CAPTURE"
         print -r -- "CACHE=$JOBS_FINDER_MANAGER_CACHE_DIR" >> "$CAPTURE"
+        print -r -- "WAIT=$JOBS_FINDER_GUI_WAIT" >> "$CAPTURE"
         print -r -- "LOCALE=$LC_ALL" >> "$CAPTURE"
         printf 'ENTRY:%s\n' "$@" >> "$CAPTURE"
         source "${0:A:h}/FinderManagerGUI.zsh"
@@ -349,6 +359,7 @@ class CombinedManagerResourcesTests < Minitest::Test
       assert_includes contents, 'BUILT=unset'
       assert_includes contents, 'LOCALE=C'
       assert_includes contents, "CACHE=#{cache}"
+      assert_includes contents, 'WAIT=1'
       assert_includes contents, "ENTRY:--action\nENTRY:uninstall\nENTRY:--install-location\nENTRY:applications\nENTRY:--gui-session"
       snapshot_worker = contents[/GUI:--manager\nGUI:([^\n]+)/, 1]
       refute_nil snapshot_worker
@@ -384,12 +395,12 @@ class CombinedManagerResourcesTests < Minitest::Test
           /bin/sleep 0.02
         done
         entries=("${0:A:h:h}"/Jobs*/Scripts/ManageExtension.zsh(N))
-        (( ${#entries} == 12 )) || exit 91
+        (( ${#entries} == 16 )) || exit 91
         for entry in "${entries[@]}"; do
           [[ -f "$entry" && -r "$entry" ]] || exit 92
         done
         [[ -r "${0:A:h}/SelectFinderExtensionFeatures.swift" && -r "${0:A:h}/FinderManagerGUI.zsh" ]] || exit 93
-        print -r -- 'all twelve management units remained readable' > "$COMPLETED"
+        print -r -- 'all sixteen management units remained readable' > "$COMPLETED"
         exit "${FINAL_STATUS:-0}"
       ZSH
       environment = { 'HOME' => directory, 'TMPDIR' => session_root, 'CAPTURE' => capture, 'RELEASE' => release, 'COMPLETED' => completed }
@@ -408,7 +419,7 @@ class CombinedManagerResourcesTests < Minitest::Test
         File.write(release, 'continue')
         result = waiter.value
         assert result.success?, output.read + error.read
-        assert_equal 'all twelve management units remained readable', File.read(completed).strip
+        assert_equal 'all sixteen management units remained readable', File.read(completed).strip
         refute File.exist?(snapshot), 'normal completion removes its private snapshot'
         assert_equal 'preserved', File.read(sentinel)
         assert_empty Dir.glob(File.join(session_root, 'JobsFinderManagerSession.*'))
@@ -422,7 +433,7 @@ class CombinedManagerResourcesTests < Minitest::Test
       assert status.success?, errors
       independent = File.join(directory, 'JobsFileCreator')
       prepare_package(independent, 'updated independent copy')
-      FileUtils.cp_r(File.join(ROOT, 'Scripts', LIBRARY), File.join(independent, 'Scripts'))
+      FileUtils.cp_r(JobsSourceLayout.file(File.join(ROOT, 'Scripts', LIBRARY)), File.join(independent, 'Scripts'))
       output, errors, status = prepare(independent, app)
       assert status.success?, output + errors
       manager = File.join(app, 'Contents/Resources/ManagerRoot')

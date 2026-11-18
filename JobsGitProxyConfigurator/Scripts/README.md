@@ -18,14 +18,14 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 本目录由 Jobs 维护，只服务 [JobsGitProxyConfigurator](../README.md)。**扩展安装与用户 Git 配置是两层独立动作**：前者注册菜单，后者必须在 [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 由用户确认。
 
 | 文件 | 职责与边界 |
 | --- | --- |
-| [ConfigureGitDynamicProxy.command](./ConfigureGitDynamicProxy.command) | 完整自包含的规范源副本，随 App 打包；无参数保留回车安装、C 检查、R 恢复，`--check` 只读。菜单不会传入 `--install` 绕过确认。 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode/) 构建后可注册、启用本扩展并刷新 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)；外层安装器或隔离构建通过 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过。该开关只控制本脚本，Xcode 仍可能通过自带步骤登记宿主 URL。 |
+| [ConfigureGitDynamicProxy.command](./【MacOS】ConfigureGitDynamicProxy.command/【MacOS】ConfigureGitDynamicProxy.command) | 完整自包含的规范源副本，随 App 打包；无参数保留回车安装、C 检查、R 恢复，`--check` 只读。菜单不会传入 `--install` 绕过确认。 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode/) 构建后可注册、启用本扩展并刷新 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)；外层安装器或隔离构建通过 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过。该开关只控制本脚本，Xcode 仍可能通过自带步骤登记宿主 URL。 |
 
 业务副本与[独立入口](../../../../JobsCommand@Gits/MacOS/【MacOS】🌐双击配置Git动态代理.command/README.md)保持整文件字节一致。宿主把资源复制到独立私有临时目录，再通过安全单行命令交给 Terminal；不从源仓库路径运行，不接受外部脚本或路径参数。临时副本完成后清理，用户安装生成的 Git 入口和快照保留。
 
@@ -57,7 +57,7 @@
 从工程目录运行隔离回归：
 
 ```shell
-/bin/zsh ../Tests/run.zsh
+/bin/zsh ../Tests/【MacOS】run.zsh/【MacOS】run.zsh
 ```
 
 测试验证资源一致性、固定 URL、真实 Home/Desktop、普通目录与选中项拒绝、两种 URL 回调去重、Shell 特殊字符往返、私有文件权限、标准退出码与清理，以及固定 Bundle ID 注册与卸载。系统注册、Terminal 和 Finder 刷新使用替身，不动真实 Git 配置。

@@ -3,7 +3,42 @@
 # 内部只读模块：在设备选择前汇总工具链，运行前按目标平台阻止带病启动。
 # 由运行器提供 PROJECT_PATH、FLUTTER_BIN、LOG_FILE、log 与 run_bounded；不单独执行。
 
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
 typeset -gA JOBS_PREFLIGHT_STATE JOBS_PREFLIGHT_DETAIL
+typeset -gA JOBS_PREFLIGHT_REPORTED_STATE JOBS_PREFLIGHT_REPORTED_DETAIL
+JOBS_PREFLIGHT_REPORT_SCOPE=""
 JOBS_PREFLIGHT_OUTPUT=""
 JOBS_PREFLIGHT_SDK=""
 JOBS_PREFLIGHT_DART=""
@@ -19,9 +54,70 @@ JOBS_PREFLIGHT_HDC_DISCOVERY_DETAIL=""
 jobs_fpf_fail() {
   local platform="$1" reason="$2"
   JOBS_PREFLIGHT_STATE[$platform]=failed
-  JOBS_PREFLIGHT_DETAIL[$platform]+="${JOBS_PREFLIGHT_DETAIL[$platform]:+；}$reason"
+  if [[ -n "${JOBS_PREFLIGHT_DETAIL[$platform]:-}" ]]; then
+    JOBS_PREFLIGHT_DETAIL[$platform]+=$'\n'
+  fi
+  JOBS_PREFLIGHT_DETAIL[$platform]+="$reason"
 }
-
+# 分行展示缺项，原始探针输出仍留在独立日志中供排查。
+jobs_fpf_report() {
+  local platform="$1" line="" detail="${JOBS_PREFLIGHT_DETAIL[$1]:-未完成检查}"
+  if [[ "${JOBS_PREFLIGHT_STATE[$platform]:-failed}" == passed ]]; then
+    log "✓ $platform：环境检查通过（仍需设备及实际构建验证）。"
+    return 0
+  fi
+  log "✖ $platform：未就绪。"
+  detail="${detail//；/$'\n'}"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ "$line" == *'execution error: Error: Error: '* ]]; then
+      line="${line#*execution error: Error: Error: }"
+    fi
+    line="${line% (-2700)}"
+    log "✖   $line"
+  done <<< "$detail"
+}
+# 展示快照只属于当前工程和SDK身份，工具路径变化不等同无关平台结果变化。
+jobs_fpf_report_scope() {
+  local item="" root="${JOBS_PREFLIGHT_SDK:-${FLUTTER_BIN:A:h:h}}"
+  print -r -- "${PROJECT_PATH:A}" "${FLUTTER_BIN:A}" "${root:A}"
+  for item in .fvmrc .fvm/fvm_config.json; do
+    if [[ -f "$PROJECT_PATH/$item" ]]; then
+      /usr/bin/cksum "$PROJECT_PATH/$item" || return 1
+    else
+      print -r -- "missing:$item"
+    fi
+  done
+  for item in bin/cache/flutter_tools.snapshot bin/cache/dart-sdk/bin/dart bin/internal/engine.version; do
+    if [[ -e "$root/$item" ]]; then
+      /usr/bin/stat -f '%d:%i:%z:%m:%c' "$root/$item" || return 1
+    else
+      print -r -- "missing:$item"
+    fi
+  done
+}
+# 每轮仍真实复检；仅折叠同一工程/SDK下未变化的展示，不复用健康判断。
+jobs_fpf_report_updates() {
+  local platform="" scope="" changed=0
+  scope="$(jobs_fpf_report_scope)" || return $?
+  if [[ "$scope" != "$JOBS_PREFLIGHT_REPORT_SCOPE" ]]; then
+    JOBS_PREFLIGHT_REPORTED_STATE=()
+    JOBS_PREFLIGHT_REPORTED_DETAIL=()
+    JOBS_PREFLIGHT_REPORT_SCOPE="$scope"
+  fi
+  for platform in ios android ohos; do
+    if [[ "${JOBS_PREFLIGHT_REPORTED_STATE[$platform]:-}" == "${JOBS_PREFLIGHT_STATE[$platform]:-failed}" &&
+          "${JOBS_PREFLIGHT_REPORTED_DETAIL[$platform]:-}" == "${JOBS_PREFLIGHT_DETAIL[$platform]:-}" ]]; then
+      continue
+    fi
+    jobs_fpf_report "$platform"
+    JOBS_PREFLIGHT_REPORTED_STATE[$platform]="${JOBS_PREFLIGHT_STATE[$platform]:-failed}"
+    JOBS_PREFLIGHT_REPORTED_DETAIL[$platform]="${JOBS_PREFLIGHT_DETAIL[$platform]:-}"
+    (( changed += 1 ))
+  done
+  (( changed > 0 )) || log 'ℹ 体检结果未变化，不重复展开；运行前仍会复核所选平台。'
+  return 0
+}
 jobs_fpf_probe() {
   local name="$1" seconds="$2" result=0 output="$LOG_FILE.preflight.$1"
   shift 2
@@ -90,7 +186,7 @@ jobs_flutter_harmony_discovery_rows() {
   local helper="$JOBS_PREFLIGHT_HELPER"
   local hdc_result=0 usb_result=0 parse_result=0
   local -a diagnostic_rows=()
-  [[ -n "$helper" ]] || helper="${${(%):-%x}:A:h}/Flutter运行前体检.jxa"
+  [[ -n "$helper" ]] || helper="$(jobs_layout_file "${${(%):-%x}:A:h}/Flutter运行前体检.jxa")"
   [[ -s "$helper" && ! -L "$helper" ]] || { log "✖ 缺少鸿蒙连接取证模块：$helper" >&2; return 1; }
   : > "$evidence" || return 1
   : > "$visible" || return 1
@@ -299,8 +395,8 @@ jobs_flutter_preflight_overview() {
   done
   JOBS_PREFLIGHT_SDK="${FLUTTER_BIN:A:h:h}"
   JOBS_PREFLIGHT_DART="$JOBS_PREFLIGHT_SDK/bin/cache/dart-sdk/bin/dart"
-  JOBS_PREFLIGHT_HELPER="${${(%):-%x}:A:h}/Flutter运行前体检.jxa"
-  JOBS_PREFLIGHT_DOCTOR_HELPER="${JOBS_PREFLIGHT_HELPER:h}/DoctorScope.dart"
+  JOBS_PREFLIGHT_HELPER="$(jobs_layout_file "${${(%):-%x}:A:h}/Flutter运行前体检.jxa")"
+  JOBS_PREFLIGHT_DOCTOR_HELPER="$(jobs_layout_directory "$JOBS_PREFLIGHT_HELPER")/DoctorScope.dart"
   log '▶ 运行前环境健康体检：iOS / Android / OpenHarmony；不下载、切换 SDK 或改写工程。'
   if [[ ! -x "$JOBS_PREFLIGHT_DART" || ! -s "$JOBS_PREFLIGHT_SDK/bin/cache/flutter_tools.snapshot" ||
         ! -s "$JOBS_PREFLIGHT_SDK/packages/flutter_tools/.dart_tool/package_config.json" || ! -s "$JOBS_PREFLIGHT_HELPER" || ! -s "$JOBS_PREFLIGHT_DOCTOR_HELPER" ]]; then
@@ -334,13 +430,7 @@ jobs_flutter_preflight_overview() {
     jobs_fpf_build_capability web web
     jobs_fpf_harmony
   fi
-  for platform in ios android ohos; do
-    if [[ "${JOBS_PREFLIGHT_STATE[$platform]}" == passed ]]; then
-      log "✓ $platform：环境检查通过（仍需设备及实际构建验证）。"
-    else
-      log "✖ $platform：未就绪。${JOBS_PREFLIGHT_DETAIL[$platform]}"
-    fi
-  done
+  jobs_fpf_report_updates || return $?
   JOBS_PREFLIGHT_READY=1
   JOBS_PREFLIGHT_FINGERPRINT="$(jobs_fpf_fingerprint)" || { JOBS_PREFLIGHT_READY=0; log '✖ 无法保存本轮 SDK 与工程检查摘要，停止运行。'; return 1; }
   return 0

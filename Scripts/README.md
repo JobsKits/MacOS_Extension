@@ -26,9 +26,13 @@
 
 本目录维护 [**macOS**](https://www.apple.com/macos/) 原生 [**Finder**](https://support.apple.com/zh-cn/102339) 扩展管理窗口及后台启动库。面板用 [**Swift**](https://www.swift.org/) 与 [**AppKit**](https://developer.apple.com/documentation/appkit) 展示选择、逐项执行状态和底部实时日志；通过后台 Shell 管理器完成构建、注册、启停及配置保存。推荐双击[无终端 App 入口](../【MacOS】🧩管理Finder扩展.app)。
 
+完整 GUI 的交付对应为 [界面源码](./SelectFinderExtensionFeatures.swift)＋[构建及 App 装配入口](./【MacOS】FinderManagerGUI.zsh/README.md)＋[原生已签名成品](../work/Jobs右键菜单管理面板.app)。[构建回执](../work/EnvironmentUpdateManagerBuildReceipt.json)保留此前源码、二进制和签名摘要及 88 项功能目录；[构建与运行](#run-and-check)保留相应入口与参数；该成品是 arm64＋x86_64 通用／MacOS 12+，直接启动完整管理模式须传 `--manager`，普通使用通过原管理 App 自动处理。当前源码为 90 项，既有 88 项 work 缓存未在本轮重建；从公开管理入口打开时按源码时间重新编译。业务仍等待界面勾选与操作按钮确认。
+
+公开 App 的 `LaunchManager` 是后台启动器，公开入口保留自身 `Info.plist` 的 `LSUIElement=true`。完整 GUI 会话由 `FinderManagerGUI` 通过 LaunchServices 新建实际面板进程，启动壳随后结束，避免直接 `exec` 为普通应用后残留启动壳和面板两个 Dock 身份。联合 App 快照入口通过本会话 `JOBS_FINDER_GUI_WAIT=1` 等待实际面板完全退出再清理快照；普通公开入口不等待面板生命周期。内部同步调用保持原标准输出／退出码协议，实际面板的 regular 策略、Dock 恢复、后台驻留与任务保护继续生效。
+
 管理入口、原生面板和已安装联合 App 复用仓库现有 `icon.png`。多尺寸图标位于 [JobsFinderManager.icns](./【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns)，随部署库交付并在 App 中配置 `CFBundleIconFile`；面板单独校验图标内容，图标变化时更新缓存 App，签名失败保留旧版本。运行无需图片外链，也不依赖源码目录中的原 PNG。资源从管理脚本和部署库的实际位置定位，兼容中文、空格、目录搬迁及非 UTF-8 语言环境；不修改现有语言环境。图标缺失或含链接时，日志同时列出准确的源图标与目标资源路径并停止部署。
 
-**当前为 85 项可选功能、11 个现行安装工程（按选择器标识及管理器映射去重），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。默认全部不勾选，顶部可切换“安装 / 更新”或“卸载”；切换保留当前全部功能勾选。没有勾选时执行按钮立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；默认左列放 IDE、Git、通用、iOS / CocoaPods 与模拟器，右列仅放 Flutter。按住分组标题可拖动卡片，在同列排序或跨列移动，并记住布局；窄窗合为单列，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
+**当前为 90 项可选功能、16 个现行安装工程（按选择器标识及管理器映射去重，2026-11-18），按 IDE、Git、通用、Flutter、iOS / CocoaPods、模拟器六组展示。每组及窗口底部均提供“全选 / 全不选”；组内按钮只影响本组，底部按钮控制全部功能。默认全部不勾选，顶部可切换“安装 / 更新”或“卸载”；切换保留当前全部功能勾选。没有勾选时执行按钮立即置灰且回车无法提交，重新勾选后实时恢复。底栏固定显示；默认左列放 IDE、Git、通用、iOS / CocoaPods 与模拟器，右列仅放 Flutter。按住分组标题可拖动卡片，在同列排序或跨列移动，并记住布局；窄窗合为单列，超高时仅中间功能列表滚动。** 本目录和全部功能工程由当前仓库统一管理，源码获取与安装环境见[仓库 README](../README.md)。
 
 导航：[目录与调用关系](#directory-and-caller) · [功能标识](#feature-identifiers) · [运行方式](#run-and-check) · [返回结果](#return-contract) · [日志与排查](#logs-and-troubleshooting)
 
@@ -39,14 +43,14 @@
 
 **安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，非交互调用默认 `build`。GUI 首次打开默认使用应用程序中的联合 App，并勾选安装成功后清理；显式参数或环境设置优先，用户可在面板手动取消。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。
 
-可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。非交互 worker 默认不清理；GUI 首次打开默认勾选应用程序路线与安装成功后清理，用户可手动取消。UI 仅在应用程序安装模式显示自动清理选项，切换到卸载时隐藏但保留当前清理选择，返回安装时恢复；切换至构建目录才清空，切回应用程序路线不恢复旧勾选。成功提交之后才核验并清理该模块本轮 DerivedData，清理错误进入日志而不回滚已成功安装的联合 App。
+可选布尔参数 `--cleanup-build-products` 仅接受 `--action install --install-location applications`，其它组合在业务前报错。非交互 worker 默认不清理；GUI 首次打开默认勾选应用程序路线与安装成功后清理，用户可手动取消。UI 仅在应用程序安装模式显示自动清理选项，切换到卸载时隐藏但保留当前清理选择，返回安装时恢复；切换至构建目录才清空，切回应用程序路线不恢复旧勾选。文件事务提交后才核验并清理该模块本轮 DerivedData；普通清理错误沿既有策略记入日志并保留已提交 App，不回滚联合 App。全部本轮提交、可选构建清理和最终刷新完成后，还须通过登记稳定核验，才报告安装成功。
 
 安装 / 更新切换登记位置而保留其它位置文件；卸载只处理本次位置，缺失副本不改另一位置的功能配置。共享宿主最后一叶移除后才注销并删除该模块，联合 App 中最后一个模块移除后才删除 `Jobs自定义右键菜单.app`。原有 SDK、业务文件与源码不删除。未使用 `--manager` 的旧选择预览模式保持原计划格式，不提供位置复选框。
 
 
 **独立清理与停止：** 安装位置与安装后自动清理两个复选框紧邻排列，窄窗按需换行；红色“🧹 清除构建产物”按钮位于底部主操作按钮右侧，安装 / 更新和卸载两种模式保持一致。独立清理按钮在构建目录和应用程序路线均显示；仅应用程序路线可在安装 / 卸载页签单独清理当前勾选功能，不要求重新安装，没有勾选或正在执行任务时禁用。“安装成功后清除此轮构建产物”复选框仅在应用程序安装模式出现，首次打开默认勾选，可手动取消。构建目录路线隐藏并清空自动清理复选框，独立清理按钮保持显示但禁用，避免清除正在使用的产物。清理须核验已安装联合 App、精确扩展登记与来源占用，失败保留运行功能，不清理源码或其它模块。
 
-安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。清理使用独立计时，不覆盖安装或卸载耗时。
+安装中原操作按钮改为“停止安装”。点击只请求完成当前共享 App 安装单元后停止，不终止其编译、签名、登记或回滚；后续单元标记“未执行”，不计失败或已完成百分比。同一共享 App 的叶功能一起提交。取消退出码 `129`／`130`／`143` 原样停止，取消后不开始登记修复或下一个安装单元；面板的“完成当前单元后停止”请求与此取消语义分别处理。清理使用独立计时，不覆盖安装或卸载耗时。
 
 **App 管理授权：** 新版 GUI 从名称固定的 `Jobs右键菜单管理面板.app` 运行。若 macOS 拒绝修改联合 App，面板显示授权入口并停止后续安装；在“系统设置 → 隐私与安全性 → App 管理”中添加 / 启用实际负责的管理面板后重试。此权限用于允许 App 更新或删除其它 App，参见 [Apple 官方说明](https://support.apple.com/en-au/guide/mac-help/mchl211c911f/mac)。普通目录可写不能替代此授权，不使用提权运行整个安装器或修改 TCC 数据库。
 
@@ -57,16 +61,16 @@
 ├── README.md                                # 本目录说明
 ├── SelectFinderExtensionFeatures.swift      # 原生管理窗口、后台 Process 与日志
 ├── ManagerPanelTranslations.json            # 七种新增语言的共享英文键目录；构建时嵌入单文件面板
-├── FinderManagerGUI.zsh                     # App 引导、启动终端页收尾与编译缓存
-└── ManageFinderExtensions.zsh               # 内部管理编排、后台安装与卸载
+├── 【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh                     # App 引导、启动终端页收尾与编译缓存
+└── 【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh               # 内部管理编排、后台安装与卸载
 ```
 
 | 文件或调用方 | 职责 |
 | --- | --- |
-| [面板源码](./SelectFinderExtensionFeatures.swift) | 六组复选框、逐项状态、活动指示、按已处理项计数的总进度与百分比、安装 / 卸载独立计时、可复制的实时日志。接受 `--action`、`--scope`、`--manager`；后台执行时禁止修改计划和关闭窗口。 |
-| [启动支持库](./FinderManagerGUI.zsh) | 从同名 App 后台启动，按需编译并原子替换缓存；缺源码或编译失败时弹出 GUI 错误并提供启动日志。自包含功能包随包携带同一支持库和 `ManagementPanel.swift`。 |
+| [面板源码](./SelectFinderExtensionFeatures.swift) | 六组复选框、逐项状态、活动指示、按已处理项计数的总进度与百分比、安装 / 卸载独立计时、可复制的实时日志。接受 `--action`、`--scope`、`--manager`；执行时禁止修改计划，关闭窗口直接退到 Dock（程序坞）及系统状态栏继续运行。 |
+| [启动支持库](./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh) | 从同名 App 后台启动，按需编译并原子替换缓存；缺源码或编译失败时弹出 GUI 错误并提供启动日志。自包含功能包随包携带同一支持库和 `ManagementPanel.swift`。 |
 | [原管理入口](../【MacOS】🧩管理Finder扩展.command) | 只负责唤起独立 App 并结束启动脚本；不执行安装或卸载，随后精确关闭本次启动终端页。 |
-| [内部管理器](./ManageFinderExtensions.zsh) | 在面板内执行已确认的计划，校验范围、安装 / 更新或逐叶卸载，并输出各叶状态事件，不要求终端二次确认。 |
+| [内部管理器](./【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh) | 在面板内执行已确认的计划，校验范围、安装 / 更新或逐叶卸载，并输出各叶状态事件，不要求终端二次确认。 |
 
 选择器源码必须保留在 `./SelectFinderExtensionFeatures.swift`。根管理器按自身所在目录定位它，编译产物缓存在 `../work/SelectFinderExtensionFeatures`，源码更新后自动重新编译，无须依赖终端当前目录。
 
@@ -80,7 +84,7 @@
 | --- | --- |
 | IDE 项目打开 | 3 |
 | Git 工具 | 6 |
-| 文件与通用工具 | 12 |
+| 文件与通用工具 | 17 |
 | Flutter 工具 | 47 |
 | iOS / CocoaPods 工具 | 12 |
 | 模拟器工具 | 5 |
@@ -90,7 +94,11 @@
 | 项目工具 | 打开 [**Git**](https://git-scm.com/) 远程地址 | `git_remote` | `JobsProjectTools` |
 | 项目工具 | 复制 Git 远程地址 | `git_remote_copier` | `JobsProjectTools` |
 | 独立扩展 | 复制绝对路径 | `path_copier` | `JobsPathCopier` |
+| 独立扩展 | 更新开发环境（update） | `environment-update` | [JobsEnvironmentUpdater](../JobsEnvironmentUpdater/README.md) |
+| 独立扩展 | 磁盘空间总览 | `disk-space-info` | [JobsDiskSpaceInfo](../JobsDiskSpaceInfo/README.md) |
 | 独立扩展 | 查看文件指纹 Hash（SHA-256） | `file-hash` | [JobsFileHasher](../JobsFileHasher/README.md) |
+| 独立扩展 | 隐藏 / 显示所选项目 | `file-visibility` | [JobsFileVisibility](../JobsFileVisibility/README.md) |
+| 独立扩展 | 发送到外部磁盘或网络卷 | `send-to` | [JobsSendTo](../JobsSendTo/README.md) |
 | 独立扩展 | 创建脚本快捷入口 | `command-shortcut-create` | [JobsCommandShortcutCreator](../JobsCommandShortcutCreator/README.md) |
 | 独立扩展 | 新建文件 | `file-create` | [JobsFileCreator](../JobsFileCreator/README.md) |
 | 独立扩展 | 授予执行权限（chmod +x） | `run-authorize` | `JobsRunAuthorizer` |
@@ -168,6 +176,10 @@ Flutter 子功能安装取现有配置与本次选择的并集，卸载只减去
 
 “显示 / 隐藏文件”是 `JobsDesktopTools` 聚合包中的独立叶，标识为 `hidden-files-toggle`，仅在系统桌面和任意文件夹空白处出现；点击直接反转当前用户 Finder 的显示偏好并刷新 Finder，不打开 Terminal。安装器通过 `--initialize-finder-extension` 初始化宿主，不切换显示状态；卸载仅移除菜单。详见 [独立功能说明](../JobsHiddenFilesToggler/README.md)。
 
+“更新开发环境（update）”由独立 [JobsEnvironmentUpdater](../JobsEnvironmentUpdater/README.md) 承载，标识 `environment-update`，位于“文件与通用工具”。仅系统桌面空白右键显示“🔄 更新开发环境（update）”；点击新建 Terminal 会话运行 App 内完整原脚本及 `_lib/` 依赖，不追加 `-t`，原自述与逐项确认保留。总面板与单项面板均默认空选，安装／更新和卸载只管理菜单，不执行升级或删除已有工具。来源副本及验证边界见[资产盘点](../../项目相关报告/update桌面菜单资产盘点.md)。
+
+“磁盘空间总览”由独立 [JobsDiskSpaceInfo](../JobsDiskSpaceInfo/README.md) 承载，标识 `disk-space-info`；在文件、文件夹、多选、背景及侧边栏右键中显示汇总容量和两位小数百分比；点击经宿主打开独立 Terminal 的随包清理脚本。Xcode 六组先行选择，随后旧 clean 六类仅大写 YES 执行；菜单生成和安装初始化不清理。
+
 “🔎 查看文件指纹 Hash（SHA-256）”由独立 [JobsFileHasher](../JobsFileHasher/README.md) 承载，标识 `file-hash`；任意单个普通文件可用，新 Terminal 显示 SHA-256 并复制纯摘要，失败不改剪贴板；目录、符号链接、多选与空白隐藏。总面板及单项入口均可独立安装 / 卸载。
 
 “创建脚本快捷入口”由独立 `JobsCommandShortcutCreator` 承载，标识 `command-shortcut-create`，位于“文件与通用工具”。仅合法 `.command` 同名脚本包显示，名称确认后在同级排他创建相对路径转发脚本并由 Finder 定位；不执行源脚本，不覆盖已有对象。安装及卸载只管理本项扩展，业务窗口与面板支持十语及三种主题。详见[功能说明](../JobsCommandShortcutCreator/README.md)。
@@ -182,13 +194,15 @@ Flutter 子功能安装取现有配置与本次选择的并集，卸载只减去
 
 1、双击原[根管理脚本](../【MacOS】🧩管理Finder扩展.command)，终端仅唤起独立 GUI 后结束，本次启动页自动关闭，后续操作全部在 GUI。也可直接打开同名[根管理 App](../【MacOS】🧩管理Finder扩展.app)。后台按需编译面板，默认完整功能清单且空选；已有交互 Shell 中手工调用保留原工作会话。
 
-2、选择安装 / 更新或卸载，再勾选一项或多项。每组按钮只改变本组，底部按钮改变当前范围内全部选项；计数即时更新，并按当前范围所有计数状态预留文字宽度，空选、部分选择和全选均完整显示；空选禁用执行。切换操作保留全部已勾选功能；取消或关闭窗口结束流程。
+2、选择安装 / 更新或卸载，再勾选一项或多项。每组按钮只改变本组，底部按钮改变当前范围内全部选项；计数即时更新，并按当前范围所有计数状态预留文字宽度，空选、部分选择和全选均完整显示；空选禁用执行。切换操作保留全部已勾选功能；空闲关闭时选择退到后台或完全退出，取消选择框保留当前窗口。
 
 3、点击操作按钮后留在面板内后台执行，不要求二次确认。每项显示等待中、安装中 / 卸载中、成功、失败或“未安装，无需卸载”；同工程叶子共同执行、工程只构建一次。总进度按已处理项 / 本次所选项显示计数和百分比；成功、失败和所选位置未安装均计入已处理，等待中和执行中不计入；“未安装，无需卸载”单独计数，不冒充删除成功，100% 只表示已处理完本次计划。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。编译阶段只显示单项活动状态，不估算当前项内部百分比。卸载按叶减去配置，最后一项才移除共享扩展。
 
 卸载先核对本次所选位置，未安装时保留另一位置及共享配置，灰色显示“未安装，无需卸载”；路径是符号链接、被普通文件占用或 App 身份不符则明确失败，不按未安装处理。实际执行按共享 App 安装单元编排，各子进程退出码在管道结束后立即取回；某个共享单元失败只说明一次原始错误并关联其所选菜单，日志同时列安装单元数与菜单数，避免将一处 App 注销失败看成几十个不同故障。一般错误继续处理其它单元，失败保持最终非零退出码；遇到 App 管理／目录权限阻断（退出码 `77` 或专用阻断控制文件）时，保留此前成功和无需卸载的结果，只将当前单元标失败，后续单元显示“未执行”，暂停继续卸载并展示权限检查入口。
 
-4、面板底部实时合并标准输出与错误输出，支持中文、无换行进度、文本选择、`⌘C`、复制日志及日志文件定位。拖动日志上方的横向分隔条可调整高度，窗口也可调整大小；功能列表和日志分别滚动，上下区域保留最小高度，操作按钮始终可用。日志右键提供“全选”，也可用 `⌘A` 全选；拖动不会清空日志或改变功能勾选。可关闭“自动滚动”查看历史；运行中禁用切换、勾选、重复执行和关闭，结束后保留结果并可再次操作。执行前关闭面板不安装或卸载；编译缓存和启动日志仍会保留。
+4、面板底部实时合并标准输出与错误输出，支持中文、无换行进度、文本选择、`⌘C`、复制日志及日志文件定位。拖动日志上方的横向分隔条可调整高度，窗口也可调整大小；功能列表和日志分别滚动，上下区域保留最小高度，操作按钮始终可用。日志右键提供“全选”，也可用 `⌘A` 全选；拖动不会清空日志或改变功能勾选。可关闭“自动滚动”查看历史；运行中禁用切换、勾选和重复执行，关闭入口仍可用并直接退到 Dock（程序坞）及系统状态栏。结束后保留结果并可再次操作；选择后台或退出不会自行开始安装／卸载，编译缓存和启动日志仍会保留。
+
+红色窗口关闭、底部“关闭”、`⌘Q` 和应用退出请求共用同一规则：空闲时询问“退到后台／完全退出”，默认后台，取消则保留原窗口；安装、卸载或构建清理未结束时不询问，直接隐藏窗口并在Dock（程序坞）及系统状态栏驻留。状态项复用随包应用图标，菜单可显示原面板及当前状态；忙碌时禁用“完全退出”，执行退出动作时再次核验空闲。后台继续接收日志与计时，任务完成仍驻留供查看，不自动抢到前台。驻留选择仅本次会话有效，没有新增自启动或服务；重复启动原入口仍可建立独立会话，不把它当作已有会话的恢复入口。只返回选择结果、未传 `--manager` 的内部兼容选择器保持原关闭返回约定，避免命令替换一直等待。完整盘点见[后台驻留资产盘点](../../项目相关报告/管理面板后台驻留资产盘点.md)。
 
 面板使用普通窗口层级和应用事件循环，不置顶；切换到其它应用时可被遮挡，后台任务及日志仍继续更新。
 
@@ -227,14 +241,14 @@ Flutter 子功能安装取现有配置与本次选择的并集，卸载只减去
 在本目录执行以下命令，可在隔离 Shell 与临时目录核对选择标识、工程完整性检查和安装 / 卸载映射；不会构建或注册扩展：
 
 ```shell
-ruby ../Tests/FlutterInstallerIntegrationTests.rb
-ruby ../Tests/AndroidSimulatorInstallerIntegrationTests.rb
-ruby ../Tests/IOSToolsInstallerIntegrationTests.rb
-ruby ../Tests/FinderFeatureSelectionTests.rb
-ruby ../Tests/FinderManagerPanelTests.rb
-ruby ../Tests/TerminalFeaturePanelTests.rb
-ruby ../Tests/FileCreatorInstallerIntegrationTests.rb
-ruby ../Tests/FinderManagerPreflightTests.rb
+ruby ../Tests/FlutterInstallerIntegrationTests.rb/FlutterInstallerIntegrationTests.rb
+ruby ../Tests/AndroidSimulatorInstallerIntegrationTests.rb/AndroidSimulatorInstallerIntegrationTests.rb
+ruby ../Tests/IOSToolsInstallerIntegrationTests.rb/IOSToolsInstallerIntegrationTests.rb
+ruby ../Tests/FinderFeatureSelectionTests.rb/FinderFeatureSelectionTests.rb
+ruby ../Tests/FinderManagerPanelTests.rb/FinderManagerPanelTests.rb
+ruby ../Tests/TerminalFeaturePanelTests.rb/TerminalFeaturePanelTests.rb
+ruby ../Tests/FileCreatorInstallerIntegrationTests.rb/FileCreatorInstallerIntegrationTests.rb
+ruby ../Tests/FinderManagerPreflightTests.rb/FinderManagerPreflightTests.rb
 ```
 
 [主题与语言隔离验证](../Tests/PanelPreferencesTests.rb/README.md) 使用原生控件和临时偏好域核对选项、保存与恢复、系统语言识别及切换后的状态保留，不修改系统主题或语言。
@@ -265,7 +279,9 @@ install|xcode_opener,terminal_open
 uninstall|git-pull
 ```
 
-面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）、`--install-location build|applications`（管理面板默认应用程序路线；不启用后台管理的旧选择器默认构建目录）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed|not-installed|skipped<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。
+面板参数为 `--action install|uninstall`（默认安装，可在面板切换）、`--scope ID,...`（仅显示范围内选项）、`--install-location build|applications`（管理面板默认应用程序路线；不启用后台管理的旧选择器默认构建目录）和 `--manager /管理脚本绝对路径`（启用后台执行）。未知值、空范围、不可读取脚本和缺参数值均停止。不传 `--manager` 时只返回计划，单独预览不会安装或卸载。worker 用独占行 `JOBS_MANAGER_EVENT<TAB>叶ID<TAB>running|succeeded|failed|not-installed|skipped<TAB>说明` 报告状态；未收到完成事件而提前退出的项目按失败显示。安装单元文件已部署时仍保持待核验状态，不提前发送 `succeeded`。
+
+安装后核验在全部本轮文件事务提交、用户选择的构建清理及最终 Finder 刷新之后执行。本轮所有安装单元的精确目标共享连续 60 秒稳定观察窗口，不逐项增加 60 秒等待；总观察预算为 150 秒，每个扩展 ID 最多定向恢复 2 次，每次恢复完成后保留 5 秒只读等待，再判断是否重试。约每 10 秒输出观察进度，全部目标稳定后才统一报告最终成功。来源或目标路径节点变化、另一位置启用同 ID 扩展、系统登记查询失败均停止，不覆盖外部并发选择；取消码原样传播，不继续修复。时间预算在操作之间检查，不承诺强行中断内核 I/O 或正在返回的系统命令。
 
 调用关系可用 [**Mermaid**](https://mermaid.js.org) 表示：
 
@@ -277,7 +293,10 @@ flowchart TD
     C -->|明确计划| E[后台 Shell worker 校验范围与依赖]
     E -->|安装| F[工程去重构建并合并功能]
     E -->|卸载| G[按叶减去配置并保留兄弟]
-    F --> H[逐叶事件及实时输出进入面板]
+    F --> J[提交文件事务并按选择清理构建产物]
+    J --> K[本轮最终刷新 Finder]
+    K --> L[全部精确目标共享登记稳定核验]
+    L --> H[最终逐叶事件及实时输出进入面板]
     G --> H
     E -->|失败| H
     H --> I[排空输出并显示退出码与结果，保持窗口]
@@ -285,11 +304,13 @@ flowchart TD
 
 修改功能时，选择器 `FeatureOption.all` 的输出顺序、`identifier`、`title`，以及根管理器的功能映射必须保持一致。`FeatureGroup` 只控制分组和显示顺序，每项必须恰好属于一组；分组重排不改变输出顺序。显示名称可以调整，返回标识不能只在一侧改名。
 
+功能选择支持整行命中：复选框及标题仍走原生控件，图标、普通状态和行内空白在同一行按下并抬起后只转交一次原勾选动作；失败日志文字保留独立响应。超过拖动容差、滚动、离行／出界、窗口失焦、重排或任务忙碌都会取消待选择，保留 Tab／Space／无障碍以及原生滚动。实现位于标准源 `ManagerFeatureColumn`，保持既有平级控件与状态对齐，详见[面板需求资产盘点](../../项目相关报告/安装卸载管理面板需求资产盘点.md)。
+
 ## 五、<span id="logs-and-troubleshooting">日志与常见问题</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 现象 | 检查方式 |
 | --- | --- |
-| App 提示找不到内部管理器，但同级有 `Scripts` | 核对准确文件 `./ManageFinderExtensions.zsh` 是否可读。App 可能被系统从隔离位置运行；选择同时包含同名 App 与 `Scripts` 的原始目录，或通过旁边的 `.command` 传入当前包位置。选择错误目录会显示实际查找路径，取消不执行操作。 |
+| App 提示找不到内部管理器，但同级有 `Scripts` | 核对准确文件 `./【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh` 是否可读。App 可能被系统从隔离位置运行；选择同时包含同名 App 与 `Scripts` 的原始目录，或通过旁边的 `.command` 传入当前包位置。选择错误目录会显示实际查找路径，取消不执行操作。 |
 | 总管理器提示缺少功能选择 UI | 确认 `./SelectFinderExtensionFeatures.swift` 存在，且 `Scripts` 与根管理器保持当前目录关系。 |
 | 总管理器提示工程源码不完整 | 按日志中的真实 `.xcodeproj/project.pbxproj` 路径补齐对应功能目录的原始源码；只将该安装单元所属的已选功能标为失败，其它有效单元继续。未选工程缺失不阻塞本次安装；仅复制总管理器或创建空工程目录不能满足检查。 |
 | 选择器编译失败 | 用上面的编译检查命令定位错误；不要用完整安装流程检查语法。 |
@@ -300,6 +321,10 @@ flowchart TD
 
 每次面板任务生成系统临时目录中的独立 `JobsFinderManager-UUID.log`，权限仅当前用户读写，窗口“日志文件”可定位完整文本。显示区超过约六十万 UTF-16 字符时裁为最近五十万，完整输出仍保存在磁盘；“复制日志”复制当前显示区，历史全文从日志文件取得。Shell 另有 `【MacOS】🧩管理Finder扩展.log`，初始化会覆盖，不替代面板会话日志。首次编译失败查看弹窗给出的 `JobsFinderManagerLaunch.*`；兼容纯选择预览不创建任务日志。
 
+日志区使用两套完整配色：白天浅底深字，黑夜深底浅字；正文、提示、成功、警告、错误及阶段标题各有对应颜色。主题切换会立即重新着色已有日志，“跟随系统”也在这两套配色间自动切换，保留日志内容、文字选区和当前浏览位置。日志文件和复制结果仍为纯文本，不携带终端颜色控制符。
+
+“自动滚动”初始勾选；触摸板、鼠标滚轮、拖动日志滚动条或导航键手动浏览后自动取消追尾，新输出不会把视图拉回底部。重新勾选即可跳到最新输出并恢复追尾。精确位移、动量和横向滚动由原生 AppKit 处理；上方功能列表滚动不会改变日志追尾状态。资产与验证范围见[日志资产盘点](../../项目相关报告/管理面板日志资产盘点.md)。
+
 失败行的红色下划线“失败，见日志”可点击，会在新的 Terminal 会话中执行 `cat` 读取本次完整日志，包括窗口已裁掉的历史内容。当前没有逐项独立日志；同次任务各失败行指向同一份会话日志。仅失败状态启用，切换状态后不再响应；日志缺失、不可读或终端启动失败会显示提示。日志路径按独立参数安全引用，正文只作数据显示，已有终端与后台任务继续保留；“日志文件”按钮仍用于 Finder 定位。
 
 在本 `README.md` 所在目录运行以下只读检查，显示 App 运行位置、包目录和准确的内部管理器路径；不打开面板、不弹目录选择、不编译、不安装或卸载。校验成功返回 `0`，缺失返回 `2`：
@@ -309,7 +334,7 @@ flowchart TD
   --diagnose-paths
 ```
 
-`--package-root <目录>` 是启动器传入的当前包位置，只在本次进程使用，不写入源码或保存为机器配置。直接 App 启动无法定位时使用系统目录选择窗口，校验同名 App 与准确 worker 同属所选目录；单功能包对应 `Scripts/ManageExtension.zsh`。Shell 中直接运行诊断只验证该次 Shell 路径，不代表 LaunchServices 启动时也没有隔离；目标机弹窗中的已查找路径可帮助区分。路径恢复不修改系统安全设置；独立包仍需保留源码及其运行依赖。
+`--package-root <目录>` 是启动器传入的当前包位置，只在本次进程使用，不写入源码或保存为机器配置。直接 App 启动无法定位时使用系统目录选择窗口，校验同名 App 与准确 worker 同属所选目录；单功能包对应 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`。Shell 中直接运行诊断只验证该次 Shell 路径，不代表 LaunchServices 启动时也没有隔离；目标机弹窗中的已查找路径可帮助区分。路径恢复不修改系统安全设置；独立包仍需保留源码及其运行依赖。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 

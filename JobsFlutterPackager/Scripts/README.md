@@ -23,7 +23,7 @@
 
 运行和打包在实际 `run` / `build` 前，先为已选设备 / 打包平台执行对应 `flutter precache --ios|--android|--web|--macos|--ohos`，平台资源获取失败持续重试；不会因此反复构建 App。鸿蒙先检查适配 SDK 是否支持 `--ohos`，不支持时在构建前明确说明。
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 > 本目录属于 [JobsFlutterPackager](../README.md)。[**Flutter**](https://flutter.dev/) 业务脚本自包含，随 App Resources 打包，不读取原 [**Sourcetree**](https://www.sourcetreeapp.com/) 目录，不通过 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac) 扩展进程直接执行构建。
 
@@ -45,8 +45,8 @@
 
 | 文件 | 调用方 | 职责与边界 |
 | --- | --- | --- |
-| [PackageFlutter.zsh](./PackageFlutter.zsh) | [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 私有载体或手动终端 | 当前 Flutter 根目录重验；自述与回车确认；[**fzf**](https://github.com/junegunn/fzf) 选择 Android / iOS / 鸿蒙；Android 再选 APK / AAB，鸿蒙再选 HAP / APP；pub get、构建、核验产物 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode) Build Phase | 注册本 App 中的固定扩展，确认当前精确路径启用后刷新 Finder；不运行 Flutter |
+| [PackageFlutter.zsh](./【MacOS】PackageFlutter.zsh/【MacOS】PackageFlutter.zsh) | [**Terminal**](https://support.apple.com/guide/terminal/welcome/mac) 私有载体或手动终端 | 当前 Flutter 根目录重验；自述与回车确认；[**fzf**](https://github.com/junegunn/fzf) 选择 Android / iOS / 鸿蒙；Android 再选 APK / AAB，鸿蒙再选 HAP / APP；pub get、构建、核验产物 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | [**Xcode**](https://developer.apple.com/xcode) Build Phase | 注册本 App 中的固定扩展，确认当前精确路径启用后刷新 Finder；不运行 Flutter |
 
 `--platform ios|android|ohos` 可直接指定平台并跳过平台选择；省略时兼容旧 CLI 的 fzf 选择。统一 Finder 菜单会传入此参数。iOS 或平台和产物都已指定时不需要 fzf。
 
@@ -80,7 +80,7 @@ DevEco 可由 `DEVECO_STUDIO_HOME` / `TOOL_HOME` 指定，只有一个已安装�
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、构建后启用与验证 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-`EnableFinderExtension.zsh` 只接受此工程完整 Xcode 构建上下文；日志为系统临时目录 `JobsFlutterPackagerBuildPhase.log`。单独安装入口设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 后自行注册，避免重复启用。隔离构建也设置该开关，只跳过本自定义阶段，不启用扩展或重启 Finder；本机 Xcode 27.1 的自动 LaunchServices 登记仍会发生，不能用 `LS_REGISTER_URL=NO` 等未生效参数声称完全无登记。验证后按本次临时 App 精确路径注销，并确认 PlugInKit 记录已移除。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 只接受此工程完整 Xcode 构建上下文；日志为系统临时目录 `JobsFlutterPackagerBuildPhase.log`。单独安装入口设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 后自行注册，避免重复启用。隔离构建也设置该开关，只跳过本自定义阶段，不启用扩展或重启 Finder；本机 Xcode 27.1 的自动 LaunchServices 登记仍会发生，不能用 `LS_REGISTER_URL=NO` 等未生效参数声称完全无登记。验证后按本次临时 App 精确路径注销，并确认 PlugInKit 记录已移除。
 
 正常 Build Phase 未跳过时，会停止同名旧宿主、注册并启用扩展，最多有限轮询当前精确 appex 路径，成功后刷新 Finder。失败记录诊断并留下 `JobsFlutterPackagerNeedsFinderRestart` 标记，交由宿主后续重试；旧路径的 `+` 状态不算成功。
 

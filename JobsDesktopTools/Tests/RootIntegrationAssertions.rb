@@ -253,7 +253,7 @@ module DesktopRootIntegrationAssertions
   end
 
   def test_selected_leaf_uses_one_aggregate_installation_unit
-    output = run_root_source('Scripts/ManageFinderExtensions.zsh', <<~'ZSH')
+    output = run_root_source('Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh', <<~'ZSH')
       parse_feature_selection "$2,$2" || exit 1
       print -r -- "${(j:,:)SELECTED_KEYS}"
       print -r -- "${(j:,:)SELECTED_FUNCTION_IDS}"
@@ -264,7 +264,7 @@ module DesktopRootIntegrationAssertions
   end
 
   def test_install_dispatches_only_requested_leaf_to_transaction_manager
-    output = run_root_source('Scripts/ManageFinderExtensions.zsh', <<~'ZSH', replace_zsh: true)
+    output = run_root_source('Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh', <<~'ZSH', replace_zsh: true)
       jobs_fake_zsh() { print -r -- "${(j:|:)@}"; }
       parse_feature_selection "$2" || exit 1
       install_feature desktop-tools
@@ -273,7 +273,7 @@ module DesktopRootIntegrationAssertions
   end
 
   def test_uninstall_dispatches_only_requested_leaf_without_removing_shared_app
-    output = run_root_source('Scripts/ManageFinderExtensions.zsh', <<~'ZSH', replace_zsh: true)
+    output = run_root_source('Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh', <<~'ZSH', replace_zsh: true)
       jobs_fake_zsh() { print -r -- "${(j:|:)@}"; }
       disable_extension() { print -u2 'unexpected legacy package uninstall'; return 9; }
       remove_local_deriveddata_dir() { return 9; }

@@ -1,0 +1,455 @@
+# frozen_string_literal: true
+# 复制真实启动器验证搬迁寻址；桌面选择、错误弹窗与 worker 全部由临时替身承接。
+# JOBS_TERMINAL_STYLE_GUARD_V1_BEGIN
+if $PROGRAM_NAME == __FILE__
+  # 直接运行时由 fork 父进程保护配色；子进程继续原文件，不重放 Ruby 参数和预载模块。
+  def jobs_terminal_style_bootstrap_v1
+    return unless $PROGRAM_NAME == __FILE__
+    plain = lambda do
+      ENV.update('PLAIN_OUTPUT' => '1', 'NO_COLOR' => '1', 'FORCE_COLOR' => '0',
+                 'CLICOLOR' => '0', 'ANSI_COLORS_DISABLED' => '1', 'npm_config_color' => 'false')
+    end
+    notify = lambda do |message|
+      encoding = $stderr.external_encoding || Encoding::UTF_8
+      $stderr.write((message + "\n").encode(encoding, invalid: :replace, undef: :replace))
+    end
+    return unless $stdin.tty? && $stdout.tty?
+    return if ENV.key?('NO_COLOR') || ENV['PLAIN_OUTPUT'] == '1' ||
+              ENV['IS_SOURCETREE_RUNTIME'] == '1' ||
+              ENV.keys.any? { |key| key.match?(/\A(?:SOURCETREE|SOURCE_TREE)/i) }
+    return if ['', 'dumb'].include?(ENV.fetch('TERM', ''))
+    if File::ALT_SEPARATOR == '\\' || !Process.respond_to?(:fork) ||
+       Thread.list.length > 1 || ENV['TMUX'] || ENV['STY']
+      plain.call
+      return
+    end
+    tty_name = IO.popen(['tty'], err: File::NULL, &:read).strip
+    groups = IO.popen(['ps', '-o', 'pgid=', '-o', 'tpgid=', '-p', Process.pid.to_s], err: File::NULL, &:read).split
+    unless tty_name.match?(%r{\A/dev/[A-Za-z0-9_./-]+\z}) && groups.length == 2 &&
+           groups.all? { |group| group.match?(/\A\d+\z/) } && groups[0].to_i > 0 && groups[0] == groups[1]
+      plain.call
+      return
+    end
+    owner = ENV['JOBS_TERMINAL_STYLE_OWNER']
+    if ENV['JOBS_TERMINAL_STYLE_TTY'] == tty_name && owner && owner.match?(/\A\d+\z/)
+      begin
+        Process.kill(0, owner.to_i)
+        return
+      rescue Errno::ESRCH, Errno::EPERM
+      end
+    end
+    require 'io/console'
+    require 'tmpdir'
+    if Thread.list.length > 1
+      plain.call
+      return
+    end
+    tty = File.open('/dev/tty', 'r+')
+    tty.binmode
+    tty.sync = true
+    keys = ['10', '11', '12'] + (0..15).map { |index| "4;#{index}" }
+    palette = %w[000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee
+                 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff]
+    targets = { '10' => 'ffffff', '11' => '000000', '12' => 'ffffff' }
+    palette.each_with_index { |color, index| targets["4;#{index}"] = color }
+    query = lambda do |key|
+      tty.write("\e]#{key};?\a")
+      bytes = ''.b
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.3
+      loop do
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        return nil if remaining <= 0 || !IO.select([tty], nil, nil, remaining)
+        piece = tty.read_nonblock(256, exception: false)
+        next if piece == :wait_readable
+        return nil unless piece && !piece.empty?
+        bytes << piece
+        return nil if bytes.bytesize > 256 || !bytes.start_with?("\e".b)
+        break if bytes.end_with?("\a".b) || bytes.end_with?("\e\\".b)
+      end
+      match = bytes.match(/\A\e\]#{Regexp.escape(key)};rgb:([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})\/([0-9a-fA-F]{1,4})(?:\a|\e\\)\z/n)
+      return nil unless match
+      components = match.captures.map { |hex| (hex.to_i(16) * 65535.0 / (16**hex.length - 1)).round }
+      { raw: bytes, rgb: components }
+    rescue IOError, SystemCallError
+      nil
+    end
+    snapshot = lambda do
+      values = {}
+      tty.raw(min: 0, time: 0, intr: true) do
+        keys.each do |key|
+          value = query.call(key)
+          return nil unless value
+          values[key] = value
+        end
+      end
+      values
+    rescue IOError, SystemCallError, ArgumentError
+      nil
+    end
+    original = snapshot.call
+    unless original
+      notify.call('终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。')
+      tty.close
+      plain.call
+      return
+    end
+    directory = Dir.mktmpdir('jobs-terminal-style-')
+    recovery = File.join(directory, 'restore.sh')
+    original_bytes = keys.map { |key| original.fetch(key).fetch(:raw) }.join
+    recovery_source = "#!/bin/sh\n" \
+      "[ -t 0 ] && [ \"$(tty)\" = '#{tty_name}' ] || { printf '请在原终端运行恢复入口。\\n' >&2; exit 1; }\n" \
+      "printf '本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：' >&2\n" \
+      "IFS= read -r jobs_restore_choice\n[ \"$jobs_restore_choice\" = YES ] || exit 1\n" \
+      "printf '%s\\033[0m' '#{original_bytes}' > /dev/tty\n"
+    File.open(recovery, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      file.binmode
+      file.write(recovery_source.b)
+    end
+    notify.call("本次终端临时使用黑底白字；强退后恢复入口：sh \"#{recovery}\"")
+    changed = false
+    applied = nil
+    # 比较仍生效的本轮颜色，只恢复未被用户另行修改的项。
+    cleanup = lambda do
+      current = applied && snapshot.call
+      unless current
+        notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+        return false
+      end
+      conflicts = []
+      restore_bytes = ''.b
+      keys.each do |key|
+        if current.fetch(key).fetch(:rgb) == applied.fetch(key).fetch(:rgb)
+          restore_bytes << original.fetch(key).fetch(:raw)
+        else
+          conflicts << key
+        end
+      end
+      tty.write(restore_bytes + "\e[0m".b)
+      if conflicts.empty?
+        File.unlink(recovery)
+        Dir.rmdir(directory)
+        true
+      else
+        notify.call("检测到运行期间的配色变更，已保留这些项：#{conflicts.join(' ')}")
+        notify.call("确认要覆盖后续改色时才使用恢复入口：sh \"#{recovery}\"")
+        false
+      end
+    rescue IOError, SystemCallError
+      notify.call("终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh \"#{recovery}\"")
+      false
+    end
+    child_pid = nil
+    guardian = false
+    interrupted = nil
+    previous_signals = {}
+    %w[INT TERM HUP].each do |name|
+      previous_signals[name] = Signal.trap(name) do
+        interrupted = name
+        if child_pid && name != 'INT'
+          begin
+            Process.kill(name, child_pid)
+          rescue Errno::ESRCH
+          end
+        end
+      end
+    end
+    begin
+      changed = true
+      tty.write(targets.map { |key, color| "\e]#{key};##{color}\a" }.join + "\e[0m")
+      applied = snapshot.call
+      unless applied
+        notify.call('无法核实本次临时配色，已停止启动业务。')
+        raise SystemExit, 1
+      end
+      desired = targets.all? do |key, hex|
+        rgb = hex.scan(/../).map { |component| component.to_i(16) * 257 }
+        applied.fetch(key).fetch(:rgb).zip(rgb).all? { |actual, expected| (actual - expected).abs <= 255 }
+      end
+      unless desired
+        notify.call('终端未接受本次配色，恢复后使用纯文本。')
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      if interrupted
+        raise SystemExit, 128 + Signal.list.fetch(interrupted)
+      end
+      if Thread.list.length > 1
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      $stdout.flush
+      $stderr.flush
+      begin
+        child_pid = Process.fork
+      rescue NotImplementedError, SystemCallError
+        restored = cleanup.call
+        changed = false
+        raise SystemExit, 1 unless restored
+        plain.call
+        return
+      end
+      unless child_pid
+        changed = false
+        ENV['JOBS_TERMINAL_STYLE_TTY'] = tty_name
+        ENV['JOBS_TERMINAL_STYLE_OWNER'] = Process.ppid.to_s
+        raise SystemExit, 128 + Signal.list.fetch(interrupted) if interrupted
+        return
+      end
+      guardian = true
+      result = nil
+      loop do
+        begin
+          _, result = Process.wait2(child_pid)
+          break
+        rescue Interrupt, Errno::EINTR
+        end
+      end
+      status_code = result.exitstatus || 128 + result.termsig
+      %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+      restored = cleanup.call
+      changed = false
+      status_code = 1 if !restored && status_code.zero?
+      tty.close
+      Process.exit!(status_code)
+    ensure
+      if changed
+        %w[INT TERM HUP].each { |name| Signal.trap(name, 'IGNORE') }
+        cleanup.call
+      end
+      previous_signals.each { |name, handler| Signal.trap(name, handler) } unless guardian
+      tty.close unless tty.closed?
+    end
+  rescue IOError, SystemCallError, LoadError => error
+    if guardian
+      notify.call("终端保护监督进程异常：#{error.message}")
+      Process.exit!(1)
+    end
+    raise SystemExit, 1 if changed
+    notify.call("终端保护不可用，使用纯文本：#{error.message}")
+    plain.call
+  end
+  jobs_terminal_style_bootstrap_v1
+
+end
+# JOBS_TERMINAL_STYLE_GUARD_V1_END
+
+require 'minitest/autorun'
+require 'open3'
+require 'tmpdir'
+require 'fileutils'
+require 'shellwords'
+
+class PortableLauncherTests < Minitest::Test
+  ROOT = File.expand_path('..', File.dirname(__dir__))
+  APPS = Dir.glob(File.join(ROOT, '**', '【MacOS】*Finder扩展.app')).freeze
+  ROOT_APP = File.join(ROOT, '【MacOS】🧩管理Finder扩展.app')
+  SINGLE_APP = APPS.find { |app| app.include?('/JobsFlutterTools/') }
+
+  # 仅搭建 App、脚本替身和受控桌面替身，不复制业务实现。
+  def package(directory, source_app: ROOT_APP, worker: :file)
+    app = File.join(directory, File.basename(source_app))
+    launcher = File.join(app, 'Contents/MacOS/LaunchManager')
+    scripts = File.join(directory, 'Scripts')
+    worker_name = source_app == ROOT_APP ? 'ManageFinderExtensions.zsh' : 'ManageExtension.zsh'
+    manager = if worker == :nested
+                name = "【MacOS】#{worker_name}"
+                File.join(scripts, name, name)
+              else
+                File.join(scripts, worker_name)
+              end
+    FileUtils.mkdir_p([File.dirname(launcher), scripts])
+    ui = <<~'ZSH'
+      fixture_desktop() {
+        if (( $# == 3 )); then
+          print -u2 -r -- "CHOOSER=$3"
+          [[ "${JOBS_TEST_PICK_STATUS:-0}" == 0 ]] || return 23
+          print -r -- "${JOBS_TEST_PICK_DIRECTORY:-}"
+        else
+          print -u2 -r -- "DIALOG=$2"
+        fi
+      }
+    ZSH
+    source = File.read(File.join(source_app, 'Contents/MacOS/LaunchManager'))
+    File.write(launcher, source.gsub('/usr/bin/osascript', 'fixture_desktop').sub(/\A(#![^\n]*\n)/) { "#{Regexp.last_match(1)}#{ui}" })
+    File.chmod(0o755, launcher)
+    if [:file, :nested].include?(worker)
+      FileUtils.mkdir_p(File.dirname(manager))
+      File.write(manager, <<~'ZSH')
+        #!/bin/zsh
+        print -r -- invoked > "$JOBS_TEST_MARKER"
+        printf '%s\0' "${0:A}" "$@"
+      ZSH
+    elsif worker == :directory
+      FileUtils.mkdir_p(manager)
+    end
+    { app: app, launcher: launcher, manager: manager }
+  end
+
+  # 路径和参数直接交给进程，不通过 Shell 拼接。
+  def launch(fixture, *arguments, env: {}, chdir: '/')
+    Open3.capture3(env, '/bin/zsh', fixture.fetch(:launcher), *arguments, chdir: chdir)
+  end
+
+  def expected_worker_output(fixture, *arguments)
+    [File.realpath(fixture.fetch(:manager)), '--gui-session', *arguments]
+  end
+
+  # 源码同名包装和发布平铺都使用真实启动器；不打开GUI或执行安装。
+  def test_every_source_package_resolves_the_wrapped_worker
+    Dir.mktmpdir('jobs-portable-nested-') do |directory|
+      APPS.each_with_index do |source_app, index|
+        root = File.join(directory, "源码 #{index} 中文")
+        fixture = package(root, source_app: source_app, worker: :nested)
+        output, errors, status = launch(fixture, '--action', 'uninstall', env: { 'JOBS_TEST_MARKER' => File.join(root, 'invoked') })
+        assert status.success?, output + errors
+        assert_equal expected_worker_output(fixture, '--action', 'uninstall'), output.split("\0").reject(&:empty?)
+      end
+    end
+  end
+
+  def test_every_package_works_after_copy_rename_and_unrelated_working_directory
+    assert_equal 36, APPS.length
+    Dir.mktmpdir('jobs-portable-') do |directory|
+      APPS.each_with_index do |source_app, index|
+        original = File.join(directory, "original-#{index}")
+        fixture = package(original, source_app: source_app)
+        moved = File.join(directory, "搬迁 #{index} 中文 [a]; & '$()`")
+        FileUtils.mv(original, moved)
+        fixture = fixture.transform_values { |path| path.sub(original, moved) }
+        marker = File.join(directory, "worker-#{index}")
+        scope = "menu 中文;$(touch injected) ' & `echo injected`"
+        output, errors, result = launch(fixture, '--action', 'uninstall', '--scope', scope,
+                                       env: { 'JOBS_TEST_MARKER' => marker })
+        assert result.success?, "#{source_app}: #{errors}"
+        assert_equal expected_worker_output(fixture, '--action', 'uninstall', '--scope', scope), output.split("\0"), source_app
+        assert File.file?(marker), source_app
+        assert_empty errors, source_app
+        refute File.exist?(File.join(moved, 'injected'))
+      end
+    end
+  end
+
+  def test_runtime_package_root_works_when_every_app_is_detached_from_its_scripts
+    Dir.mktmpdir('jobs-detached-') do |directory|
+      APPS.each_with_index do |source_app, index|
+        original_root = File.join(directory, "原目录 #{index}")
+        original = package(original_root, source_app: source_app)
+        detached = package(File.join(directory, "AppTranslocation-#{index}/d"), source_app: source_app, worker: :missing)
+        marker = File.join(directory, "worker-#{index}")
+        output, errors, result = launch(detached, '--package-root', original_root, '--action=install',
+                                       env: { 'JOBS_TEST_MARKER' => marker })
+        assert result.success?, "#{source_app}: #{errors}"
+        assert_equal expected_worker_output(original, '--action', 'install'), output.split("\0"), source_app
+        assert_empty errors, source_app
+      end
+    end
+  end
+
+  def test_command_passes_its_package_root_through_open_to_a_detached_app
+    Dir.mktmpdir('jobs-command-path-') do |directory|
+      [ROOT_APP, SINGLE_APP].each_with_index do |source_app, index|
+        original_root = File.join(directory, "真实包 #{index}; '$()`")
+        original = package(original_root, source_app: source_app)
+        detached = package(File.join(directory, "isolated-#{index}"), source_app: source_app, worker: :missing)
+        command = original.fetch(:app).sub(/\.app\z/, '.command')
+        fake_open = File.join(original_root, 'open-stub')
+        File.write(fake_open, <<~'ZSH')
+          #!/bin/zsh
+          [[ "$1" == -n && "$3" == --args ]] || exit 91
+          shift 3
+          exec /bin/zsh "$JOBS_TEST_DETACHED_LAUNCHER" "$@"
+        ZSH
+        File.chmod(0o755, fake_open)
+        source = File.read(source_app.sub(/\.app\z/, '.command'))
+        File.write(command, source.gsub('/usr/bin/open') { Shellwords.escape(fake_open) })
+        marker = File.join(directory, "worker-#{index}")
+        output, errors, result = Open3.capture3({ 'JOBS_TEST_MARKER' => marker,
+                                                'JOBS_TEST_DETACHED_LAUNCHER' => detached.fetch(:launcher),
+                                                'TERM_PROGRAM' => '' },
+                                              '/bin/zsh', command, '--action', 'uninstall', chdir: '/')
+        assert result.success?, errors
+        assert_equal expected_worker_output(original, '--action', 'uninstall'), output.split("\0")
+        assert_empty errors
+      end
+    end
+  end
+
+  def test_direct_app_accepts_a_user_selected_valid_package_for_root_and_single_feature
+    Dir.mktmpdir('jobs-choose-package-') do |directory|
+      [ROOT_APP, SINGLE_APP].each_with_index do |source_app, index|
+        original_root = File.join(directory, "原始目录 #{index}")
+        original = package(original_root, source_app: source_app)
+        detached = package(File.join(directory, "detached-#{index}"), source_app: source_app, worker: :missing)
+        marker = File.join(directory, "worker-#{index}")
+        output, errors, result = launch(detached, '--action', 'uninstall',
+                                       env: { 'JOBS_TEST_PICK_DIRECTORY' => original_root, 'JOBS_TEST_MARKER' => marker })
+        assert result.success?, errors
+        assert_equal expected_worker_output(original, '--action', 'uninstall'), output.split("\0")
+        assert_includes errors, "CHOOSER=#{File.realpath(File.dirname(detached.fetch(:manager)))}/#{File.basename(detached.fetch(:manager))}"
+        refute_includes errors, 'DIALOG='
+      end
+    end
+  end
+
+  def test_cancel_and_picker_failure_never_execute_a_worker
+    Dir.mktmpdir('jobs-cancel-package-') do |directory|
+      fixture = package(File.join(directory, 'detached'), worker: :missing)
+      marker = File.join(directory, 'worker')
+      [{ 'JOBS_TEST_PICK_DIRECTORY' => '' }, { 'JOBS_TEST_PICK_STATUS' => '23' }].each_with_index do |picker_env, index|
+        output, errors, result = launch(fixture, env: picker_env.merge('JOBS_TEST_MARKER' => marker))
+        assert_equal(index.zero? ? 130 : 2, result.exitstatus, errors)
+        assert_empty output
+        refute File.exist?(marker)
+        refute_includes errors, 'DIALOG='
+      end
+    end
+  end
+
+  def test_wrong_package_and_a_directory_in_place_of_a_worker_are_rejected_with_actual_path
+    Dir.mktmpdir('jobs-invalid-package-') do |directory|
+      detached = package(File.join(directory, 'detached'), worker: :missing)
+      wrong = package(File.join(directory, 'wrong-app'), source_app: SINGLE_APP)
+      directory_worker = package(File.join(directory, 'directory-worker'), worker: :directory)
+      marker = File.join(directory, 'worker')
+      [wrong, directory_worker].each do |chosen|
+        selected_root = File.dirname(chosen.fetch(:app))
+        output, errors, result = launch(detached, env: { 'JOBS_TEST_PICK_DIRECTORY' => selected_root, 'JOBS_TEST_MARKER' => marker })
+        assert_equal 2, result.exitstatus, errors
+        assert_empty output
+        assert_includes errors, '所选目录缺少同名 App 或可读的内部管理器。实际查找：'
+        assert_includes errors, "#{File.realpath(selected_root)}/Scripts/ManageFinderExtensions.zsh"
+        refute File.exist?(marker)
+      end
+    end
+  end
+
+  def test_diagnosis_reports_resolved_paths_without_ui_or_business_for_success_and_failure
+    Dir.mktmpdir('jobs-diagnose-path-') do |directory|
+      marker = File.join(directory, 'worker')
+      [:file, :missing, :directory].each do |worker|
+        fixture = package(File.join(directory, worker.to_s), worker: worker)
+        output, errors, result = launch(fixture, '--diagnose-paths', env: { 'JOBS_TEST_MARKER' => marker })
+        assert_equal(worker == :file ? 0 : 2, result.exitstatus, errors)
+        assert_includes output, "App运行路径：#{File.realpath(fixture.fetch(:app))}"
+        assert_includes output, "内部管理器：#{File.realpath(File.dirname(fixture.fetch(:manager)))}/#{File.basename(fixture.fetch(:manager))}"
+        assert_includes output, worker == :file ? '路径校验：通过' : '路径校验：失败'
+        assert_empty errors
+        refute File.exist?(marker)
+      end
+    end
+  end
+
+  def test_all_shipping_launchers_have_no_developer_machine_path_fallback
+    APPS.each do |app|
+      [File.join(app, 'Contents/MacOS/LaunchManager'), app.sub(/\.app\z/, '.command')].each do |path|
+        refute_match(%r{/Users/|/home/|file:///|[A-Za-z]:[\\/]}, File.read(path), path)
+      end
+    end
+  end
+end

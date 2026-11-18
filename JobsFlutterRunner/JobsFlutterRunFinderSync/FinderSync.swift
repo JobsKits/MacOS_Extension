@@ -21,7 +21,7 @@ final class FinderSync: FIFinderSync {
                 || menuKind == .contextualMenuForContainer
                 || menuKind == .contextualMenuForSidebar,
               let projectURL = candidateURL(for: menuKind),
-              validator.isFlutterProject(at: projectURL) else {
+              (validator.isFlutterProject(at: projectURL) || (menuKind == .contextualMenuForItems && validator.runProjectURL(for: projectURL) != nil)) else {
             return nil
         }
         let menu = NSMenu(title: "")
@@ -34,7 +34,8 @@ final class FinderSync: FIFinderSync {
         default:
             action = #selector(runContainerProject(_:))
         }
-        let item = NSMenuItem(title: "▶️ 从终端运行 Flutter 项目", action: action, keyEquivalent: "")
+        let title = projectURL.pathExtension.lowercased() == "dart" ? FlutterProjectValidator.demoMenuTitle() : "▶️ 从终端运行 Flutter 项目"
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         return menu
@@ -79,7 +80,7 @@ final class FinderSync: FIFinderSync {
     private func runFlutter(for menuKind: FIMenuKind) {
         // Finder 转发菜单动作时不依赖 representedObject，重新查询本次菜单上下文。
         guard let projectURL = candidateURL(for: menuKind),
-              validator.isFlutterProject(at: projectURL) else {
+              (validator.isFlutterProject(at: projectURL) || (menuKind == .contextualMenuForItems && validator.runProjectURL(for: projectURL) != nil)) else {
             showFailure("当前菜单上下文已失效，或文件夹不再是可识别的 Flutter 项目，请关闭菜单后重新右键。")
             return
         }

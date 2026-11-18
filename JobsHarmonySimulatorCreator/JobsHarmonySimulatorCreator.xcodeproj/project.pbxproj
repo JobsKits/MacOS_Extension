@@ -17,7 +17,6 @@
 		01B000000000000000000023 /* HarmonySimulatorTerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000023 /* HarmonySimulatorTerminalLauncher.swift */; };
 		01B000000000000000000024 /* HarmonySimulatorMenuContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* HarmonySimulatorMenuContext.swift */; };
 		01B000000000000000000025 /* HarmonySimulatorRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* HarmonySimulatorRequest.swift */; };
-		01B000000000000000000026 /* CreateHarmonySimulator.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000026 /* CreateHarmonySimulator.zsh */; };
 		01B000000000000000000034 /* HarmonySimulatorMenuContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* HarmonySimulatorMenuContext.swift */; };
 		01B000000000000000000035 /* HarmonySimulatorRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* HarmonySimulatorRequest.swift */; };
 /* End PBXBuildFile section */
@@ -61,7 +60,7 @@
 		01A000000000000000000023 /* HarmonySimulatorTerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HarmonySimulatorTerminalLauncher/HarmonySimulatorTerminalLauncher.swift"; sourceTree = "<group>"; };
 		01A000000000000000000024 /* HarmonySimulatorMenuContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HarmonySimulatorMenuContext/HarmonySimulatorMenuContext.swift"; sourceTree = "<group>"; };
 		01A000000000000000000025 /* HarmonySimulatorRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HarmonySimulatorRequest/HarmonySimulatorRequest.swift"; sourceTree = "<group>"; };
-		01A000000000000000000026 /* CreateHarmonySimulator.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "CreateHarmonySimulator.zsh"; sourceTree = "<group>"; };
+		01A000000000000000000026 /* CreateHarmonySimulator.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "Scripts/【MacOS】CreateHarmonySimulator.zsh/【MacOS】CreateHarmonySimulator.zsh"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +161,7 @@
 				01D000000000000000000010 /* Sources */,
 				01D000000000000000000011 /* Frameworks */,
 				01D000000000000000000012 /* Resources */,
+				97E41158E64314E9C89A9D73 /* Preserve Script Resource Names */,
 				01D000000000000000000013 /* Embed App Extensions */,
 				01D000000000000000000014 /* Enable Finder Extension */,
 			);
@@ -249,7 +249,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-				shellScript = "if [[ \"${JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE:-0}\" != 1 ]]; then\n  /bin/zsh \"${SRCROOT}/Scripts/EnableFinderExtension.zsh\"\nfi\n";
+				shellScript = "if [[ \"${JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE:-0}\" != 1 ]]; then\n  /bin/zsh \"${SRCROOT}/Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh\"\nfi\n";
+		};
+		97E41158E64314E9C89A9D73 /* Preserve Script Resource Names */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/Scripts/【MacOS】CreateHarmonySimulator.zsh/【MacOS】CreateHarmonySimulator.zsh",
+			);
+			name = "Preserve Script Resource Names";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CreateHarmonySimulator.zsh",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "# shell: zsh\nset -eu\n# 源码包装可独立整理；Bundle 保持既有资源路径，不携带新包装 README。\ncopy_jobs_source_resource() {\n  local source=\"$1\" destination=\"$2\"\n  [[ -f \"$source\" && ! -L \"$source\" && ! -L \"$destination\" ]] || { print -u2 -r -- \"资源缺失或为链接：$source -> $destination\"; return 1; }\n  /bin/mkdir -p -- \"${destination:h}\" || return $?\n  /bin/cp -p -- \"$source\" \"$destination\"\n}\nmain() {\n  copy_jobs_source_resource \"${SRCROOT}/Scripts/【MacOS】CreateHarmonySimulator.zsh/【MacOS】CreateHarmonySimulator.zsh\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CreateHarmonySimulator.zsh\" # 保留既有资源名。\n}\nmain \"$@\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -257,7 +272,7 @@
         01D000000000000000000012 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (01B000000000000000000026 /* CreateHarmonySimulator.zsh in Resources */,);
+            files = ();
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */

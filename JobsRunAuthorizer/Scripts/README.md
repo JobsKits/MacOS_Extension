@@ -20,13 +20,13 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
+本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
 
 日志区上方的分隔条可上下拖动，窗口也可调整大小；功能列表与日志分别滚动，并保留操作按钮。日志右键提供“全选”，也可用 `⌘A` 全选后 `⌘C` 复制；拖动不会清空日志或改变功能勾选。
 
-`AuthorizeRun.zsh` 是 Finder“➕ 授予执行权限（chmod +x）”的终端业务入口，保持原工具 `chmod +x` 的语义，只处理明确指定的一个普通文件。`EnableFinderExtension.zsh` 是本工程 Xcode Build Phase 的注册入口，两者职责独立。
+`./【MacOS】AuthorizeRun.zsh/【MacOS】AuthorizeRun.zsh` 是 Finder“➕ 授予执行权限（chmod +x）”的终端业务入口，保持原工具 `chmod +x` 的语义，只处理明确指定的一个普通文件。`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 是本工程 Xcode Build Phase 的注册入口，两者职责独立。
 
 
 **面板与状态：** 主标题为“自定义Finder右键菜单”（繁体：自定義Finder右鍵菜單；英文：Customize Finder Context Menu）。安装 / 更新与卸载之间切换保留当前全部功能勾选；状态图标与活动指示器居中共用固定列，状态文字保持同一左边界。 功能分组支持按住标题拖动排序及跨列移动，布局保存在当前用户偏好中；默认右列仅放 Flutter，其余分组在左列。拖动和切换主题、语言或操作模式保留功能勾选、执行状态和日志；窄窗按布局顺序显示为单列。
@@ -50,8 +50,8 @@
 
 | 文件 | 调用者与作用 |
 | --- | --- |
-| [AuthorizeRun.zsh](./AuthorizeRun.zsh) | 打包为宿主 App 资源，由 Terminal 执行；可独立终端调用。 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | Xcode 构建后注册、启用当前精确路径的 Finder 扩展并刷新 Finder。 |
+| [AuthorizeRun.zsh](./【MacOS】AuthorizeRun.zsh/【MacOS】AuthorizeRun.zsh) | 打包为宿主 App 资源，由 Terminal 执行；可独立终端调用。 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | Xcode 构建后注册、启用当前精确路径的 Finder 扩展并刷新 Finder。 |
 
 以下命令以当前 `Scripts/` 目录为基准：
 
@@ -88,7 +88,7 @@
 
 ## 三、<span id="registration">构建后注册与安装入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-`EnableFinderExtension.zsh` 仅接受 `JobsRunAuthorizer.app` 的有效 Xcode 构建上下文，固定注册 `com.jobs.JobsRunAuthorizer.FinderSyncExtension`。轮询只匹配当前构建扩展的完整路径，旧副本显示已启用不能作为成功依据；注册、启用或 Finder 刷新失败时保留重试标记。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 仅接受 `JobsRunAuthorizer.app` 的有效 Xcode 构建上下文，固定注册 `com.jobs.JobsRunAuthorizer.FinderSyncExtension`。轮询只匹配当前构建扩展的完整路径，旧副本显示已启用不能作为成功依据；注册、启用或 Finder 刷新失败时保留重试标记。
 
 外层安装入口负责旧副本与宿主 URL 登记清理，构建时设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 避免重复注册；隔离构建也使用该开关。这个开关只跳过本脚本，Xcode 自身仍可能自动登记产物，即使设置 `REGISTER_APP_WITH_LAUNCH_SERVICES=NO` 也需检查并精确注销本次临时路径。缺少 Xcode 上下文时脚本拒绝执行，不能把它当成手动安装入口。完整安装与卸载请使用[工程根目录入口](../README.md#installation)。
 

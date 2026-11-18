@@ -19,9 +19,6 @@
 		01B000000000000000000018 /* DependencyProjectValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000015 /* DependencyProjectValidator.swift */; };
 		01B000000000000000000019 /* FinderMenuFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* FinderMenuFeatureConfiguration.swift */; };
 		01B000000000000000000020 /* FinderMenuFeatureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000016 /* FinderMenuFeatureConfiguration.swift */; };
-		01B000000000000000000021 /* CleanBuildArtifacts.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000017 /* CleanBuildArtifacts.zsh */; };
-		01B000000000000000000022 /* ViewFileContent.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000018 /* ViewFileContent.zsh */; };
-		01B000000000000000000023 /* FileVolumes.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000019 /* FileVolumes.zsh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,9 +60,9 @@
 		01A000000000000000000016 /* FinderMenuFeatureConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderMenuFeatureConfiguration.swift; sourceTree = "<group>"; };
 		01E000000000000000000000 /* JobsTerminalOpener.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JobsTerminalOpener.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		01E000000000000000000001 /* JobsTerminalFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JobsTerminalFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		01A000000000000000000017 /* CleanBuildArtifacts.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/CleanBuildArtifacts.zsh; sourceTree = SOURCE_ROOT; };
-		01A000000000000000000018 /* ViewFileContent.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/ViewFileContent.zsh; sourceTree = SOURCE_ROOT; };
-		01A000000000000000000019 /* FileVolumes.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = Scripts/FileVolumes.zsh; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000017 /* CleanBuildArtifacts.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "Scripts/【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000018 /* ViewFileContent.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "Scripts/【MacOS】ViewFileContent.zsh/【MacOS】ViewFileContent.zsh"; sourceTree = SOURCE_ROOT; };
+		01A000000000000000000019 /* FileVolumes.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "Scripts/【MacOS】FileVolumes.zsh/【MacOS】FileVolumes.zsh"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,6 +158,7 @@
 				01D000000000000000000010 /* Sources */,
 				01D000000000000000000011 /* Frameworks */,
 				01D000000000000000000012 /* Resources */,
+				6E322D8E7BD02E4429E2BB83 /* Preserve Script Resource Names */,
 				01D000000000000000000013 /* Embed App Extensions */,
 				01D000000000000000000014 /* Enable Finder Extension */,
 			);
@@ -233,9 +231,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				01B000000000000000000021 /* CleanBuildArtifacts.zsh in Resources */,
-				01B000000000000000000022 /* ViewFileContent.zsh in Resources */,
-				01B000000000000000000023 /* FileVolumes.zsh in Resources */,
+				
+				
+				
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -261,7 +259,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-				shellScript = "/bin/zsh \"${SRCROOT}/Scripts/EnableFinderExtension.zsh\"\n";
+				shellScript = "/bin/zsh \"${SRCROOT}/Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh\"\n";
+		};
+		6E322D8E7BD02E4429E2BB83 /* Preserve Script Resource Names */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/Scripts/【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh",
+				"$(SRCROOT)/Scripts/【MacOS】FileVolumes.zsh/【MacOS】FileVolumes.zsh",
+				"$(SRCROOT)/Scripts/【MacOS】ViewFileContent.zsh/【MacOS】ViewFileContent.zsh",
+			);
+			name = "Preserve Script Resource Names";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CleanBuildArtifacts.zsh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/FileVolumes.zsh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ViewFileContent.zsh",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "# shell: zsh\nset -eu\n# 源码包装可独立整理；Bundle 保持既有资源路径，不携带新包装 README。\ncopy_jobs_source_resource() {\n  local source=\"$1\" destination=\"$2\"\n  [[ -f \"$source\" && ! -L \"$source\" && ! -L \"$destination\" ]] || { print -u2 -r -- \"资源缺失或为链接：$source -> $destination\"; return 1; }\n  /bin/mkdir -p -- \"${destination:h}\" || return $?\n  /bin/cp -p -- \"$source\" \"$destination\"\n}\nmain() {\n  copy_jobs_source_resource \"${SRCROOT}/Scripts/【MacOS】CleanBuildArtifacts.zsh/【MacOS】CleanBuildArtifacts.zsh\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CleanBuildArtifacts.zsh\" # 保留既有资源名。\n  copy_jobs_source_resource \"${SRCROOT}/Scripts/【MacOS】FileVolumes.zsh/【MacOS】FileVolumes.zsh\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FileVolumes.zsh\" # 保留既有资源名。\n  copy_jobs_source_resource \"${SRCROOT}/Scripts/【MacOS】ViewFileContent.zsh/【MacOS】ViewFileContent.zsh\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ViewFileContent.zsh\" # 保留既有资源名。\n}\nmain \"$@\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

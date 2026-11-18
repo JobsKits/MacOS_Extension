@@ -285,7 +285,7 @@ class FileHashTests < Minitest::Test
       package = File.join(File.realpath(temporary), '复制 改名')
       FileUtils.mkdir_p(File.join(package, 'Scripts'))
       script = File.join(package, 'Scripts/ManageExtension.zsh')
-      FileUtils.cp(File.join(PACKAGE, 'Scripts/ManageExtension.zsh'), script)
+      FileUtils.cp(File.join(PACKAGE, 'Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh'), script)
       output, error, status = Open3.capture3('/bin/zsh', script, '--help', chdir: '/')
       assert status.success?, output + error
       assert_includes output, 'file-hash'

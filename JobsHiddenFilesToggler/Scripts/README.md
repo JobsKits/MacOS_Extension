@@ -19,7 +19,7 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 > 本目录只承载 [**Xcode**](https://developer.apple.com/xcode) 编译后的扩展启用脚本。实际隐藏文件偏好切换在 [后台宿主源码](../JobsHiddenFilesToggler/) 内实现，不依赖外部业务脚本。
 
@@ -39,7 +39,7 @@
 
 ## 一、<span id="build-helper">编译后启用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-`EnableFinderExtension.zsh` 由工程的 `Enable Finder Extension` 编译阶段调用，利用 `TARGET_BUILD_DIR` 与 `WRAPPER_NAME` 定位当前 `JobsHiddenFilesToggler.app` 和其中的 `JobsHiddenFilesFinderSync.appex`。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 由工程的 `Enable Finder Extension` 编译阶段调用，利用 `TARGET_BUILD_DIR` 与 `WRAPPER_NAME` 定位当前 `JobsHiddenFilesToggler.app` 和其中的 `JobsHiddenFilesFinderSync.appex`。
 
 脚本先输出内置自述，核验构建上下文，再停止当前用户的旧宿主、注册并启用固定 ID `com.jobs.hiddenfilestoggler.findersync`。只有状态查询确认当前产物路径已启用，才刷新当前用户 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)。注册、启用或刷新失败时保留待刷新标记并记录诊断，不自动操作隐藏文件偏好。
 

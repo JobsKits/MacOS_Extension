@@ -6,9 +6,11 @@ require 'fileutils'
 require 'json'
 require 'open3'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class FlutterRunPreflightTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
-  HELPER = ENV.fetch('JOBS_PREFLIGHT_TEST_HELPER', File.join(ROOT, 'Scripts/【MacOS】Flutter运行前体检.zsh/【MacOS】Flutter运行前体检.zsh'))
+  HELPER = ENV.fetch('JOBS_PREFLIGHT_TEST_HELPER', JobsSourceLayout.file(File.join(ROOT, 'Scripts/【MacOS】Flutter运行前体检.zsh/【MacOS】Flutter运行前体检.zsh')))
   HEALTHY = <<~DOCTOR
     [✓] Flutter (Channel stable, 3.47.8)
         • Flutter version 3.47.8
@@ -138,7 +140,7 @@ class FlutterRunPreflightTests < Minitest::Test
       [[ -z "$JOBS_TEST_AFTER_OVERVIEW" ]] || eval "$JOBS_TEST_AFTER_OVERVIEW"
       jobs_flutter_preflight_require "$JOBS_TEST_PLATFORM" fixture-device
     ZSH
-    output, status = Open3.capture2e(@env.merge('JOBS_TEST_PLATFORM' => platform, 'JOBS_TEST_OVERVIEW' => overview ? '1' : '0'), '/bin/zsh', '-c', script)
+    output, status = Open3.capture2e(@env.merge('JOBS_TEST_PLATFORM' => platform, 'JOBS_TEST_OVERVIEW' => overview ? '1' : '0'), '/bin/zsh', '-c', JobsSourceLayout.shell(script))
     [output, status.exitstatus]
   end
 
@@ -188,6 +190,88 @@ class FlutterRunPreflightTests < Minitest::Test
     assert_includes output, '缺少 ohos/build-profile.json5'
   end
 
+  def test_multiple_failures_use_real_lines_without_shell_quote_fragments
+    FileUtils.remove_entry(File.join(@project, 'ohos'))
+    File.write(@build, BUILD.lines.reject { |line| line.include?('hap ') }.join)
+    output, status = execute('ios')
+    assert_equal 0, status, output
+    refute_includes output, "$'\\n'"
+    assert_match(/✖\s+当前工程 SDK 没有 flutter build hap 能力\n✖\s+缺少 ohos\/build-profile.json5/, output)
+  end
+
+  def prepare_dependencies(platform: 'android')
+    runtime = JobsSourceLayout.file(File.join(File.dirname(HELPER), '【MacOS】Flutter运行环境准备.zsh/【MacOS】Flutter运行环境准备.zsh'))
+    @env['JOBS_TEST_RUNTIME'] = runtime
+    @env['JOBS_TEST_SCRIPT_DIR'] = File.dirname(File.dirname(HELPER))
+    @env['JOBS_TEST_PLATFORM'] = platform
+    script = <<~'ZSH'
+      setopt NO_NOMATCH PIPE_FAIL
+      PROJECT_PATH="$JOBS_TEST_PROJECT"
+      FLUTTER_BIN="$JOBS_TEST_SDK/bin/flutter"
+      LOG_FILE="$JOBS_TEST_LOG"
+      SCRIPT_DIR="$JOBS_TEST_SCRIPT_DIR"
+      log() { print -r -- "$*"; }
+      run_bounded() {
+        local limit="$1" output="$2"
+        shift 2
+        if [[ "$output" == *.prepare-packages && -n "$MOCK_INDEX_EXIT" ]]; then
+          return "$MOCK_INDEX_EXIT"
+        fi
+        "$@" > "$output" 2>&1
+      }
+      source "$JOBS_TEST_HELPER"
+      source "$JOBS_TEST_RUNTIME"
+      jobs_run_prepare_native_platform() { print unexpected-install; return 97; }
+      jobs_run_prepare_android_project() { print unexpected-install; return 97; }
+      jobs_flutter_preflight_overview || exit $?
+      jobs_run_prepare_required "$JOBS_TEST_PLATFORM" virtual || exit $?
+      jobs_flutter_preflight_require "$JOBS_TEST_PLATFORM" fixture-device
+    ZSH
+    output, status = Open3.capture2e(@env, '/bin/zsh', '-c', JobsSourceLayout.shell(script))
+    [output, status.exitstatus]
+  end
+
+  def test_dependency_repair_precedes_platform_install_and_refreshes_fingerprint
+    @packages[0][:rootUri] = @project
+    write_config
+    repaired = File.join(@temporary, 'repaired-packages.json')
+    @packages[0][:rootUri] = File.join(@sdk, 'packages/flutter')
+    File.write(repaired, JSON.generate(configVersion: 2, packages: @packages))
+    @env['MOCK_REPAIRED_PACKAGES'] = repaired
+    write_executable(File.join(@sdk, 'bin/flutter'), <<~'SH')
+      #!/bin/sh
+      printf '%s\n' "$*" >> "$MOCK_TRACE"
+      [ "$*" = 'pub get' ] || exit 98
+      cp "$MOCK_REPAIRED_PACKAGES" "$JOBS_TEST_PROJECT/.dart_tool/package_config.json"
+    SH
+    output, status = prepare_dependencies
+    assert_equal 0, status, output
+    assert_equal 1, File.read(@trace).lines.count { |line| line.strip == 'pub get' }
+    refute_includes output, 'unexpected-install'
+    assert_includes output, 'android 运行前体检通过'
+  end
+
+  def test_failed_dependency_repair_never_enters_platform_install
+    @packages[0][:rootUri] = @project
+    write_config
+    write_executable(File.join(@sdk, 'bin/flutter'), "#!/bin/sh\nexit 7\n")
+    output, status = prepare_dependencies
+    assert_equal 7, status, output
+    refute_includes output, 'unexpected-install'
+  end
+
+  def test_dependency_check_timeout_or_signal_never_starts_pub_get
+    @packages[0][:rootUri] = @project
+    write_config
+    [124, 130, 131, 143].each do |code|
+      @env['MOCK_INDEX_EXIT'] = code.to_s
+      output, status = prepare_dependencies
+      assert_equal code, status, output
+      refute_includes output, 'unexpected-install'
+      refute_includes File.read(@trace), 'shim-invoked'
+    end
+  end
+
   def test_missing_snapshot_does_not_bootstrap_sdk
     File.delete(File.join(@sdk, 'bin/cache/flutter_tools.snapshot'))
     output, status = execute
@@ -227,6 +311,66 @@ class FlutterRunPreflightTests < Minitest::Test
     output, status = execute('ohos')
     assert_equal 1, status, output
     assert_includes output, 'private_plugin'
+  end
+
+  def test_repeated_overview_checks_again_without_reprinting_unchanged_plugins
+    package('private_plugin', "flutter:\n  plugin:\n    platforms:\n      android:\n        pluginClass: Example\n")
+    root_dependency('private_plugin')
+    @env['JOBS_TEST_AFTER_OVERVIEW'] = 'jobs_flutter_preflight_overview || exit $?'
+    output, status = execute('ios')
+    assert_equal 0, status, output
+    assert_equal 1, output.scan('✖ ohos：未就绪。').length
+    assert_equal 1, output.scan('以下移动端原生插件未声明 ohos 支持').length
+    assert_equal 1, output.scan('✓ ios：环境检查通过').length
+    assert_includes output, '体检结果未变化，不重复展开'
+    assert_equal 2, File.read(@trace).scan('DoctorScope.dart all').length
+    assert_includes output, 'ios 运行前体检通过'
+  end
+
+  def test_changed_detail_and_recovery_are_displayed_after_the_first_overview
+    @env['MOCK_TOOL_FAIL'] = 'hdc'
+    @env['JOBS_TEST_AFTER_OVERVIEW'] = <<~'ZSH'
+      MOCK_TOOL_FAIL=java; export MOCK_TOOL_FAIL
+      jobs_flutter_preflight_overview || exit $?
+      MOCK_TOOL_FAIL=''; export MOCK_TOOL_FAIL
+      jobs_flutter_preflight_overview || exit $?
+    ZSH
+    output, status = execute('ohos')
+    assert_equal 0, status, output
+    assert_equal 2, output.scan('✖ ohos：未就绪。').length
+    assert_equal 1, output.scan('✓ ohos：环境检查通过').length
+    assert_equal 1, output.scan('✓ ios：环境检查通过').length
+    assert_includes output, 'hdc 版本检查失败'
+    assert_includes output, 'java 版本检查失败'
+  end
+
+  def test_same_sdk_path_with_new_snapshot_reprints_the_report
+    @env['JOBS_TEST_AFTER_OVERVIEW'] = <<~'ZSH'
+      print -r -- 'updated fixture snapshot' >> "$JOBS_TEST_SDK/bin/cache/flutter_tools.snapshot"
+      jobs_flutter_preflight_overview || exit $?
+    ZSH
+    output, status = execute('ios')
+    assert_equal 0, status, output
+    %w[ios android ohos].each { |platform| assert_equal 2, output.scan("✓ #{platform}：环境检查通过").length }
+  end
+
+  def test_switching_project_does_not_reuse_the_previous_display_snapshot
+    other_project = File.join(@temporary, 'other project')
+    FileUtils.cp_r(@project, other_project)
+    @env['JOBS_TEST_SECOND_PROJECT'] = other_project
+    @env['JOBS_TEST_AFTER_OVERVIEW'] = 'PROJECT_PATH="$JOBS_TEST_SECOND_PROJECT"; jobs_flutter_preflight_overview || exit $?'
+    output, status = execute('ios')
+    assert_equal 0, status, output
+    %w[ios android ohos].each { |platform| assert_equal 2, output.scan("✓ #{platform}：环境检查通过").length }
+  end
+
+  def test_unchanged_failure_still_blocks_the_selected_platform
+    @env['MOCK_TOOL_FAIL'] = 'hdc'
+    @env['JOBS_TEST_AFTER_OVERVIEW'] = 'jobs_flutter_preflight_overview || exit $?'
+    output, status = execute('ohos')
+    assert_equal 1, status, output
+    assert_equal 1, output.scan('✖ ohos：未就绪。').length
+    assert_includes output, '未启动设备 fixture-device'
   end
 
   def test_federated_android_implementation_is_not_required_on_harmony
@@ -312,7 +456,7 @@ class FlutterRunPreflightTests < Minitest::Test
       File.write(target_file, targets)
       arguments << target_file
     end
-    Open3.capture2e('/usr/bin/osascript', '-l', 'JavaScript', File.join(File.dirname(HELPER), 'Flutter运行前体检.jxa'), *arguments)
+    Open3.capture2e('/usr/bin/osascript', '-l', 'JavaScript', JobsSourceLayout.file(File.join(JobsSourceLayout.directory(HELPER), 'Flutter运行前体检.jxa/Flutter运行前体检.jxa')), *arguments)
   end
 
   def test_usb_hdc_detected_without_flutter_and_vendor_alone_is_not_harmony
@@ -371,13 +515,13 @@ class FlutterRunPreflightTests < Minitest::Test
       source "$JOBS_TEST_HELPER"
       jobs_flutter_harmony_discovery_rows $'visible-id\t已列出的设备'
     ZSH
-    Open3.capture3(@env.merge('MOCK_USB' => fixture, 'MOCK_USB_EXIT' => usb_exit.to_s).merge(environment), '/bin/zsh', '-c', script)
+    Open3.capture3(@env.merge('MOCK_USB' => fixture, 'MOCK_USB_EXIT' => usb_exit.to_s).merge(environment), '/bin/zsh', '-c', JobsSourceLayout.shell(script))
   end
 
   def test_discovery_finds_explicit_sdk_hdc_without_complete_build_toolchain
     sdk = File.join(@temporary, 'incomplete isolated sdk')
     FileUtils.mkdir_p(File.join(sdk, 'toolchains'))
-    FileUtils.cp(File.join(@harmony, 'bin/hdc'), File.join(sdk, 'toolchains/hdc'))
+    JobsSourceLayout.copy(File.join(@harmony, 'bin/hdc'), File.join(sdk, 'toolchains/hdc'))
     output, warning, status = discovery(environment: { 'OHOS_SDK_HOME' => sdk })
     assert status.success?, warning
     assert_includes output, '__harmony_hdc__:fixture-device'
@@ -436,7 +580,7 @@ class FlutterRunPreflightTests < Minitest::Test
     assert_includes warning, '未找到可执行 HDC'
     %w[20 21].each do |version|
       FileUtils.mkdir_p(File.join(sdk, version, 'toolchains'))
-      FileUtils.cp(File.join(@harmony, 'bin/hdc'), File.join(sdk, version, 'toolchains/hdc'))
+      JobsSourceLayout.copy(File.join(@harmony, 'bin/hdc'), File.join(sdk, version, 'toolchains/hdc'))
     end
     output, warning, status = discovery(environment: { 'OHOS_SDK_HOME' => sdk })
     assert status.success?, warning
@@ -473,7 +617,7 @@ class FlutterRunPreflightTests < Minitest::Test
     File.write(file, JSON.generate(devices))
     args = ['harmony-run-target', key, file]
     args << usb if usb
-    Open3.capture2e('/usr/bin/osascript', '-l', 'JavaScript', File.join(File.dirname(HELPER), 'Flutter运行前体检.jxa'), *args)
+    Open3.capture2e('/usr/bin/osascript', '-l', 'JavaScript', JobsSourceLayout.file(File.join(JobsSourceLayout.directory(HELPER), 'Flutter运行前体检.jxa/Flutter运行前体检.jxa')), *args)
   end
 
   def test_harmony_target_is_exact_supported_and_unique

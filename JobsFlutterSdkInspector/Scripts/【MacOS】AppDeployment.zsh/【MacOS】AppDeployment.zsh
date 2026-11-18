@@ -185,10 +185,60 @@ JOBS_CONTAINER_LAUNCHER
   jobs_deployment_validate_container "$container_app" || return 1
   jobs_deployment_prepare_container_resources "$container_app"
 }
+# 只收录支持同一展示协议的完整宿主；清单随联合 App 搬移，不记录开发机路径。
+jobs_deployment_refresh_desktop_menu() {
+  local container_app="$1" resources="${1}/Contents/Resources" manifest="${1}/Contents/Resources/DesktopMenu.json"
+  local module="" candidate="" app_id="" extension_name="" extension_id="" protocol="" temporary="" result=0
+  local -a providers=()
+  jobs_deployment_validate_container "$container_app" || return $?
+  [[ ( ! -e "$resources" || -d "$resources" ) && ! -L "$resources" && "$resources" == "${resources:A}" &&
+     ! -L "$manifest" && ( ! -e "$manifest" || -f "$manifest" ) ]] || {
+    jobs_deployment_error '桌面菜单清单或资源目录不是普通文件 / 目录。'; return 1
+  }
+  for module in JobsFileCreator JobsDesktopTools JobsEnvironmentUpdater JobsDiskSpaceInfo; do
+    candidate="$container_app/Contents/Applications/${module}.app"
+    [[ -e "$candidate" || -L "$candidate" ]] || continue
+    [[ -d "$candidate" && ! -L "$candidate" && "$candidate" == "${candidate:A}" &&
+       -f "$candidate/Contents/Info.plist" && ! -L "$candidate/Contents/Info.plist" ]] || {
+      jobs_deployment_error "桌面菜单宿主路径不可核验：$candidate"; return 1
+    }
+    protocol="$(/usr/libexec/PlistBuddy -c 'Print :JobsOrderedDesktopMenuVersion' "$candidate/Contents/Info.plist" 2>/dev/null)"
+    [[ "$protocol" == 1 ]] || continue
+    case "$module" in
+      JobsFileCreator) app_id=com.jobs.filecreator; extension_name=JobsFileCreatorFinderSync.appex; extension_id=com.jobs.filecreator.findersync ;;
+      JobsDesktopTools) app_id=com.jobs.desktoptools; extension_name=JobsDesktopToolsFinderSync.appex; extension_id=com.jobs.desktoptools.findersync ;;
+      JobsEnvironmentUpdater) app_id=com.jobs.environmentupdater; extension_name=JobsEnvironmentUpdaterFinderSync.appex; extension_id=com.jobs.environmentupdater.findersync ;;
+      JobsDiskSpaceInfo) app_id=com.jobs.diskspaceinfo; extension_name=JobsDiskSpaceInfoFinderSync.appex; extension_id=com.jobs.diskspaceinfo.findersync ;;
+    esac
+    jobs_deployment_validate_app "$candidate" "$app_id" "$extension_name" "$extension_id" || return $?
+    providers+=("$module")
+  done
+  if (( ! ${#providers} )); then
+    [[ ! -e "$manifest" ]] || /bin/rm -- "$manifest" || return $?
+    return 0
+  fi
+  /bin/mkdir -p -- "$resources" || return $?
+  temporary="$(/usr/bin/mktemp "$resources/.DesktopMenu.XXXXXXXX")" || return $?
+  {
+    print -rn -- '{"schemaVersion":1,"owner":"'"${providers[1]}"'","providers":['
+    local separator=""
+    for module in "${providers[@]}"; do
+      print -rn -- "$separator\"$module\""
+      separator=,
+    done
+    print -r -- ']}'
+  } > "$temporary" || result=$?
+  (( result )) || /usr/bin/plutil -convert binary1 -o /dev/null "$temporary" || result=$?
+  (( result )) || /bin/chmod 644 "$temporary" || result=$?
+  (( result )) || /bin/mv -f -- "$temporary" "$manifest" || result=$?
+  [[ ! -e "$temporary" ]] || /bin/rm -- "$temporary" || result=$?
+  return "$result"
+}
 # 每次宿主集合变化仅重签外层，验证可递归检查，但绝不深度重签子宿主。
 jobs_deployment_sign_container() {
   local container_app="$1" signing_output="" result=0 error_result=0
   jobs_deployment_validate_container "$container_app" || return 1
+  jobs_deployment_refresh_desktop_menu "$container_app" || return $?
   signing_output="$(jobs_deployment_codesign_container "$container_app" 2>&1)" || result=$?
   [[ -z "$signing_output" ]] || print -u2 -r -- "$signing_output"
   if (( result )); then
@@ -545,6 +595,12 @@ jobs_deployment_rollback() {
     /bin/mv -- "$JOBS_DEPLOYMENT_TRANSACTION_DIR/legacy.app" "$JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH" || return $?
     JOBS_DEPLOYMENT_TRANSACTION_LEGACY_PATH=""
   fi
+  # 恢复清单和外层签名后再恢复登记，避免注册到尚未一致的容器。
+  jobs_deployment_remove_empty_container || return $?
+  local remaining_container="$(jobs_deployment_container_path)" || return $?
+  if [[ -d "$remaining_container" ]]; then
+    jobs_deployment_sign_container "$remaining_container" || return $?
+  fi
   for previous_app in "${JOBS_DEPLOYMENT_PREVIOUS_APPS[@]}"; do
     jobs_deployment_validate_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_APP_ID" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" || return 1
     jobs_deployment_register_restored_app "$previous_app" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_NAME" "$JOBS_DEPLOYMENT_TRANSACTION_EXTENSION_ID" || result=1
@@ -552,11 +608,6 @@ jobs_deployment_rollback() {
   if (( result )); then
     jobs_deployment_error "原文件已恢复，但登记恢复未全部成功；保留事务：$JOBS_DEPLOYMENT_TRANSACTION_DIR"
     return 1
-  fi
-  jobs_deployment_remove_empty_container || return $?
-  local remaining_container="$(jobs_deployment_container_path)" || return $?
-  if [[ -d "$remaining_container" ]]; then
-    jobs_deployment_sign_container "$remaining_container" || return $?
   fi
   jobs_deployment_release_transaction
 }

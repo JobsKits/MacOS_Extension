@@ -246,6 +246,8 @@ require 'shellwords'
 require 'json'
 require 'timeout'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class SdkDownloadContextTests < Minitest::Test
   ROOT = File.expand_path('../../..', __dir__)
   RUNNERS = %w[JobsFlutterRunner/Scripts/RunFlutterProject.zsh JobsFlutterTools/Scripts/Tools/RunFlutterProject.zsh].freeze
@@ -266,6 +268,19 @@ class SdkDownloadContextTests < Minitest::Test
     File.write(File.join(@project, '.fvmrc'), '{"flutter":"3.38.4"}')
     File.write(File.join(@sdk, 'bin/flutter'), "#!/bin/zsh\n/usr/bin/touch #{@marker.shellescape}\nexit 99\n")
     File.chmod(0o700, File.join(@sdk, 'bin/flutter'))
+    @manifest = File.join(@tmp, 'official.json')
+    @fetches = File.join(@tmp, 'metadata-fetches.log')
+    @official_hash = 'c' * 40
+    File.write(@manifest, JSON.generate({ current_release: { stable: @official_hash }, releases: %w[arm64 x64].map do |arch|
+      { channel: 'stable', hash: @official_hash, version: '3.50.0', dart_sdk_version: '3.13.0', dart_sdk_arch: arch, release_date: '2026-11-12T12:00:00Z' }
+    end }))
+    @path_sdk = File.join(@tmp, 'PATH SDK')
+    FileUtils.mkdir_p(File.join(@path_sdk, 'bin/internal'))
+    File.write(File.join(@path_sdk, 'version'), '3.49.2')
+    File.write(File.join(@path_sdk, 'bin/internal/engine.version'), OLD_ENGINE)
+    File.write(File.join(@path_sdk, 'bin/internal/dart-sdk.version'), '3.12.1')
+    File.write(File.join(@path_sdk, 'bin/flutter'), "#!/bin/zsh\n/usr/bin/touch #{@marker.shellescape}\nexit 99\n")
+    File.chmod(0o700, File.join(@path_sdk, 'bin/flutter'))
   end
 
   def teardown
@@ -273,11 +288,22 @@ class SdkDownloadContextTests < Minitest::Test
   end
 
   def context(index = 0, overrides = {})
-    library = File.read(File.join(ROOT, RUNNERS[index])).sub(/\nmain "\$@"\s*\z/, "\n")
+    library = File.read(JobsSourceLayout.file(File.join(ROOT, RUNNERS[index]))).sub(/\nmain "\$@"\s*\z/, "\n")
     body = <<~SH
       PROJECT_PATH=#{@project.shellescape}
-      HELPER=#{File.join(ROOT, HELPERS[index]).shellescape}
+      HELPER=#{JobsSourceLayout.file(File.join(ROOT, HELPERS[index])).shellescape}
       LOG_FILE=#{@log.shellescape}
+      hash flutter=#{File.join(@path_sdk, 'bin/flutter').shellescape}
+      fetch_sdk_official_metadata() {
+        print -r -- "$1 $3" >> #{@fetches.shellescape}
+        [[ "${JOBS_TEST_OFFICIAL_FAILURE:-0}" == 0 ]] || return "$JOBS_TEST_OFFICIAL_FAILURE"
+        if [[ "$1" == *releases_macos.json* ]]; then
+          /bin/cp #{@manifest.shellescape} "$2"
+        else
+          [[ "${JOBS_TEST_OFFICIAL_ENGINE_FAILURE:-0}" == 0 ]] || return "$JOBS_TEST_OFFICIAL_ENGINE_FAILURE"
+          print -r -- #{('d' * 40).shellescape} > "$2"
+        fi
+      }
       show_sdk_download_context #{File.join(@sdk, 'bin/flutter').shellescape} ios
     SH
     Open3.capture3({ 'NO_COLOR' => '1' }.merge(overrides), '/bin/zsh', '-f', '-c', library + body)
@@ -298,6 +324,68 @@ class SdkDownloadContextTests < Minitest::Test
       refute File.exist?(@marker)
       assert_includes File.read(@log), '项目声明：Flutter 3.38.4'
     end
+  end
+
+  def test_official_path_and_project_versions_remain_three_distinct_read_only_sources
+    RUNNERS.each_index do |index|
+      out, err, status = context(index)
+      assert status.success?, err
+      assert_includes out, 'SDK下载上下文（官网 / 本机 / 工程 FVM 对照）'
+      assert_includes out, '官网当前最新 stable：Flutter 3.50.0 / Dart 3.13.0 / Engine ' + 'd' * 40
+      assert_includes out, '官网发布日期：2026-11-12T12:00:00Z；本次查询时间：'
+      assert_includes out, '官网来源：https://docs.flutter.dev/install/archive'
+      assert_includes out, '本机系统：macOS '
+      assert_includes out, '本机 PATH 工具发现（只读，未运行验收）：'
+      assert_includes out, '  git：'
+      assert_includes out, '本机 PATH Flutter：Flutter 3.49.2'
+      assert_includes out, "本机 PATH Engine / Dart：#{OLD_ENGINE} / 3.12.1"
+      assert_includes out, '工程 FVM 铆订：3.38.4'
+      assert_includes out, 'SDK本地身份：Flutter 3.38.4'
+      refute File.exist?(@marker), '版本对照不能执行项目或PATH Flutter入口'
+      assert_equal '{"flutter":"3.38.4"}', File.read(File.join(@project, '.fvmrc'))
+    end
+    assert_equal 4, File.readlines(@fetches).length
+    assert_match(/releases_macos\.json\?alt=media 4/, File.readlines(@fetches).first)
+    assert_includes File.readlines(@fetches)[1], "#{@official_hash}/bin/internal/engine.version 3"
+  end
+
+  def test_failed_official_query_does_not_reuse_a_previous_success_as_current
+    context
+    out, err, status = context(0, 'JOBS_TEST_OFFICIAL_FAILURE' => '28')
+    assert status.success?, err
+    assert_includes out, '官网当前最新 stable：未知（本次官方查询失败或超时（退出码 28）'
+    refute_includes out, '官网当前最新 stable：Flutter 3.50.0'
+    assert_includes out, '本机 PATH Flutter：Flutter 3.49.2'
+    assert_includes out, '项目声明：Flutter 3.38.4'
+    refute File.exist?(@marker)
+  end
+
+  def test_malformed_official_current_pointer_is_unknown_not_the_last_release
+    manifest = JSON.parse(File.read(@manifest))
+    manifest['current_release']['stable'] = 'e' * 40
+    File.write(@manifest, JSON.generate(manifest))
+    out, err, status = context
+    assert status.success?, err
+    assert_includes out, '官网当前最新 stable：未知'
+    refute_includes out, '官网当前最新 stable：Flutter 3.50.0'
+    assert_equal 1, File.readlines(@fetches).length
+  end
+
+  def test_failed_official_engine_query_keeps_known_release_and_marks_only_engine_unknown
+    out, err, status = context(0, 'JOBS_TEST_OFFICIAL_ENGINE_FAILURE' => '28')
+    assert status.success?, err
+    assert_includes out, '官网当前最新 stable：Flutter 3.50.0 / Dart 3.13.0 / Engine 未知'
+    assert_includes out, "目标Engine：#{ENGINE}"
+    refute File.exist?(@marker)
+  end
+
+  def test_harmony_sdk_cannot_be_presented_as_the_official_flutter_stable_line
+    FileUtils.mkdir_p(File.join(@sdk, 'packages/flutter_tools/lib/src/ohos'))
+    out, err, status = context
+    assert status.success?, err
+    assert_includes out, '鸿蒙适配发行线当前最新：未知（独立发行渠道'
+    assert_includes out, '不能替代鸿蒙适配版本'
+    refute File.exist?(@marker)
   end
 
   def test_matching_engine_metadata_identifies_target_dart
@@ -353,15 +441,16 @@ class SdkDownloadContextTests < Minitest::Test
   def runner_command(index, action)
     FileUtils.mkdir_p(File.join(@project, '.fvm'))
     File.symlink(@sdk, File.join(@project, '.fvm/flutter_sdk')) unless File.symlink?(File.join(@project, '.fvm/flutter_sdk'))
-    File.write(File.join(@sdk, 'bin/flutter'), "#!/bin/zsh\nprint BOOTSTRAP >> #{@marker.shellescape}\nprint 'Flutter fixture'\n")
-    library = File.read(File.join(ROOT, RUNNERS[index])).sub(/\nmain "\$@"\s*\z/, "\n")
+    File.write(File.join(@sdk, 'bin/flutter'), "#!/bin/zsh\n[[ \"$1\" != --version ]] || print BOOTSTRAP >> #{@marker.shellescape}\nprint 'Flutter fixture'\n")
+    library = File.read(JobsSourceLayout.file(File.join(ROOT, RUNNERS[index]))).sub(/\nmain "\$@"\s*\z/, "\n")
     library + <<~SH
       PROJECT_PATH=#{@project.shellescape}
-      HELPER=#{File.join(ROOT, HELPERS[index]).shellescape}
+      HELPER=#{JobsSourceLayout.file(File.join(ROOT, HELPERS[index])).shellescape}
       LOG_FILE=#{@log.shellescape}
       # Exercise real writer gating/bootstrap wrappers; networking belongs to separate fixtures.
       jobs_flutter_route_prepare() { return 0; }
       jfs_route_curl() { print -u2 'unexpected network fixture'; return 99; }
+      fetch_sdk_official_metadata() { return 99; }
       #{action}
     SH
   end
@@ -385,8 +474,10 @@ class SdkDownloadContextTests < Minitest::Test
       assert first.index('项目声明：Flutter 3.38.4'.b) < first.index('等待同一SDK已有下载'.b)
       refute File.exist?(@marker)
       finish_cache_holder(holder, release)
+      remaining = Thread.new { output.read }
+      error_text = Thread.new { errors.read }
       status = Timeout.timeout(10) { process.value }
-      assert status.success?, errors.read.b + first + output.read.b
+      assert status.success?, error_text.value.b + first + remaining.value.b
       assert_equal ["BOOTSTRAP\n"], File.readlines(@marker)
       ensure
         finish_cache_holder(holder, release)
@@ -430,9 +521,25 @@ class SdkDownloadContextTests < Minitest::Test
 
   def test_explicit_git_identity_has_priority_over_an_old_local_version_record
     File.write(File.join(@sdk, 'version'), '1.9.9')
-    out, err, status = Open3.capture3('/usr/bin/osascript', '-l', 'JavaScript', File.join(ROOT, HELPERS.first), 'sdk-download-context', @sdk, '3.38.4', '3.38.4', 'c' * 40, 'Darwin arm64', '', '')
+    out, err, status = Open3.capture3('/usr/bin/osascript', '-l', 'JavaScript', JobsSourceLayout.file(File.join(ROOT, HELPERS.first)), 'sdk-download-context', @sdk, '3.38.4', '3.38.4', 'c' * 40, 'Darwin arm64', '', '')
     assert status.success?, err
     assert_includes out, 'SDK本地身份：Flutter 3.38.4（Git HEAD精确tag）'
     refute_includes out, '1.9.9'
   end
+def test_fvm_channel_alias_is_not_reported_as_an_explicit_version_mismatch
+  %w[stable beta master].each do |channel|
+    File.write(File.join(@project, '.fvmrc'), JSON.generate({ flutter: channel }))
+    [0, 1].each do |index|
+      out, err, status = context(index)
+      assert status.success?, err
+      assert_includes out, channel
+      refute_includes out, '项目声明与SDK本地版本不同'
+    end
+  end
+  File.write(File.join(@project, '.fvmrc'), '{"flutter":"3.0.0"}')
+  out, err, status = context(0)
+  assert status.success?, err
+  assert_includes out, '项目声明与SDK本地版本不同'
+end
+
 end

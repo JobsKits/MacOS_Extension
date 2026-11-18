@@ -9,6 +9,58 @@ import Foundation
 
 /// 只识别当前真实普通目录的 Flutter SDK 依赖，不递归搜索子目录。
 struct FlutterProjectValidator {
+    /// 复用管理面板的语言选择；系统主题由原生 Finder 菜单绘制。
+    static func demoMenuTitle(language: String? = nil) -> String {
+        let preference = language ?? UserDefaults(suiteName: "com.jobs.finderextensions.managementpanel.preferences")?.string(forKey: "language") ?? "system"
+        let resolved = preference == "system" ? (Locale.preferredLanguages.first ?? "zh-Hans") : preference
+        let code = resolved.lowercased().replacingOccurrences(of: "_", with: "-")
+        let translations = [
+            "zh-hans": "从终端运行 Flutter Demo", "zh-hant": "從終端執行 Flutter Demo",
+            "bo": "མཐའ་སྣེ་ནས་ Flutter Demo འཁོར་སྐྱོད་བྱེད་པ།",
+            "en": "Run Flutter Demo in Terminal", "ja": "ターミナルで Flutter Demo を実行",
+            "fr": "Exécuter Flutter Demo dans le terminal", "es": "Ejecutar Flutter Demo en Terminal",
+            "de": "Flutter Demo im Terminal ausführen", "ru": "Запустить Flutter Demo в терминале",
+            "ko": "터미널에서 Flutter Demo 실행"
+        ]
+        let key: String
+        if code.hasPrefix("zh") {
+            key = code.contains("hant") || code.contains("-tw") || code.contains("-hk") || code.contains("-mo") ? "zh-hant" : "zh-hans"
+        } else {
+            key = String(code.split(separator: "-").first ?? "en")
+        }
+        return "▶️ " + (translations[key] ?? translations["en"]!)
+    }
+
+    /// Dart 入口只向上查到最近包边界；嵌套的其它包不能借用外层 Flutter 工程。
+    func runProjectURL(for selection: URL) -> URL? {
+        if isFlutterProject(at: selection) {
+            return selection.standardizedFileURL
+        }
+        guard selection.isFileURL,
+              selection.host == nil || selection.host == "" || selection.host?.lowercased() == "localhost",
+              selection.pathExtension.lowercased() == "dart",
+              let file = try? selection.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey]),
+              file.isRegularFile == true, file.isSymbolicLink != true, file.isAliasFile != true else {
+            return nil
+        }
+        var directory = selection.standardizedFileURL.deletingLastPathComponent()
+        while true {
+            guard let info = try? directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isAliasFileKey]),
+                  info.isDirectory == true, info.isSymbolicLink != true, info.isAliasFile != true else {
+                return nil
+            }
+            let manifest = directory.appendingPathComponent("pubspec.yaml")
+            if (try? manifest.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])) != nil {
+                return isFlutterProject(at: directory) ? directory : nil
+            }
+            let parent = directory.deletingLastPathComponent()
+            if parent.path == directory.path {
+                return nil
+            }
+            directory = parent
+        }
+    }
+
     /// 鸿蒙打包只接受已经适配的工程；菜单识别不启动 SDK 或读取签名内容。
     func isHarmonyFlutterProject(at directoryURL: URL) -> Bool {
         guard isFlutterProject(at: directoryURL) else {

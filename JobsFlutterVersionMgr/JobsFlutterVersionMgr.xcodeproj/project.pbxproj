@@ -17,7 +17,6 @@
 		01B000000000000000000023 /* FlutterTerminalLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000023 /* FlutterTerminalLauncher.swift */; };
 		01B000000000000000000024 /* FlutterProjectValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* FlutterProjectValidator.swift */; };
 		01B000000000000000000025 /* FlutterManagerRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* FlutterManagerRequest.swift */; };
-		01B000000000000000000026 /* ManageFlutterVersion.zsh in Resources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000026 /* ManageFlutterVersion.zsh */; };
 		01B000000000000000000034 /* FlutterProjectValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000024 /* FlutterProjectValidator.swift */; };
 		01B000000000000000000035 /* FlutterManagerRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A000000000000000000025 /* FlutterManagerRequest.swift */; };
 /* End PBXBuildFile section */
@@ -61,7 +60,7 @@
 		01A000000000000000000023 /* FlutterTerminalLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FlutterTerminalLauncher/FlutterTerminalLauncher.swift"; sourceTree = "<group>"; };
 		01A000000000000000000024 /* FlutterProjectValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FlutterProjectValidator/FlutterProjectValidator.swift"; sourceTree = "<group>"; };
 		01A000000000000000000025 /* FlutterManagerRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FlutterManagerRequest/FlutterManagerRequest.swift"; sourceTree = "<group>"; };
-		01A000000000000000000026 /* ManageFlutterVersion.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "ManageFlutterVersion.zsh"; sourceTree = "<group>"; };
+		01A000000000000000000026 /* ManageFlutterVersion.zsh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "Scripts/【MacOS】ManageFlutterVersion.zsh/【MacOS】ManageFlutterVersion.zsh"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +161,7 @@
 				01D000000000000000000010 /* Sources */,
 				01D000000000000000000011 /* Frameworks */,
 				01D000000000000000000012 /* Resources */,
+				7D2370BCEDC3E7C3B9DAB862 /* Preserve Script Resource Names */,
 				01D000000000000000000013 /* Embed App Extensions */,
 				01D000000000000000000014 /* Enable Finder Extension */,
 			);
@@ -249,7 +249,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-				shellScript = "/bin/zsh \"${SRCROOT}/Scripts/EnableFinderExtension.zsh\"\n";
+				shellScript = "/bin/zsh \"${SRCROOT}/Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh\"\n";
+		};
+		7D2370BCEDC3E7C3B9DAB862 /* Preserve Script Resource Names */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/Scripts/【MacOS】ManageFlutterVersion.zsh/【MacOS】ManageFlutterVersion.zsh",
+			);
+			name = "Preserve Script Resource Names";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ManageFlutterVersion.zsh",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "# shell: zsh\nset -eu\n# 源码包装可独立整理；Bundle 保持既有资源路径，不携带新包装 README。\ncopy_jobs_source_resource() {\n  local source=\"$1\" destination=\"$2\"\n  [[ -f \"$source\" && ! -L \"$source\" && ! -L \"$destination\" ]] || { print -u2 -r -- \"资源缺失或为链接：$source -> $destination\"; return 1; }\n  /bin/mkdir -p -- \"${destination:h}\" || return $?\n  /bin/cp -p -- \"$source\" \"$destination\"\n}\nmain() {\n  copy_jobs_source_resource \"${SRCROOT}/Scripts/【MacOS】ManageFlutterVersion.zsh/【MacOS】ManageFlutterVersion.zsh\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ManageFlutterVersion.zsh\" # 保留既有资源名。\n}\nmain \"$@\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -257,7 +272,7 @@
         01D000000000000000000012 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (01B000000000000000000026 /* ManageFlutterVersion.zsh in Resources */,);
+            files = ();
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */

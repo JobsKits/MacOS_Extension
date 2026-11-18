@@ -1,6 +1,8 @@
 # SDK 下载上下文隔离回归
 
-运行 `ruby ./SdkDownloadContextTests.rb`。使用临时 SDK、项目声明和元数据验证：下载前版本及来源、SDK 根路径、宿主架构、目标平台与 Engine、Dart 缺失时明确未知、过期缓存与 `.old` 不冒充目标、匹配 Engine 后才采信 Dart 缓存，以及显式 Engine 覆盖与 Git 身份优先级。
+运行 `ruby ./SdkDownloadContextTests.rb`。使用临时 SDK、项目声明和元数据验证：官网当前 stable、本机 PATH 与工程 FVM 三方版本分开展示；官方 stable 指针、架构、发布日期和本次查询时间保持对应，查询失败或清单损坏时明确未知，不复用历史成功结果冒充最新。鸿蒙适配发行线单独标识，不以 Flutter 主线版本替代。
+
+同时覆盖下载前版本及来源、SDK 根路径、宿主架构、目标平台与 Engine、Dart 缺失时明确未知、过期缓存与 `.old` 不冒充目标、匹配 Engine 后才采信 Dart 缓存，以及显式 Engine 覆盖与 Git 身份优先级。官方清单与指定发布提交的 Engine 元数据均由测试替身提供，不访问网络。
 
 Flutter 入口设置为会留下标记的假工具，测试确认其从未执行；不启动 Flutter / Dart、不下载 SDK、不修改正在运行的终端会话。两份运行器和数据助手分别覆盖。
 

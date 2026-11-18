@@ -111,6 +111,14 @@ jobs_manager_prepare_gui_app() {
   (( ! result )) || return "$result"
   print -r -- "$app"
 }
+# GUI 通过 LaunchServices 建立独立进程身份；联合快照监督层可等待实际面板退出。
+jobs_manager_open_gui_app() {
+  local app="$1" wait_for_exit="$2"
+  shift 2
+  local open_arguments=(-n)
+  [[ "$wait_for_exit" != 1 ]] || open_arguments+=(-W)
+  /usr/bin/open "${open_arguments[@]}" --env "JOBS_FINDER_RESPONSIBLE_APP=$app" "$app" --args "$@"
+}
 # 从同名 App 进入后台会话，首次编译失败也通过 GUI 告知用户。
 jobs_launch_finder_manager_gui() {
   local entry="$1" scope="$2" action="${3:-install}" gui_session="${4:-0}"
@@ -153,5 +161,14 @@ jobs_launch_finder_manager_gui() {
     return 1
   }
   export JOBS_FINDER_RESPONSIBLE_APP="$host_app"
+  if [[ "$gui_session" == 1 ]]; then
+    jobs_manager_open_gui_app "$host_app" "${JOBS_FINDER_GUI_WAIT:-0}" "${arguments[@]}" || {
+      local launch_status=$?
+      jobs_manager_launch_error '无法启动管理面板 App。' "$host_app"
+      return "$launch_status"
+    }
+    return 0
+  fi
+  # 内部兼容调用需要同步标准输出及真实退出码，不改变原有选择器合同。
   exec "$host_app/Contents/MacOS/JobsFinderManager" "${arguments[@]}"
 }

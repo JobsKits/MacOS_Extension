@@ -33,13 +33,16 @@
 在仓库根目录更新快照：
 
 ```shell
-cp Scripts/ManageFinderExtensions.zsh Scripts/【MacOS】联合App管理.zsh/Resources/RootWorker.txt
+cp Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh Scripts/【MacOS】联合App管理.zsh/Resources/RootWorker.txt
 cp Scripts/SelectFinderExtensionFeatures.swift Scripts/【MacOS】联合App管理.zsh/Resources/PanelSource.txt
-cp Scripts/FinderManagerGUI.zsh Scripts/【MacOS】联合App管理.zsh/Resources/GuiBootstrap.txt
+cp Scripts/【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh Scripts/【MacOS】联合App管理.zsh/Resources/GuiBootstrap.txt
 ```
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">三、隔离验证 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-[CombinedManagerResourcesTests.rb](../../Tests/CombinedManagerResourcesTests.rb/CombinedManagerResourcesTests.rb) 使用临时伪 App 与假 GUI 缓存，覆盖完整装配、单包合并、源码移走后入口和缓存定位、链接 / 非自有容器拒绝及失败保留旧资源；不打开真实面板、不执行安装、清理或系统登记。
+[CombinedManagerResourcesTests.rb](../../../Tests/CombinedManagerResourcesTests.rb/CombinedManagerResourcesTests.rb) 使用临时伪 App 与假 GUI 缓存，覆盖完整装配、单包合并、源码移走后入口和缓存定位、链接 / 非自有容器拒绝及失败保留旧资源；不打开真实面板、不执行安装、清理或系统登记。
+
+
+**面板生命周期等待：** 私有管理快照在本次会话导出JOBS_FINDER_GUI_WAIT=1，由GUI引导器通过LaunchServices独立启动面板并等待其真正退出；随后才清理当前快照。普通公开App启动壳可及时退出，同时保留卸载自身后继续执行与查看日志所需资源。纯同步调用的stdout／退出码不变，不把open已派发视为后台安装完成。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

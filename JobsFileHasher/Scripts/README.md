@@ -43,11 +43,11 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `ManageExtension.zsh` | 解析当前一项功能范围，打开 GUI 或处理面板已确认的操作；构建、核对签名和身份、注册 / 停用及精确注销 |
-| `FinderManagerGUI.zsh` | 随包 GUI 支持库，后台编译缓存并运行原生管理面板，不直接安装扩展 |
+| `./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` | 解析当前一项功能范围，打开 GUI 或处理面板已确认的操作；构建、核对签名和身份、注册 / 停用及精确注销 |
+| `./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh` | 随包 GUI 支持库，后台编译缓存并运行原生管理面板，不直接安装扩展 |
 | `ManagementPanel.swift` | 随包单功能面板；默认空选、安装 / 卸载操作、逐项状态、总进度百分比、安装 / 卸载独立计时、实时可复制日志 |
 
-完整仓中 `ManageExtension.zsh` 优先转交总管理器并限定 `file-hash`。独立复制本包后使用随包面板；公开 App / `.command` 不接受跳过 GUI 的后台开关。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。
+完整仓中 `./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` 优先转交总管理器并限定 `file-hash`。独立复制本包后使用随包面板；公开 App / `.command` 不接受跳过 GUI 的后台开关。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。
 
 日志区上方的分隔条可上下拖动，窗口也可调整大小；功能列表与日志分别滚动，并保留操作按钮。日志右键提供“全选”，也可用 `⌘A` 全选后 `⌘C` 复制；拖动不会清空日志或改变功能勾选。
 
@@ -75,9 +75,9 @@
 以下命令不执行安装或卸载：
 
 ```shell
-/bin/zsh -n ./ManageExtension.zsh
-/bin/zsh -n ./FinderManagerGUI.zsh
-/bin/zsh ./ManageExtension.zsh --help
+/bin/zsh -n ./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh
+/bin/zsh -n ./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh
+/bin/zsh ./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh --help
 ruby ../Tests/FileHashTests.rb/FileHashTests.rb
 ```
 

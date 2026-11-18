@@ -64,9 +64,9 @@
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与卸载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter打包Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter打包Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -193,13 +193,13 @@ pie showData
 隔离回归覆盖 Flutter 判定、链接拒绝、单选 / 背景 / 桌面过滤、特殊路径 URL 往返、Terminal 私有载体权限 / 清理 / 退出码，以及独立安装的旧副本注销、失败停止与交互门禁。运行原生行为测试时编译共享源码、终端启动器和 `./Tests/FlutterProjectBehaviorTests.swift`；安装器测试为：
 
 ```shell
-ruby ./Tests/InstallerRegistrationTests.rb
+ruby Tests/InstallerRegistrationTests.rb/InstallerRegistrationTests.rb
 ```
 
 打包业务假工具链回归为 55 项 / 507 断言，覆盖 Android / iOS 原流程和鸿蒙 HAP / APP / all、普通 SDK 拒绝、DevEco 健康检查、FVM / 显式 SDK 优先级、取消、失败退出码、空包、两类输出目录与增量产物提示；共享菜单边界回归 58 断言、AppDelegate 单次派发回归 5 断言通过。使用私有假工具与临时项目，没有运行真实 Flutter / Hvigor 构建、注册扩展或安装工具。
 
 ```shell
-ruby ./Tests/PackagingShellTests.rb
+ruby Tests/PackagingShellTests.rb/PackagingShellTests.rb
 ```
 
 隔离构建时设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1`，使用系统临时目录的独立 DerivedData，阻止本工程自定义阶段启用扩展或重启 Finder。本机 Xcode 27.1 仍会自动执行 LaunchServices 登记，`REGISTER_APP_WITH_LAUNCH_SERVICES=NO` 和 `LS_REGISTER_URL=NO` 不能阻止它；验证结束后须只注销本次临时 App 的精确路径，并确认其 PlugInKit 记录已移除。构建与资源验证不能替代真实安装、Finder 菜单、Terminal 自动化权限或真实签名打包验收。

@@ -21,9 +21,9 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
+本目录的 [ManagementPanel.swift](./ManagementPanel.swift) 与 [FinderManagerGUI.zsh](./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh) 负责随包面板和编译缓存。总进度按已处理项 / 本次所选项显示计数和百分比；成功与失败计入已处理，等待中和执行中不计入，100% 表示全部处理完毕，结果以成功 / 失败汇总为准。安装 / 更新和卸载分别计时；点击时只清零并启动当前操作计时，后台全部结束或启动失败时只冻结当前耗时。每秒刷新 `HH:mm:ss`（小时可超过 24），执行时显示“安装用时 / 卸载用时”，结束显示“安装总用时 / 卸载总用时”。两份耗时只在当前面板会话内独立保留。状态图标与活动指示器共用固定列并垂直居中，状态文字始终从同一位置开始；安装成功以独立绿色对勾图标和绿色“安装成功”文字显示。切换操作会显示该操作已有的耗时。支持独立复制时须连同上级 App、启动脚本、源码及资源整体保留。
 
 日志区上方的分隔条可上下拖动，窗口也可调整大小；功能列表与日志分别滚动，并保留操作按钮。日志右键提供“全选”，也可用 `⌘A` 全选后 `⌘C` 复制；拖动不会清空日志或改变功能勾选。
 
@@ -53,8 +53,8 @@
 
 | 文件 | 职责与调用方式 |
 | --- | --- |
-| [ResignIPA.command](./ResignIPA.command) | 完整重签业务；打包为 App 资源，由 Terminal 执行，也可独立终端调用 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | 构建后注册并启用当前精确路径的 Finder 扩展，成功后刷新 Finder |
+| [ResignIPA.command](./【MacOS】ResignIPA.command/【MacOS】ResignIPA.command) | 完整重签业务；打包为 App 资源，由 Terminal 执行，也可独立终端调用 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | 构建后注册并启用当前精确路径的 Finder 扩展，成功后刷新 Finder |
 | `描述文件/` | 可选目录；独立执行本目录业务脚本时放置有效 `.mobileprovision` |
 
 以下命令以当前 `Scripts/` 目录为基准，示例文件与 UDID 需要换成实际值：
@@ -79,7 +79,7 @@
 
 ```shell
 /bin/zsh -n ./ResignIPA.command
-/bin/zsh -n ./EnableFinderExtension.zsh
+/bin/zsh -n ./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh
 ```
 
 ## 二、<span id="business">重签流程、依赖与副作用</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
@@ -116,12 +116,12 @@ flowchart TD
 
 业务搜索当前用户的 Xcode UserData 与旧版 MobileDevice 描述文件缓存，以及**当前实际执行脚本**旁的 `描述文件/`，在这些目录中递归查找 `.mobileprovision`。私钥必须位于钥匙串，放入描述文件不能替代私钥。
 
-独立调用本目录 `ResignIPA.command` 时，可以使用以下布局：
+独立调用本目录 `./【MacOS】ResignIPA.command/【MacOS】ResignIPA.command` 时，可以使用以下布局：
 
 ```text
 ./
 ├── ResignIPA.command
-├── EnableFinderExtension.zsh
+├── 【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh
 ├── README.md
 └── 描述文件/                    # 可选，手动准备
     ├── 主App.mobileprovision
@@ -134,7 +134,7 @@ Finder 入口把打包脚本复制到每次请求的私有临时目录再运行�
 
 ## 四、<span id="registration">构建后注册与安装入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-`EnableFinderExtension.zsh` 只在 `JobsIPAResigner.app` 的有效 Xcode 构建上下文中处理固定扩展 `com.jobs.JobsIPAResigner.FinderSyncExtension`。它注册并启用当前构建产物，轮询核对当前完整扩展路径的 `+` 状态，成功后重启 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)。旧副本已启用不算当前路径成功。
+`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh` 只在 `JobsIPAResigner.app` 的有效 Xcode 构建上下文中处理固定扩展 `com.jobs.JobsIPAResigner.FinderSyncExtension`。它注册并启用当前构建产物，轮询核对当前完整扩展路径的 `+` 状态，成功后重启 [**Finder**](https://support.apple.com/guide/mac-help/welcome/mac)。旧副本已启用不算当前路径成功。
 
 注册、启用或刷新失败时写日志并保留 `JobsIPAResignerNeedsFinderRestart` 标记，供宿主初始化重试；Build Phase 仍允许构建继续，**构建成功不代表扩展已启用**。缺少构建上下文时拒绝执行，不能把它当成独立安装入口。
 

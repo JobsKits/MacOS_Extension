@@ -1,0 +1,30 @@
+# 【MacOS】FinderManagerGUI.zsh
+
+![Jobs出品，必属精品](https://picsum.photos/1500/400)
+
+[toc]
+
+---
+
+## 🔥 <span id="前言">前言</span>
+
+供本包管理器 source 的函数库，定位随包 Swift 面板，按内容与图标验证缓存，原子准备固定身份的原生管理 App，并传递范围、操作与安装位置。直接 source 只定义函数；安装和卸载由用户在面板确认后交给原管理器执行。
+
+## 一、运行与依赖 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+由管理器按相对路径 source，保留整份功能包和其 Scripts 资源；不单独执行本支持库。
+
+实际脚本：[./【MacOS】FinderManagerGUI.zsh](./【MacOS】FinderManagerGUI.zsh)；解释器为系统 `/bin/zsh`。资源以脚本位置解析，支持中文、空格和整体搬迁；不依赖启动工作目录。保留原功能的 Xcode / Swift、签名和系统权限要求，源码布局变更不代表已构建或安装。
+
+## 二、边界、日志与兼容 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+源码采用同名目录；发布 App、旧状态清单与联合管理器中的既有平铺资源名保持原协议。内部解析优先接受已发布平铺文件，再查找源码同名包装，拒绝链接替代的脚本。实际脚本路径和资源基准分别保留，不能以包装目录重建一个不存在的自身路径。
+
+管理日志与逐项结果沿用上级面板及原脚本的路径；终端保护不写入日志。GUI worker 和支持库不增加重复阻塞确认。安装影响当前用户本功能的菜单与精确产物，卸载保留未选模块、源码和业务数据；运行前阅读上级功能说明。
+
+验证范围为原解释器语法、隔离的源目录 / 发布目录寻址和受影响回归；未执行真实安装、卸载、登记、SDK 下载或构建。
+
+
+**独立 GUI 进程：** 完整GUI会话通过LaunchServices打开固定身份的管理面板App，普通公开启动壳随即结束，避免直接exec为regular面板后留下两个Dock身份。联合App快照监督使用本会话JOBS_FINDER_GUI_WAIT=1等待实际面板完全退出再释放快照；内部同步调用继续使用原标准输出和退出码合同。功能安装、主题语言、后台驻留及Dock恢复行为保持；当前旧进程不会热换启动链，正常完全退出后重新打开采用新版本。
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

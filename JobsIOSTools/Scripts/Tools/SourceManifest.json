@@ -10,8 +10,8 @@
     "feature": "ios-install-cocoapods",
     "file": "【MacOS】⚙️双击安装Cocoapods.command",
     "source": "Cocoapods/【MacOS】⚙️双击安装Cocoapods.command/【MacOS】⚙️双击安装Cocoapods.command",
-    "sourceSHA256": "47e1a7f39e60b1fa03ffc2566a2b09d60544286a97556b34de10fab50bb9b769",
-    "bundledSHA256": "47e1a7f39e60b1fa03ffc2566a2b09d60544286a97556b34de10fab50bb9b769"
+    "sourceSHA256": "b863d450a63da9f23f7921ed88bfa47ac12f5f03db2291d3aed4730210bf6ef7",
+    "bundledSHA256": "ec83cfffcf37c34d247628618038116e8afdd408e04b0f06b0bbb11ef8426c36"
   },
   {
     "feature": "ios-pods-source-github",

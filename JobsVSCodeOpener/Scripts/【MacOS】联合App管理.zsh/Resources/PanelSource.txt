@@ -36,6 +36,10 @@ struct FeatureOption {
         FeatureOption(identifier: "command-shortcut-create", title: "创建脚本快捷入口"),
         FeatureOption(identifier: "file-create", title: "新建文件"),
         FeatureOption(identifier: "file-hash", title: "查看文件指纹 Hash（SHA-256）"),
+        FeatureOption(identifier: "file-visibility", title: "隐藏 / 显示所选项目"),
+        FeatureOption(identifier: "send-to", title: "发送到外部磁盘或网络卷"),
+        FeatureOption(identifier: "disk-space-info", title: "磁盘空间总览"),
+        FeatureOption(identifier: "environment-update", title: "更新开发环境（update）"),
         FeatureOption(identifier: "run-authorize", title: "授予执行权限（chmod +x）"),
         FeatureOption(identifier: "run-revoke", title: "移除执行权限（chmod -x）"),
         FeatureOption(identifier: "ipa-resign", title: "IPA 免编译重签"),
@@ -145,7 +149,7 @@ struct FeatureGroup {
             "git-pull", "git-rollback", "git_remote", "git_remote_copier", "git-proxy-configure", "git_empty_commit_push"
         ]),
         FeatureGroup(identifier: "general", title: "文件与通用工具", identifiers: [
-            "path_copier", "command-shortcut-create", "file-create", "file-hash", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open", "file_content", "file_merge", "file_split",
+            "path_copier", "command-shortcut-create", "file-create", "file-hash", "file-visibility", "send-to", "disk-space-info", "environment-update", "run-authorize", "run-revoke", "hidden-files-toggle", "terminal_open", "file_content", "file_merge", "file_split",
             "clean_build_artifacts", "codegraph_bootstrap"
         ]),
         FeatureGroup(identifier: "flutter", title: "Flutter 工具 · 子菜单功能", identifiers: FeatureOption.flutter.map { $0.identifier }),
@@ -290,6 +294,102 @@ private final class ManagerLogSplitView: NSSplitView {
             xRadius: 1,
             yRadius: 1
         ).fill()
+    }
+}
+
+/// 复选框保留原生事件；普通行区域只在一次未拖动的按下/抬起后转交勾选。
+private final class ManagerFeatureColumn: NSView {
+
+    struct Row {
+        let button: NSButton
+        let status: NSTextField
+        let height: CGFloat
+    }
+
+    var rows: [Row] = []
+    var rowSpacing: CGFloat = 0
+    private weak var pressedButton: NSButton?
+    private var pressOrigin = NSPoint.zero
+
+    private func row(at point: NSPoint) -> Row? {
+        return rows.first { row in
+            let height = max(row.height, row.button.frame.height) + rowSpacing
+            let rect = NSRect(x: bounds.minX,
+                              y: row.button.frame.midY - height / 2,
+                              width: bounds.width,
+                              height: height)
+            return rect.contains(point)
+        }
+    }
+
+    private func isLogAction(_ row: Row, at point: NSPoint) -> Bool {
+        return !row.status.isHiddenOrHasHiddenAncestor && row.status.frame.contains(point) &&
+            row.status.gestureRecognizers.contains { gesture in
+                return gesture.isEnabled
+            }
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else {
+            return nil
+        }
+        guard let row = row(at: convert(point, from: superview)) else {
+            return hit
+        }
+        let local = convert(point, from: superview)
+        if hit === row.button || hit.isDescendant(of: row.button) || isLogAction(row, at: local) {
+            return hit
+        }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        pressedButton = nil
+        let point = convert(event.locationInWindow, from: nil)
+        guard event.type == .leftMouseDown, bounds.contains(point), let row = row(at: point),
+              row.button.isEnabled, !row.button.isHiddenOrHasHiddenAncestor,
+              !isLogAction(row, at: point) else {
+            return
+        }
+        pressedButton = row.button
+        pressOrigin = event.locationInWindow
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if !bounds.contains(point) || row(at: point)?.button !== pressedButton ||
+            hypot(event.locationInWindow.x - pressOrigin.x, event.locationInWindow.y - pressOrigin.y) >= 4 {
+            pressedButton = nil
+        }
+    }
+
+    func cancelPendingSelection() {
+        pressedButton = nil
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        pressedButton = nil
+        super.scrollWheel(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer {
+            pressedButton = nil
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        guard event.type == .leftMouseUp, bounds.contains(point), let button = pressedButton,
+              let row = row(at: point), row.button === button,
+              button.isEnabled, !button.isHiddenOrHasHiddenAncestor,
+              !isLogAction(row, at: point), event.window === window,
+              hypot(event.locationInWindow.x - pressOrigin.x, event.locationInWindow.y - pressOrigin.y) < 4 else {
+            return
+        }
+        window?.makeFirstResponder(button)
+        button.performClick(nil)
     }
 }
 
@@ -588,10 +688,130 @@ private final class ManagerFeatureList: NSView {
     }
 }
 
+/// 日志颜色按语义保存，换主题只换调色板，不改日志原文。
+private enum ManagerLogKind: String {
+    case normal, info, success, warning, error, heading
+
+    static let attribute = NSAttributedString.Key("JobsManagerLogKind")
+
+    static func classify(_ line: String) -> Self {
+        let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        func matches(_ pattern: String) -> Bool {
+            return value.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        if matches(#"(?:退出码|exit(?: code)?)\s*[:：]?\s*-?[1-9]\d*|失败\s*[:：]?\s*[1-9]\d*|\b[1-9]\d*\s+(?:errors?|failed)\b"#) ||
+            matches(#"^(?:❌|✖|⛔|🚫|error\b|fatal\b|exception\b|traceback\b|任务失败|无法|错误|失败|应用修改被权限阻止)|\*\*\s*BUILD FAILED|^.+:\d+(?::\d+)?:\s*(?:fatal\s+)?error:"#) {
+            return .error
+        }
+        if matches(#"^(?:⚠|警告|warning\b|warn\b|注意|已请求停止|已收到停止|跳过|未安装|无需卸载)|^.+:\d+(?::\d+)?:\s*warning:"#) {
+            return .warning
+        }
+        if matches(#"^(?:✅|✔|成功|已完成|安装成功|卸载成功|已清理|PASS\b|SUCCESS\b)|\*\*\s*BUILD SUCCEEDED"#) {
+            return .success
+        }
+        if matches(#"^(?:━|═|={3,}|💎|🔷|【|\[阶段|阶段[：:])"#) {
+            return .heading
+        }
+        if matches(#"^(?:ℹ|➤|📦|📂|🔧|INFO\b|提示|正在|开始|安装|卸载|清除构建产物|联合 App|当前脚本)"#) {
+            return .info
+        }
+        return .normal
+    }
+}
+
+private struct ManagerLogPalette {
+    let dark: Bool
+
+    private func color(_ light: UInt32, _ night: UInt32) -> NSColor {
+        let value = dark ? night : light
+        return NSColor(srgbRed: CGFloat((value >> 16) & 255) / 255,
+                       green: CGFloat((value >> 8) & 255) / 255,
+                       blue: CGFloat(value & 255) / 255, alpha: 1)
+    }
+
+    var background: NSColor {
+        return color(0xF5F7FA, 0x141922)
+    }
+
+    func foreground(_ kind: ManagerLogKind) -> NSColor {
+        switch kind {
+        case .normal:
+            return color(0x182230, 0xE5EAF1)
+        case .info:
+            return color(0x1756A9, 0x8AC6FF)
+        case .success:
+            return color(0x146C37, 0x76D69C)
+        case .warning:
+            return color(0x8B5100, 0xFFD18A)
+        case .error:
+            return color(0xB42318, 0xFF9B91)
+        case .heading:
+            return color(0x6B3DA5, 0xD2B2FF)
+        }
+    }
+}
+
+private enum ManagerLogStyling {
+    static func plainText(_ message: String) -> String {
+        return message
+            .replacingOccurrences(of: "\u{1B}\\][^\u{7}\u{1B}]*(?:\u{7}|\u{1B}\\\\)|\u{1B}\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\u{1B}(?:\\[[0-?]*[ -/]*)?$", with: "", options: .regularExpression)
+    }
+
+    static func attributed(_ message: String, palette: ManagerLogPalette, kind: ManagerLogKind? = nil) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: message)
+        message.enumerateSubstrings(in: message.startIndex..<message.endIndex, options: .byLines) { line, _, enclosing, _ in
+            let level = kind ?? ManagerLogKind.classify(line ?? "")
+            result.addAttributes([
+                ManagerLogKind.attribute: level.rawValue,
+                .foregroundColor: palette.foreground(level),
+                .font: NSFont.monospacedSystemFont(ofSize: 11, weight: level == .heading ? .semibold : .regular)
+            ], range: NSRange(enclosing, in: message))
+        }
+        return result
+    }
+
+    static func recolor(_ storage: NSTextStorage, palette: ManagerLogPalette) {
+        var runs: [(NSRange, ManagerLogKind)] = []
+        storage.enumerateAttribute(ManagerLogKind.attribute, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            runs.append((range, (value as? String).flatMap(ManagerLogKind.init(rawValue:)) ?? .normal))
+        }
+        for (range, kind) in runs {
+            storage.addAttribute(.foregroundColor, value: palette.foreground(kind), range: range)
+        }
+    }
+}
+
+/// 保留AppKit的精确delta、动量和横向滚动；只在用户滚动时暂停追尾。
+private final class ManagerLogScrollView: NSScrollView {
+    var manualScroll: (() -> Void)?
+    var appearanceChanged: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceChanged?()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 || event.phase == .began {
+            manualScroll?()
+        }
+        super.scrollWheel(with: event)
+    }
+}
+
 /// 右键动作明确绑定日志自身，避免焦点仍在复选框时误选其它内容。
 private final class ManagerLogTextView: NSTextView {
 
     var preferences: ManagerPanelPreferences = .shared
+    var manualScroll: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if [115, 116, 119, 121, 123, 124, 125, 126].contains(event.keyCode) {
+            manualScroll?()
+        }
+        super.keyDown(with: event)
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         window?.makeFirstResponder(self)
@@ -616,7 +836,14 @@ private final class ManagerLogTextView: NSTextView {
 }
 
 /// 面板持有后台任务；兼容未传管理器路径时只返回选择计划的调用方。
-final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewDelegate {
+final class FeatureSelectionController: NSObject,
+                                        NSWindowDelegate,
+                                        NSSplitViewDelegate,
+                                        NSApplicationDelegate {
+
+    private enum CloseChoice {
+        case background, quit, cancel
+    }
     private enum Outcome {
         case selected(String, [String])
         case cancelled
@@ -737,6 +964,7 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
         return executionAction == "cleanup" ? "清除构建产物" : (executionAction == "uninstall" ? "卸载" : "安装 / 更新")
     }
     private var logTextView: NSTextView?
+    private var logScrollView: ManagerLogScrollView?
     private var logSplitView: ManagerLogSplitView?
     private var featureScrollView: NSScrollView?
     private var minimumUpperPaneHeight: CGFloat = 220
@@ -747,6 +975,16 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
     private var closeButton: NSButton?
     private var followLogButton: NSButton?
     private(set) var lastExitStatus: Int32?
+    private var backgroundStatusItem: NSStatusItem?
+    private var backgroundStateItem: NSMenuItem?
+    private var backgroundShowItem: NSMenuItem?
+    private var backgroundQuitItem: NSMenuItem?
+    private var closeChoiceAlert: NSAlert?
+    private var closeChoicePending = false
+    private var closeChoiceID: UUID?
+    private var isExiting = false
+    private var isBackgrounded = false
+    private var closeChoicePresenter: ((@escaping (CloseChoice) -> Void) -> Void)?
 
     private var isRunning: Bool {
         worker != nil
@@ -763,6 +1001,13 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(systemPreferencesChanged), name: NSLocale.currentLocaleDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(systemPreferencesChanged), name: NSApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let backgroundStatusItem {
+            NSStatusBar.system.removeStatusItem(backgroundStatusItem)
+        }
     }
 
     static func parseArguments(_ arguments: [String]) throws -> FeatureSelectionController {
@@ -836,7 +1081,10 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
 
     func runModal() -> String {
         let application = NSApplication.shared
-        application.setActivationPolicy(.accessory)
+        let previousDelegate = application.delegate
+        application.delegate = self
+        // 管理会话始终保留 Dock 入口；只返回计划的内部选择器沿用辅助应用模式。
+        application.setActivationPolicy(managerPath == nil ? .accessory : .regular)
         application.finishLaunching()
         installMenu(application: application)
         buildWindow()
@@ -847,7 +1095,10 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
             application.run()
             window.orderOut(nil)
         }
-
+        removeBackgroundStatusItem()
+        if application.delegate === self {
+            application.delegate = previousDelegate
+        }
         return formattedOutcome()
     }
 
@@ -879,20 +1130,225 @@ final class FeatureSelectionController: NSObject, NSWindowDelegate, NSSplitViewD
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        defer {
-            localizeInterface()
-        }
-        guard !isRunning else {
-            executionLabel?.stringValue = "任务仍在执行，请等待结束后关闭，避免中断安装。"
-            return false
-        }
-        outcome = .cancelled
-        NSApplication.shared.stop(nil)
+        requestPanelClose()
         return false
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        requestPanelClose()
+        return .terminateCancel
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        restorePanelWindow()
+        return false
+    }
+
+    func requestPanelClose() {
+        guard !isExiting else {
+            return
+        }
+        if isRunning {
+            dismissCloseChoice()
+            sendPanelToBackground()
+            return
+        }
+        // 旧命令替换调用只等待选择结果，不能让纯选择器在后台挂住调用方。
+        guard managerPath != nil else {
+            finishClosingPanel()
+            return
+        }
+        guard !closeChoicePending else {
+            return
+        }
+        restorePanelWindow()
+        closeChoicePending = true
+        let choiceID = UUID()
+        closeChoiceID = choiceID
+        let completion: (CloseChoice) -> Void = { [weak self] choice in
+            guard let self, self.closeChoicePending, self.closeChoiceID == choiceID else {
+                return
+            }
+            self.closeChoicePending = false
+            self.closeChoiceID = nil
+            self.closeChoiceAlert = nil
+            // 选择框显示后再核验一次，任务状态改变时仍以保全任务为先。
+            if self.isRunning {
+                self.sendPanelToBackground()
+                return
+            }
+            switch choice {
+            case .background:
+                self.sendPanelToBackground()
+            case .quit:
+                self.finishClosingPanel()
+            case .cancel:
+                break
+            }
+        }
+        if let closeChoicePresenter {
+            closeChoicePresenter(completion)
+            return
+        }
+        let alert = NSAlert()
+        alert.window.appearance = window?.appearance
+        alert.messageText = preferences.text("关闭管理面板")
+        alert.informativeText = preferences.text("退到系统状态栏，还是完全退出安装／卸载面板？")
+        alert.addButton(withTitle: preferences.text("退到后台"))
+        alert.addButton(withTitle: preferences.text("完全退出"))
+        alert.addButton(withTitle: preferences.text("取消")).keyEquivalent = "\u{1b}"
+        for button in alert.buttons {
+            button.font = ManagerPanelPreferences.scriptFont(button.font ?? .systemFont(ofSize: NSFont.systemFontSize),
+                                                            language: preferences.resolvedLanguage)
+        }
+        closeChoiceAlert = alert
+        if let window {
+            alert.beginSheetModal(for: window) { response in
+                completion(response == .alertFirstButtonReturn ? .background :
+                    (response == .alertSecondButtonReturn ? .quit : .cancel))
+            }
+        } else {
+            completion(.cancel)
+        }
+    }
+
+    private func dismissCloseChoice() {
+        closeChoicePending = false
+        closeChoiceID = nil
+        if let alert = closeChoiceAlert, let parent = alert.window.sheetParent {
+            parent.endSheet(alert.window, returnCode: .cancel)
+        }
+        closeChoiceAlert = nil
+    }
+
+    private func ensureBackgroundStatusItem() -> Bool {
+        if backgroundStatusItem != nil {
+            return true
+        }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        guard let button = item.button else {
+            NSStatusBar.system.removeStatusItem(item)
+            return false
+        }
+        // 复用随包应用图标，保留已有透明底蓝色标识。
+        if let icon = NSApplication.shared.applicationIconImage?.copy() as? NSImage {
+            icon.size = NSSize(width: 18, height: 18)
+            icon.isTemplate = false
+            button.image = icon
+        } else {
+            button.title = "🧩"
+        }
+        button.setAccessibilityLabel(preferences.text("Jobs Finder 扩展管理"))
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let state = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        state.isEnabled = false
+        menu.addItem(state)
+        menu.addItem(.separator())
+        let show = NSMenuItem(title: "", action: #selector(restorePanelWindow), keyEquivalent: "")
+        show.target = self
+        menu.addItem(show)
+        let quit = NSMenuItem(title: "", action: #selector(quitFromStatusBar), keyEquivalent: "")
+        quit.target = self
+        menu.addItem(quit)
+        item.menu = menu
+        backgroundStatusItem = item
+        backgroundStateItem = state
+        backgroundShowItem = show
+        backgroundQuitItem = quit
+        updateBackgroundStatus()
+        return true
+    }
+
+    func sendPanelToBackground() {
+        cancelPendingFeatureSelections()
+        guard ensureBackgroundStatusItem() else {
+            appendLog("无法创建状态栏入口，保留管理窗口以便查看任务。\n", kind: .error)
+            return
+        }
+        isBackgrounded = true
+        updateBackgroundStatus()
+        window?.orderOut(nil)
+    }
+
+    @objc func restorePanelWindow() {
+        guard !isExiting else {
+            return
+        }
+        isBackgrounded = false
+        window?.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        updateBackgroundStatus()
+    }
+
+    @objc func quitFromStatusBar() {
+        if isRunning {
+            sendPanelToBackground()
+        } else {
+            finishClosingPanel()
+        }
+    }
+
+    func updateBackgroundStatus() {
+        guard let item = backgroundStatusItem else {
+            return
+        }
+        let state = executionLabel?.stringValue ?? preferences.text("安装 / 更新就绪")
+        backgroundStateItem?.title = preferences.text("状态：{0}").replacingOccurrences(of: "{0}", with: state)
+        backgroundShowItem?.title = preferences.text("显示管理面板")
+        backgroundQuitItem?.title = preferences.text("完全退出")
+        backgroundQuitItem?.isEnabled = !isRunning
+        backgroundQuitItem?.toolTip = isRunning ? preferences.text("任务进行中，完成后可完全退出。") : nil
+        item.button?.setAccessibilityLabel(preferences.text("Jobs Finder 扩展管理"))
+        item.button?.toolTip = preferences.text("Jobs Finder 扩展管理") + "\n" + state
+    }
+
+    private func removeBackgroundStatusItem() {
+        if let backgroundStatusItem {
+            NSStatusBar.system.removeStatusItem(backgroundStatusItem)
+        }
+        backgroundStatusItem = nil
+        backgroundStateItem = nil
+        backgroundShowItem = nil
+        backgroundQuitItem = nil
+    }
+
+    private func finishClosingPanel() {
+        guard !isRunning else {
+            sendPanelToBackground()
+            return
+        }
+        isExiting = true
+        isBackgrounded = false
+        dismissCloseChoice()
+        removeBackgroundStatusItem()
+        outcome = .cancelled
+        NSApplication.shared.stop(nil)
+        // stop 也可从异步选择框回调触发，补事件唤醒普通应用循环。
+        if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero,
+                                         modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                         context: nil, subtype: 0, data1: 0, data2: 0) {
+            NSApplication.shared.postEvent(event, atStart: false)
+        }
+    }
+
     func windowDidResize(_ notification: Notification) {
+        cancelPendingFeatureSelections()
         layoutPreferencesHeader()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        cancelPendingFeatureSelections()
+    }
+
+    private func cancelPendingFeatureSelections() {
+        for box in featureBoxes.values {
+            (box.contentView as? ManagerFeatureColumn)?.cancelPendingSelection()
+        }
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
@@ -1234,6 +1690,7 @@ private extension FeatureSelectionController {
     }
 
     func layoutFeatureGroups() {
+        cancelPendingFeatureSelections()
         guard let document = featureDocument else {
             return
         }
@@ -1370,7 +1827,8 @@ private extension FeatureSelectionController {
         box.title = group.title
         box.titleFont = .systemFont(ofSize: 13, weight: .semibold)
 
-        let column = NSView()
+        let column = ManagerFeatureColumn()
+        column.rowSpacing = spacing
         let controls = NSView()
         let select = NSButton(title: "全选", target: self, action: #selector(selectGroupClicked(_:)))
         let clear = NSButton(title: "全不选", target: self, action: #selector(clearGroupClicked(_:)))
@@ -1450,6 +1908,7 @@ private extension FeatureSelectionController {
             status.addGestureRecognizer(click)
             column.addSubview(status)
             statusLabels[identifier] = status
+            column.rows.append(ManagerFeatureColumn.Row(button: checkbox, status: status, height: rowHeight))
             // 图标与活动指示器共用固定列，状态文字不随图标显隐而移动。
             let iconFrame = NSRect(x: status.frame.minX - 24, y: checkbox.frame.midY - 8, width: 16, height: 16)
             let icon = NSImageView(frame: iconFrame)
@@ -1602,7 +2061,7 @@ private extension FeatureSelectionController {
         fitLocalizedControl(label)
         let copy = NSButton(title: "复制日志", target: self, action: #selector(copyLogClicked))
         let reveal = NSButton(title: "日志文件", target: self, action: #selector(revealLogClicked))
-        let follow = NSButton(checkboxWithTitle: "自动滚动", target: nil, action: nil)
+        let follow = NSButton(checkboxWithTitle: "自动滚动", target: self, action: #selector(followLogChanged))
         follow.state = .on
         followLogButton = follow
         let buttons = [copy, reveal, follow]
@@ -1627,19 +2086,40 @@ private extension FeatureSelectionController {
             panel.addSubview(button)
             right -= 8
         }
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: height - toolbarHeight))
+        if let previous = logScrollView {
+            NotificationCenter.default.removeObserver(self, name: NSScrollView.willStartLiveScrollNotification, object: previous)
+        }
+        let scroll = ManagerLogScrollView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: height - toolbarHeight))
+        scroll.manualScroll = { [weak self] in
+            self?.pauseLogFollowing()
+        }
+        scroll.appearanceChanged = { [weak self] in
+            guard let self, self.preferences.theme == "system" else {
+                return
+            }
+            self.applyLogPalette()
+        }
+        scroll.usesPredominantAxisScrolling = false
+        scroll.drawsBackground = true
+        scroll.backgroundColor = logPalette.background
+        NotificationCenter.default.addObserver(self, selector: #selector(logWillStartLiveScroll(_:)),
+                                               name: NSScrollView.willStartLiveScrollNotification, object: scroll)
+        logScrollView = scroll
         scroll.autoresizingMask = [.width, .height]
         scroll.borderType = .bezelBorder
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         let text = ManagerLogTextView(frame: scroll.contentView.bounds)
         text.preferences = preferences
+        text.manualScroll = { [weak self] in
+            self?.pauseLogFollowing()
+        }
         text.isEditable = false
         text.isSelectable = true
         text.isRichText = false
         text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        text.textColor = .textColor
-        text.backgroundColor = .textBackgroundColor
+        text.textColor = logPalette.foreground(.normal)
+        text.backgroundColor = logPalette.background
         text.isVerticallyResizable = true
         text.isHorizontallyResizable = true
         text.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -1650,6 +2130,36 @@ private extension FeatureSelectionController {
         logTextView = text
         panel.addSubview(scroll)
         return panel
+    }
+
+    private var logPalette: ManagerLogPalette {
+        let dark: Bool
+        switch preferences.theme {
+        case "dark":
+            dark = true
+        case "light":
+            dark = false
+        default:
+            dark = (window?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance).bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+        return ManagerLogPalette(dark: dark)
+    }
+
+    func pauseLogFollowing() {
+        followLogButton?.state = .off
+    }
+
+    @objc func logWillStartLiveScroll(_ notification: Notification) {
+        guard notification.object as? NSScrollView === logScrollView else {
+            return
+        }
+        pauseLogFollowing()
+    }
+
+    @objc func followLogChanged() {
+        if followLogButton?.state == .on {
+            logTextView?.scrollToEndOfDocument(nil)
+        }
     }
 
     @objc func copyLogClicked() {
@@ -1706,19 +2216,16 @@ private extension FeatureSelectionController {
         }
     }
 
-    func appendLog(_ message: String) {
+    func appendLog(_ message: String, kind: ManagerLogKind? = nil) {
         removeLiveOutput()
-        let clean = message.replacingOccurrences(of: "\u{1B}\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+        let clean = ManagerLogStyling.plainText(message)
         if let data = clean.data(using: .utf8) {
             logHandle?.write(data)
         }
         guard let text = logTextView, let storage = text.textStorage else {
             return
         }
-        storage.append(NSAttributedString(string: clean, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.textColor
-        ]))
+        storage.append(ManagerLogStyling.attributed(clean, palette: logPalette, kind: kind))
         // 保留完整磁盘日志，限制窗口文本量以免长编译日志拖慢交互。
         if storage.length > 600_000 {
             storage.deleteCharacters(in: NSRange(location: 0, length: storage.length - 500_000))
@@ -1743,12 +2250,9 @@ private extension FeatureSelectionController {
               let storage = logTextView?.textStorage else {
             return
         }
-        let clean = text.replacingOccurrences(of: "\u{1B}\\[[0-?]*[ -/]*[@-~]|\u{1B}(?:\\[[0-?]*[ -/]*)?$", with: "", options: .regularExpression)
+        let clean = ManagerLogStyling.plainText(text)
         let visible = String(clean.suffix(100_000))
-        storage.append(NSAttributedString(string: visible, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.textColor
-        ]))
+        storage.append(ManagerLogStyling.attributed(visible, palette: logPalette))
         liveOutputLength = (visible as NSString).length
         if followLogButton?.state == .on {
             logTextView?.scrollToEndOfDocument(nil)
@@ -1771,7 +2275,9 @@ private extension FeatureSelectionController {
            parts[2] != "not-installed" || activeWorkerAction == "uninstall" {
             featureStates[parts[1]] = parts[2]
             if parts.count == 4, !parts[3].isEmpty {
-                appendLog(parts[3] + "\n")
+                let kind: ManagerLogKind = parts[2] == "failed" ? .error :
+                    (parts[2] == "succeeded" ? .success : (parts[2] == "running" ? .info : .warning))
+                appendLog(parts[3] + "\n", kind: kind)
             }
             refreshExecutionState()
         } else {
@@ -1922,7 +2428,15 @@ private extension FeatureSelectionController {
         let notInstalledDescription = notInstalled > 0 ? "，无需卸载 \(notInstalled)" : ""
         let skippedDescription = skipped > 0 ? "，未执行 \(skipped)" : ""
         executionLabel?.stringValue = "\(result)：成功 \(succeeded)，失败 \(failed)\(notInstalledDescription)\(skippedDescription)；退出码 \(exitStatus)；进度 \(percentage)；\(completedTimingTitle)总用时 \(formattedElapsedTime(completedElapsed))"
-        appendLog("\n\(executionLabel?.stringValue ?? "")\n")
+        let summaryKind: ManagerLogKind
+        if appManagementBlocked {
+            summaryKind = .error
+        } else if workerReportedStopped {
+            summaryKind = .warning
+        } else {
+            summaryKind = exitStatus == 0 && failed == 0 ? .success : .error
+        }
+        appendLog("\n\(executionLabel?.stringValue ?? "")\n", kind: summaryKind)
         try? logHandle?.synchronize()
         try? logHandle?.close()
         logHandle = nil
@@ -2213,11 +2727,7 @@ private extension FeatureSelectionController {
     }
 
     @objc func cancelClicked() {
-        guard !isRunning else {
-            return
-        }
-        outcome = .cancelled
-        NSApplication.shared.stop(nil)
+        requestPanelClose()
     }
 
     func checkedIdentifiers() -> [String] {
@@ -2237,7 +2747,7 @@ private extension FeatureSelectionController {
         actionControl?.isEnabled = !isRunning
         installLocationButton?.isEnabled = !isRunning
         refreshCleanupBuildProductsOption()
-        closeButton?.isEnabled = !isRunning
+        closeButton?.isEnabled = true
         for checkbox in checkboxes {
             checkbox.button.isEnabled = !isRunning
         }
@@ -2449,6 +2959,8 @@ final class ManagerPanelPreferences {
     private static let additionalTranslationsJSON = #"""
     {
       "bo": {
+        "Update development environment (update)": "གསར་སྤེལ་ཁོར་ཡུག་གསར་བཅོས། (update)",
+        "Total disk space": "གསོག་སྡུད་སྡེར་མའི་བར་སྟོང་བསྡོམས།",
         "Create script launcher": "སྒྲིག་ཡིག་འཕྲལ་འཇུག་བཟོ།",
         "Theme": "མངོན་ཚུལ།",
         "Language": "སྐད་ཡིག",
@@ -2544,6 +3056,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "ལྟོས་མེད་ལམ་བུ་འདྲ་བཤུས།",
         "Create file": "ཡིག་ཆ་གསར་བཟོ།",
         "View file fingerprint Hash (SHA-256)": "ཡིག་ཆའི་མཛུབ་རྗེས་ཨང་ (SHA-256) སྟོན།",
+        "Hide / show selected items": "བདམས་པའི་རྣམ་གྲངས་སྦེད / སྟོན།",
+        "Send to external disk or network volume": "ཕྱིའི་སྡེར་མའམ་དྲ་རྒྱའི་གསོག་སྡུད་སྡེ་ཚན་ལ་གཏོང་།",
         "Grant execute permission (chmod +x)": "ལག་བསྟར་ཆོག་མཆན་སྤྲོད། (chmod +x)",
         "Remove execute permission (chmod -x)": "ལག་བསྟར་ཆོག་མཆན་ཕྱིར་འཐེན། (chmod -x)",
         "Re-sign IPA without building": "སྒྲིག་སྒྱུར་མ་བྱས་པར་ IPA ལ་སླར་མིང་རྟགས་འགོད།",
@@ -2801,9 +3315,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} བྱེད་བཞིན། གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} གྲུབ་པ {1} / {2}（གྲུབ་པའི་ཚན་པ་ལྟར {3}%）། {4} {5}",
+        "Close management panel": "དོ་དམ་པང་ལེབ་ཁ་རྒྱག",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "མ་ལག་གི་གནས་ཚུལ་ཐོ་བྱང་ནང་རྒྱབ་ལྗོངས་སུ་འཁོར་སྐྱོད་བྱེད་དམ། ཡང་ན་སྒྲིག་འཇུག / སུབ་པའི་པང་ལེབ་ནས་རྦད་དེ་ཕྱིར་འདོན་བྱེད།",
+        "Run in background": "རྒྱབ་ལྗོངས་སུ་འཁོར་སྐྱོད།",
+        "Quit completely": "རྦད་དེ་ཕྱིར་འདོན།",
+        "Show management panel": "དོ་དམ་པང་ལེབ་སྟོན།",
+        "Status: {0}": "གནས་ཚུལ། {0}",
+        "A task is running. You can quit after it finishes.": "ལས་ཀ་འཁོར་སྐྱོད་བཞིན་ཡོད། ལེགས་འགྲུབ་རྗེས་རྦད་དེ་ཕྱིར་འདོན་བྱེད་ཆོག"
       },
       "ja": {
+        "Update development environment (update)": "開発環境を更新（update）",
+        "Total disk space": "ディスク空き容量の合計",
         "Create script launcher": "スクリプト起動ファイルを作成",
         "Theme": "テーマ",
         "Language": "言語",
@@ -2899,6 +3422,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "絶対パスをコピー",
         "Create file": "ファイルを作成",
         "View file fingerprint Hash (SHA-256)": "ファイルのハッシュを表示（SHA-256）",
+        "Hide / show selected items": "選択した項目を非表示 / 表示",
+        "Send to external disk or network volume": "外部ディスクまたはネットワークボリュームに送る",
         "Grant execute permission (chmod +x)": "実行権限を付与（chmod +x）",
         "Remove execute permission (chmod -x)": "実行権限を削除（chmod -x）",
         "Re-sign IPA without building": "ビルドせずに IPA を再署名",
@@ -3156,9 +3681,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0}を実行中；完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 完了 {1} / {2}（{3}%、完了項目基準）；{4} {5}",
+        "Close management panel": "管理パネルを閉じる",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "メニューバーで実行を続けますか？ それともインストール／アンインストールパネルを完全に終了しますか？",
+        "Run in background": "バックグラウンドで実行",
+        "Quit completely": "完全に終了",
+        "Show management panel": "管理パネルを表示",
+        "Status: {0}": "状態：{0}",
+        "A task is running. You can quit after it finishes.": "タスクを実行中です。完了後に完全に終了できます。"
       },
       "fr": {
+        "Update development environment (update)": "Mettre à jour l’environnement de développement (update)",
+        "Total disk space": "Espace disque total disponible",
         "Create script launcher": "Créer un lanceur de script",
         "Theme": "Thème",
         "Language": "Langue",
@@ -3254,6 +3788,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "Copier le chemin absolu",
         "Create file": "Créer un fichier",
         "View file fingerprint Hash (SHA-256)": "Afficher l’empreinte du fichier (SHA-256)",
+        "Hide / show selected items": "Masquer / afficher les éléments sélectionnés",
+        "Send to external disk or network volume": "Envoyer vers un disque externe ou un volume réseau",
         "Grant execute permission (chmod +x)": "Accorder le droit d’exécution (chmod +x)",
         "Remove execute permission (chmod -x)": "Retirer le droit d’exécution (chmod -x)",
         "Re-sign IPA without building": "Signer à nouveau l’IPA sans compiler",
@@ -3511,9 +4047,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} en cours ; terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Terminés {1} / {2} ({3}% par éléments terminés) ; {4} {5}",
+        "Close management panel": "Fermer le panneau de gestion",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "Continuer dans la barre des menus ou quitter complètement le panneau d’installation / désinstallation ?",
+        "Run in background": "Exécuter en arrière-plan",
+        "Quit completely": "Quitter complètement",
+        "Show management panel": "Afficher le panneau de gestion",
+        "Status: {0}": "État : {0}",
+        "A task is running. You can quit after it finishes.": "Une tâche est en cours. Vous pourrez quitter une fois celle-ci terminée."
       },
       "es": {
+        "Update development environment (update)": "Actualizar el entorno de desarrollo (update)",
+        "Total disk space": "Espacio libre total en discos",
         "Create script launcher": "Crear acceso al script",
         "Theme": "Tema",
         "Language": "Idioma",
@@ -3609,6 +4154,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "Copiar ruta absoluta",
         "Create file": "Crear archivo",
         "View file fingerprint Hash (SHA-256)": "Ver la huella del archivo (SHA-256)",
+        "Hide / show selected items": "Ocultar / mostrar los elementos seleccionados",
+        "Send to external disk or network volume": "Enviar a un disco externo o volumen de red",
         "Grant execute permission (chmod +x)": "Conceder permiso de ejecución (chmod +x)",
         "Remove execute permission (chmod -x)": "Quitar permiso de ejecución (chmod -x)",
         "Re-sign IPA without building": "Volver a firmar el IPA sin compilar",
@@ -3866,9 +4413,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} en curso; completados {1} / {2} ({3}% por elementos completados); {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Completados {1} / {2} ({3}% por elementos completados); {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Completados {1} / {2} ({3}% por elementos completados); {4} {5}",
+        "Close management panel": "Cerrar el panel de gestión",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "¿Continuar en la barra de menús o salir completamente del panel de instalación / desinstalación?",
+        "Run in background": "Ejecutar en segundo plano",
+        "Quit completely": "Salir completamente",
+        "Show management panel": "Mostrar el panel de gestión",
+        "Status: {0}": "Estado: {0}",
+        "A task is running. You can quit after it finishes.": "Hay una tarea en curso. Podrá salir cuando termine."
       },
       "de": {
+        "Update development environment (update)": "Entwicklungsumgebung aktualisieren (update)",
+        "Total disk space": "Gesamter freier Speicherplatz",
         "Create script launcher": "Skriptstarter erstellen",
         "Theme": "Design",
         "Language": "Sprache",
@@ -3964,6 +4520,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "Absoluten Pfad kopieren",
         "Create file": "Datei erstellen",
         "View file fingerprint Hash (SHA-256)": "Dateiprüfsumme anzeigen (SHA-256)",
+        "Hide / show selected items": "Ausgewählte Elemente ausblenden / einblenden",
+        "Send to external disk or network volume": "An externen Datenträger oder Netzwerkvolume senden",
         "Grant execute permission (chmod +x)": "Ausführungsrecht erteilen (chmod +x)",
         "Remove execute permission (chmod -x)": "Ausführungsrecht entziehen (chmod -x)",
         "Re-sign IPA without building": "IPA ohne Build erneut signieren",
@@ -4221,9 +4779,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} läuft; abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Abgeschlossen {1} / {2} ({3}% nach abgeschlossenen Einträgen); {4} {5}",
+        "Close management panel": "Verwaltungsfenster schließen",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "In der Menüleiste weiterlaufen lassen oder das Installations- / Deinstallationsfenster vollständig beenden?",
+        "Run in background": "Im Hintergrund ausführen",
+        "Quit completely": "Vollständig beenden",
+        "Show management panel": "Verwaltungsfenster anzeigen",
+        "Status: {0}": "Status: {0}",
+        "A task is running. You can quit after it finishes.": "Eine Aufgabe wird ausgeführt. Nach ihrem Abschluss können Sie beenden."
       },
       "ru": {
+        "Update development environment (update)": "Обновить среду разработки (update)",
+        "Total disk space": "Общее свободное место на дисках",
         "Create script launcher": "Создать ярлык скрипта",
         "Theme": "Тема",
         "Language": "Язык",
@@ -4319,6 +4886,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "Копировать абсолютный путь",
         "Create file": "Создать файл",
         "View file fingerprint Hash (SHA-256)": "Показать хеш файла (SHA-256)",
+        "Hide / show selected items": "Скрыть / показать выбранные объекты",
+        "Send to external disk or network volume": "Отправить на внешний диск или сетевой том",
         "Grant execute permission (chmod +x)": "Разрешить выполнение (chmod +x)",
         "Remove execute permission (chmod -x)": "Запретить выполнение (chmod -x)",
         "Re-sign IPA without building": "Повторно подписать IPA без сборки",
@@ -4576,9 +5145,18 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "Выполняется {0}; завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} Завершено {1} из {2} ({3}% по завершённым пунктам); {4} {5}",
+        "Close management panel": "Закрыть панель управления",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "Продолжить работу в строке меню или полностью закрыть панель установки / удаления?",
+        "Run in background": "Продолжить в фоне",
+        "Quit completely": "Полностью выйти",
+        "Show management panel": "Показать панель управления",
+        "Status: {0}": "Состояние: {0}",
+        "A task is running. You can quit after it finishes.": "Выполняется задача. Выйти можно после её завершения."
       },
       "ko": {
+        "Update development environment (update)": "개발 환경 업데이트 (update)",
+        "Total disk space": "전체 디스크 여유 공간",
         "Create script launcher": "스크립트 실행 파일 만들기",
         "Theme": "테마",
         "Language": "언어",
@@ -4674,6 +5252,8 @@ final class ManagerPanelPreferences {
         "Copy absolute path": "절대 경로 복사",
         "Create file": "파일 만들기",
         "View file fingerprint Hash (SHA-256)": "파일 해시 보기 (SHA-256)",
+        "Hide / show selected items": "선택한 항목 숨기기 / 표시",
+        "Send to external disk or network volume": "외장 디스크 또는 네트워크 볼륨으로 보내기",
         "Grant execute permission (chmod +x)": "실행 권한 부여 (chmod +x)",
         "Remove execute permission (chmod -x)": "실행 권한 제거 (chmod -x)",
         "Re-sign IPA without building": "빌드 없이 IPA 다시 서명",
@@ -4931,7 +5511,14 @@ final class ManagerPanelPreferences {
         "{0} {1}": "{0} {1}",
         "{0}{1} {2}": "{0}{1} {2}",
         "{0} in progress; completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 진행 중; 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}",
-        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}"
+        "{0} Completed {1} / {2} ({3}% by completed items); {4} {5}": "{0} 완료 {1} / {2} ({3}%, 완료 항목 기준); {4} {5}",
+        "Close management panel": "관리 패널 닫기",
+        "Run in the menu bar, or quit the installation / uninstallation panel?": "메뉴 막대에서 계속 실행할까요, 아니면 설치 / 제거 패널을 완전히 종료할까요?",
+        "Run in background": "백그라운드에서 실행",
+        "Quit completely": "완전히 종료",
+        "Show management panel": "관리 패널 표시",
+        "Status: {0}": "상태: {0}",
+        "A task is running. You can quit after it finishes.": "작업이 실행 중입니다. 완료된 후 완전히 종료할 수 있습니다."
       }
     }
     """#
@@ -4948,6 +5535,14 @@ final class ManagerPanelPreferences {
     Jobs Finder 扩展管理|Jobs Finder Extension Manager
     自定义Finder右键菜单|Customize Finder Context Menu
     关闭管理器|Close Manager
+    关闭管理面板|Close management panel
+    退到系统状态栏，还是完全退出安装／卸载面板？|Run in the menu bar, or quit the installation / uninstallation panel?
+    退到后台|Run in background
+    完全退出|Quit completely
+    显示管理面板|Show management panel
+    状态：{0}|Status: {0}
+    任务进行中，完成后可完全退出。|A task is running. You can quit after it finishes.
+    取消|Cancel
     编辑|Edit
     复制|Copy
     全选|Select all
@@ -5033,6 +5628,10 @@ final class ManagerPanelPreferences {
     创建脚本快捷入口|Create script launcher
     新建文件|Create file
     查看文件指纹 Hash（SHA-256）|View file fingerprint Hash (SHA-256)
+    隐藏 / 显示所选项目|Hide / show selected items
+    发送到外部磁盘或网络卷|Send to external disk or network volume
+    更新开发环境（update）|Update development environment (update)
+    磁盘空间总览|Total disk space
     授予执行权限（chmod +x）|Grant execute permission (chmod +x)
     移除执行权限（chmod -x）|Remove execute permission (chmod -x)
     IPA 免编译重签|Re-sign IPA without building
@@ -5343,13 +5942,25 @@ private extension FeatureSelectionController {
         languageControl?.selectItem(at: ManagerPanelPreferences.languages.firstIndex(of: preferences.language) ?? 0)
         localizeInterface()
         layoutPreferencesHeader()
+        applyLogPalette()
+        window?.contentView?.needsDisplay = true
+    }
+
+    func applyLogPalette() {
         // 已追加文本也使用语义颜色；主题切换不会清空日志或改变选择范围。
         if let text = logTextView, let storage = text.textStorage {
-            storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: NSRange(location: 0, length: storage.length))
-            text.backgroundColor = .textBackgroundColor
-            text.textColor = .textColor
+            let selection = text.selectedRanges
+            let origin = text.enclosingScrollView?.contentView.bounds.origin
+            text.backgroundColor = logPalette.background
+            logScrollView?.backgroundColor = logPalette.background
+            text.textColor = logPalette.foreground(.normal)
+            ManagerLogStyling.recolor(storage, palette: logPalette)
+            text.selectedRanges = selection
+            if let origin, let scroll = text.enclosingScrollView {
+                scroll.contentView.scroll(to: origin)
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
         }
-        window?.contentView?.needsDisplay = true
     }
 
     /// 业务刷新写入新原文后重新绑定，已经翻译的文字仍关联最初原文。
@@ -5451,5 +6062,6 @@ private extension FeatureSelectionController {
             localizeMenu(menu)
         }
         featureDocument?.updatePinnedHeaders()
+        updateBackgroundStatus()
     }
 }

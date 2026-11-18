@@ -52,6 +52,8 @@ CompilationCache.noindex/
 !/JobsDesktopTools/【MacOS】管理桌面工具Finder扩展.app/**
 !/JobsFileCreator/【MacOS】管理新建文件Finder扩展.app/
 !/JobsFileCreator/【MacOS】管理新建文件Finder扩展.app/**
+!/JobsFileVisibility/【MacOS】管理所选项目隐藏显示Finder扩展.app/
+!/JobsFileVisibility/【MacOS】管理所选项目隐藏显示Finder扩展.app/**
 !/JobsFlutterCodegen/【MacOS】管理Flutter自动化生产代码Finder扩展.app/
 !/JobsFlutterCodegen/【MacOS】管理Flutter自动化生产代码Finder扩展.app/**
 !/JobsFlutterDependencyExtractor/【MacOS】管理Flutter依赖提取Finder扩展.app/
@@ -107,6 +109,9 @@ CompilationCache.noindex/
 !/【MacOS】🧩管理Finder扩展.app/
 !/【MacOS】🧩管理Finder扩展.app/**
 
+!/JobsDiskSpaceInfo/【MacOS】管理磁盘空间Finder扩展.app/
+!/JobsDiskSpaceInfo/【MacOS】管理磁盘空间Finder扩展.app/**
+
 # Feature-local caches migrated from the former child ignore files.
 /JobsAndroidStudioOpener/**/work/
 /JobsFlutterVersionMgr/**/work/
@@ -124,3 +129,6 @@ CompilationCache.noindex/
 /JobsGitRollback/**/*.app/
 /JobsGitPuller/**/*.app/
 /JobsVSCodeOpener/**/*.app/
+
+!/JobsSendTo/【MacOS】管理发送到Finder扩展.app/
+!/JobsSendTo/【MacOS】管理发送到Finder扩展.app/**

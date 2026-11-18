@@ -21,7 +21,7 @@
 
 **SDK 获取策略：** 必需 SDK 的下载、安装中的网络获取及 Flutter 首次启动补齐 Dart / 引擎组件，默认失败自动持续重试，直到成功或用户按 Ctrl+C / 结束进程；不再询问是否重试，也不设次数或总时长上限。退避默认为 2、4、8、16、30 秒；`JOBS_SDK_RETRY_DELAY` / `JOBS_SDK_RETRY_MAX_DELAY` 可配置。保留工具原生进度与已有缓存，每次获取输出追加保存到原日志旁的 `.attempts.log`；版本选择、真正的许可证 / 权限操作及原始入口确认保留。确定的权限、磁盘、架构、参数或不存在版本错误直接说明原因并停止；项目构建与代码生成失败不整体重放。`--check` / `--help` 继续只读。
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 本目录包含“Flutter 项目体检”的自包含业务资源及 Xcode 构建后启用入口。功能用途、SDK 规则、安装与卸载见[工程说明](../README.md)。
 
@@ -43,8 +43,8 @@
 
 | 文件 | 职责与影响 |
 | --- | --- |
-| [InspectFlutterProject.zsh](./InspectFlutterProject.zsh) | 与 SourceTree 对应 Jobs 脚本保持共用业务主体一致，仅 ANSI 过滤采用本仓实时进度适配；运行时不访问 SourceTree。`--check` 不执行 Flutter / Dart，不写日志；实际执行由 Terminal 自述确认后进行。 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | Xcode Build Phase 注册并启用 `com.jobs.JobsFlutterDoctor.FinderSyncExtension`，刷新 Finder。手动无构建上下文时停止；`JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过。 |
+| [InspectFlutterProject.zsh](./【MacOS】InspectFlutterProject.zsh/【MacOS】InspectFlutterProject.zsh) | 与 SourceTree 对应 Jobs 脚本保持共用业务主体一致，仅 ANSI 过滤采用本仓实时进度适配；运行时不访问 SourceTree。`--check` 不执行 Flutter / Dart，不写日志；实际执行由 Terminal 自述确认后进行。 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | Xcode Build Phase 注册并启用 `com.jobs.JobsFlutterDoctor.FinderSyncExtension`，刷新 Finder。手动无构建上下文时停止；`JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 跳过。 |
 
 业务依赖 macOS 自带 zsh 与项目所选 Flutter SDK，Dart 必须来自同一 SDK；缺 SDK 或 FVM 项目链接损坏时停止。不会自动安装全局工具。体检报告有异常不会显示“全部通过”，不会自动安装 SDK、Xcode 或 Android 工具。
 

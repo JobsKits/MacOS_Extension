@@ -246,9 +246,11 @@ require 'shellwords'
 require 'timeout'
 require 'digest'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class SdkAcquisitionRetryTests < Minitest::Test
   ROOT = File.expand_path('../../..', __dir__)
-  MODULE = File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/【MacOS】SDK获取重试.zsh/【MacOS】SDK获取重试.zsh')
+  MODULE = JobsSourceLayout.file(File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/【MacOS】SDK获取重试.zsh/【MacOS】SDK获取重试.zsh'))
   RUNNERS = %w[JobsFlutterRunner/Scripts/RunFlutterProject.zsh JobsFlutterTools/Scripts/Tools/RunFlutterProject.zsh].freeze
 
   def setup
@@ -347,7 +349,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
   def test_runner_and_packager_prepare_target_resources_before_business
     [*RUNNERS, 'JobsFlutterPackager/Scripts/PackageFlutter.zsh', 'JobsFlutterTools/Scripts/Tools/PackageFlutter.zsh'].each do |relative|
       FileUtils.rm_f(@counter)
-      library = File.read(File.join(ROOT, relative)).sub(/\nmain "\$@"\s*\z/, "\n")
+      library = File.read(JobsSourceLayout.file(File.join(ROOT, relative))).sub(/\nmain "\$@"\s*\z/, "\n")
       body = if relative.end_with?('RunFlutterProject.zsh')
         <<~SH
           LOG_FILE=#{@log.shellescape}
@@ -389,7 +391,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
         fi
         exit 0
       SH
-      library = File.read(File.join(ROOT, relative)).sub(/\nmain "\$@"\s*\z/, "\n")
+      library = File.read(JobsSourceLayout.file(File.join(ROOT, relative))).sub(/\nmain "\$@"\s*\z/, "\n")
       body = <<~SH
         setopt PIPE_FAIL
         LOG_FILE=#{@log.shellescape}
@@ -424,7 +426,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
       if (( attempt < 3 )); then print bad > "$target"; else print good > "$target"; fi
     SH
     File.chmod(0o700, tool)
-    source = File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/DownloadProjectGradle.zsh')
+    source = JobsSourceLayout.file(File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/【MacOS】DownloadProjectGradle.zsh/【MacOS】DownloadProjectGradle.zsh'))
     body = <<~SH
       source #{source.shellescape}
       PE_LOG_FILE=#{@log.shellescape}
@@ -444,7 +446,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
 
   def test_cancelled_version_query_never_opens_a_selector_or_mutates_project
     ['JobsFlutterVersionMgr/Scripts/ManageFlutterVersion.zsh', 'JobsFlutterTools/Scripts/Tools/ManageFlutterVersion.zsh'].each do |relative|
-      library = File.read(File.join(ROOT, relative)).sub(/\nmain "\$@"\s*\z/, "\n")
+      library = File.read(JobsSourceLayout.file(File.join(ROOT, relative))).sub(/\nmain "\$@"\s*\z/, "\n")
       body = <<~'SH'
         for fn in show_script_intro_and_wait fm_initialize_runtime fm_check_project_boundaries fm_prepare_inspection_config fm_check_system_tools fm_ensure_brew fm_ensure_fzf fm_ensure_fvm fm_read_effective_context; do
           functions[$fn]='return 0'
@@ -464,7 +466,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
 
   def test_device_platform_mapping_is_limited_to_the_selected_device
     device_file = File.join(@tmp, 'devices.json')
-    helper = File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/FlutterRunner.jxa')
+    helper = JobsSourceLayout.file(File.join(ROOT, 'JobsFlutterTools/Scripts/Tools/FlutterRunner.jxa/FlutterRunner.jxa'))
     { 'ios' => 'ios', 'android-arm64' => 'android', 'web-javascript' => 'web', 'darwin' => 'macos', 'ohos-arm64' => 'ohos' }.each do |platform, expected|
       File.write(device_file, '[{"id":"other","targetPlatform":"ios"},{"id":"selected","targetPlatform":"' + platform + '"}]')
       out, err, status = Open3.capture3('/usr/bin/osascript', '-l', 'JavaScript', helper, 'precache-platform', device_file, 'selected')
@@ -476,7 +478,7 @@ class SdkAcquisitionRetryTests < Minitest::Test
   def test_runner_bootstrap_retries_and_uses_a_download_sized_window
     RUNNERS.each do |relative|
       FileUtils.rm_f(@counter)
-      library = File.read(File.join(ROOT, relative)).sub(/\nmain "\$@"\s*\z/, "\n")
+      library = File.read(JobsSourceLayout.file(File.join(ROOT, relative))).sub(/\nmain "\$@"\s*\z/, "\n")
       body = <<~SH
         PROJECT_PATH=#{@tmp.shellescape}
         LOG_FILE=#{@log.shellescape}

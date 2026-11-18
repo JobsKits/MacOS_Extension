@@ -18,14 +18,14 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
 本目录携带独立的官方 Emulator CLI 创建流程和 Finder 注册辅助脚本；运行时不读取 README，也不依赖其它仓库脚本。平台、安装入口及风险见[功能 README](../README.md)。
 
 | 文件 | 职责 |
 | --- | --- |
-| [CreateHarmonySimulator.zsh](./CreateHarmonySimulator.zsh) | 发现兼容工具、缺失时从 SDL 安装并校验 Mac ARM64 CLT，检查创建能力，缺镜像时调用官方 CLI 下载选中的 Release 镜像，保护名称、创建并查询验证后按需启动。 |
-| [EnableFinderExtension.zsh](./EnableFinderExtension.zsh) | Xcode 构建后注册当前 App / appex 并检查准确启用路径；可用跳过标志交给安装器统一注册，不创建模拟器。 |
+| [CreateHarmonySimulator.zsh](./【MacOS】CreateHarmonySimulator.zsh/【MacOS】CreateHarmonySimulator.zsh) | 发现兼容工具、缺失时从 SDL 安装并校验 Mac ARM64 CLT，检查创建能力，缺镜像时调用官方 CLI 下载选中的 Release 镜像，保护名称、创建并查询验证后按需启动。 |
+| [EnableFinderExtension.zsh](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) | Xcode 构建后注册当前 App / appex 并检查准确启用路径；可用跳过标志交给安装器统一注册，不创建模拟器。 |
 
 
 **安装位置参数：** 总 worker 与单功能 worker 接受 `--install-location build|applications`，非交互调用默认 `build`。GUI 首次打开默认使用应用程序中的联合 App，并勾选安装成功后清理；显式参数或环境设置优先，用户可在面板手动取消。GUI 将“使用「应用程序」文件夹安装 / 卸载”的勾选状态作为明确参数传入，执行期间锁定该选择。不勾选时登记本地构建目录，勾选后通过[部署库](./【MacOS】AppDeployment.zsh/README.md)将完整签名功能模块收进 `/Applications/Jobs自定义右键菜单.app` 再登记；构建器始终写原来的构建目录。缺少目录写权限、同名 App 身份不符、复制或签名校验失败均报告失败，不隐式切回另一位置。

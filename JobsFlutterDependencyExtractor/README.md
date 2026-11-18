@@ -75,11 +75,11 @@ JobsFlutterDependencyExtractor/
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、安装与卸载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-[原管理脚本](./【MacOS】管理Flutter依赖提取Finder扩展.command)与[同名 App](./【MacOS】管理Flutter依赖提取Finder扩展.app)均保留。终端只负责唤起独立 GUI，启动脚本结束后关闭本次完成页；安装 / 卸载、状态和实时日志全部留在 GUI。面板仅展示依赖提取选项，默认空选；切换操作后重新勾选，点击按钮直接执行，不要求终端回车或 `YES`。内部管理实现位于 `Scripts/ManageExtension.zsh`。
+[原管理脚本](./【MacOS】管理Flutter依赖提取Finder扩展.command)与[同名 App](./【MacOS】管理Flutter依赖提取Finder扩展.app)均保留。终端只负责唤起独立 GUI，启动脚本结束后关闭本次完成页；安装 / 卸载、状态和实时日志全部留在 GUI。面板仅展示依赖提取选项，默认空选；切换操作后重新勾选，点击按钮直接执行，不要求终端回车或 `YES`。内部管理实现位于 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
-安装需要完整 [**Xcode**](https://developer.apple.com/xcode/) 和 macOS SDK，在统一包构建缓存生成产物、登记启用菜单并刷新 Finder。安装保留已有 Flutter 选项，卸载只减去依赖提取叶子，统一包最后一项移除后才卸载 App；源码、项目和已提取目录保留。执行期间在面板显示等待 / 执行中 / 成功 / 失败及底部可复制实时日志，完整日志通过面板“日志文件”定位。运行中须等待任务结束后关闭，勿直接删除系统仍引用的构建产物。
+安装需要完整 [**Xcode**](https://developer.apple.com/xcode/) 和 macOS SDK，在统一包构建缓存生成产物、登记启用菜单并刷新 Finder。安装保留已有 Flutter 选项，卸载只减去依赖提取叶子，统一包最后一项移除后才卸载 App；源码、项目和已提取目录保留。执行期间在面板显示等待 / 执行中 / 成功 / 失败及底部可复制实时日志，完整日志通过面板“日志文件”定位。运行中关闭会直接退到 Dock（程序坞）及系统状态栏继续执行，空闲关闭才询问后台或完全退出；勿直接删除系统仍引用的构建产物。
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、使用方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -113,7 +113,7 @@ JobsFlutterDependencyExtractor/
 
 宿主使用 `LSUIElement`，不显示管理窗口和 Dock 图标，等待扩展初始化及所有 Terminal 请求派发完成后自动退出。首次使用可能由 macOS 请求允许自动化控制 Terminal。
 
-[构建后脚本](./Scripts/EnableFinderExtension.zsh) 挂在 App 的 Enable Finder Extension Build Phase，正常 Xcode 构建后会注册、启用扩展并刷新 Finder。设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 时只打印说明并跳过该注册过程。独立安装器构建时设置此开关，随后统一注册。
+[构建后脚本](./Scripts/【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) 挂在 App 的 Enable Finder Extension Build Phase，正常 Xcode 构建后会注册、启用扩展并刷新 Finder。设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 时只打印说明并跳过该注册过程。独立安装器构建时设置此开关，随后统一注册。
 
 App Resources 必须包含 `ExtractFlutterDependencies.zsh` 和 `ExtractFlutterDependencies.dart`；宿主逐请求复制两份资源到同一目录后启动 `/bin/zsh`，不能只拷贝外层入口。
 
@@ -128,7 +128,7 @@ App Resources 必须包含 `ExtractFlutterDependencies.zsh` 和 `ExtractFlutterD
 
 ```shell
 dart ./Tests/DependencyExtractionTests.dart
-ruby ./Tests/ExtractionShellTests.rb
+ruby Tests/ExtractionShellTests.rb/ExtractionShellTests.rb
 ```
 
 `DependencyExtractionTests.dart` 覆盖本地依赖交叉核验、workspace 成员范围、复制与失败边界；`ExtractionShellTests.rb` 覆盖路径输入 / 拖入、自述取消、桌面默认值和引擎失败码传递。原生传输用例保存在 `Tests/FlutterDependencyTransportTests.swift`，需与共享校验、请求和 TerminalLauncher 源码一起编译。
@@ -156,6 +156,6 @@ JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1 xcodebuild \
 - 输入或拖入项目，再输入或拖入输出父目录；目标直接回车为桌面。
 - 体检已有原生 Dart，引擎核对本地解析记录后创建独立输出目录，显示结果和日志。
 
-安装与卸载入口见[第二章](#jobs-toc-heading-3)；`Scripts/ExtractFlutterDependencies.zsh` 是 Finder 调用的交互业务入口，`ExtractFlutterDependencies.dart` 是同目录引擎，`EnableFinderExtension.zsh` 仅服务构建后注册；职责和运行边界见 [Scripts 说明](./Scripts/README.md)。
+安装与卸载入口见[第二章](#jobs-toc-heading-3)；`./Scripts/【MacOS】ExtractFlutterDependencies.zsh/【MacOS】ExtractFlutterDependencies.zsh` 是 Finder 调用的交互业务入口，`ExtractFlutterDependencies.dart` 是同目录引擎，`EnableFinderExtension.zsh` 仅服务构建后注册；职责和运行边界见 [Scripts 说明](./Scripts/README.md)。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

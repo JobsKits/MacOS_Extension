@@ -1,0 +1,90 @@
+//
+//  FileVisibilityRequest.swift
+//  JobsFileVisibility
+//
+//  Created by Jobs on 2026年11月18日，星期三.
+//
+
+import Foundation
+import Darwin
+
+struct FileVisibilityRequest {
+
+    let items: [FileVisibilityContext.Item]
+    let hidden: Bool
+    let identifier: UUID
+
+    init?(urls: [URL], hidden: Bool, identifier: UUID = UUID()) {
+        guard !urls.isEmpty, urls.count <= 128 else {
+            return nil
+        }
+        let snapshots = urls.compactMap(FileVisibilityContext.snapshot)
+        guard snapshots.count == urls.count,
+              Set(snapshots.map(\.path)).count == snapshots.count else {
+            return nil
+        }
+        self.items = snapshots
+        self.hidden = hidden
+        self.identifier = identifier
+        guard url != nil else {
+            return nil
+        }
+    }
+
+    init?(url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "jobsfilevisibility",
+              components.host == "hide" || components.host == "show",
+              components.path.isEmpty,
+              components.user == nil, components.password == nil,
+              components.port == nil, components.fragment == nil,
+              let query = components.queryItems, query.count == 2,
+              query.filter({ $0.name == "items" }).count == 1,
+              query.filter({ $0.name == "id" }).count == 1,
+              let encoded = query.first(where: { $0.name == "items" })?.value,
+              !encoded.isEmpty, encoded.utf8.count <= 32768,
+              encoded.unicodeScalars.allSatisfy({
+                  CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_").contains($0)
+              }),
+              let rawID = query.first(where: { $0.name == "id" })?.value,
+              let identifier = UUID(uuidString: rawID) else {
+            return nil
+        }
+        var base64 = encoded.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let data = Data(base64Encoded: base64),
+              let items = try? JSONDecoder().decode([FileVisibilityContext.Item].self, from: data),
+              !items.isEmpty, items.count <= 128,
+              Set(items.map(\.path)).count == items.count,
+              items.allSatisfy({
+                  $0.path.hasPrefix("/") && $0.path != "/" && !$0.path.contains("\0") &&
+                      URL(fileURLWithPath: $0.path).standardizedFileURL.path == $0.path &&
+                      ($0.kind == UInt16(S_IFREG) || $0.kind == UInt16(S_IFDIR))
+              }) else {
+            return nil
+        }
+        self.items = items
+        self.hidden = components.host == "hide"
+        self.identifier = identifier
+    }
+
+    var url: URL? {
+        guard let data = try? JSONEncoder().encode(items) else {
+            return nil
+        }
+        let encoded = data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        guard encoded.utf8.count <= 32768 else {
+            return nil
+        }
+        var components = URLComponents()
+        components.scheme = "jobsfilevisibility"
+        components.host = hidden ? "hide" : "show"
+        components.queryItems = [URLQueryItem(name: "items", value: encoded),
+                                 URLQueryItem(name: "id", value: identifier.uuidString)]
+        return components.url
+    }
+}

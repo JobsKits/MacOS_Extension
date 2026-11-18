@@ -244,10 +244,12 @@ require 'open3'
 require 'tmpdir'
 require 'fileutils'
 require 'digest'
+require 'json'
+require 'timeout'
 
 class GUIHostIdentityTests < Minitest::Test
   ROOT = File.expand_path('../..', __dir__)
-  HELPER = File.join(ROOT, 'Scripts/FinderManagerGUI.zsh')
+  HELPER = File.join(ROOT, 'Scripts/【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh')
   ICON = File.join(ROOT, 'Scripts/【MacOS】AppDeployment.zsh/Resources/JobsFinderManager.icns')
 
   def fixture
@@ -287,7 +289,7 @@ class GUIHostIdentityTests < Minitest::Test
   def launch(cache, entry)
     code = File.read(HELPER) + <<~'ZSH'
       jobs_manager_launch_error() { print -u2 -r -- "$1|${2:-}"; return 1; }
-      jobs_launch_finder_manager_gui "$1" 'path_copier,file-create' uninstall 1
+      jobs_launch_finder_manager_gui "$1" 'path_copier,file-create' uninstall 0
     ZSH
     Open3.capture3({ 'JOBS_FINDER_MANAGER_CACHE_DIR' => cache, 'JOBS_FINDER_INSTALL_LOCATION' => 'applications', 'JOBS_FINDER_CLEANUP_BUILD_PRODUCTS' => '0' }, '/bin/zsh', '-f', '-c', code, 'fixture', entry)
   end
@@ -347,6 +349,185 @@ class GUIHostIdentityTests < Minitest::Test
       assert_equal modified, File.mtime(executable)
       refute File.exist?(File.join(package, 'work')), 'bundle source remains read only with an external cache'
       assert_empty Dir.glob(File.join(cache, '.JobsFinderManagerHost.*'))
+    end
+  end
+
+  def test_public_agent_launcher_hands_off_to_one_regular_native_host
+    Dir.mktmpdir('jobs-single-dock-host-') do |directory|
+      directory = File.realpath(directory)
+      package = File.join(directory, '搬移后的 管理包')
+      app = File.join(package, '【MacOS】🧩管理Finder扩展.app')
+      source_app = File.join(ROOT, '【MacOS】🧩管理Finder扩展.app')
+      scripts = File.join(package, 'Scripts')
+      native = File.join(package, 'Native.app')
+      FileUtils.mkdir_p([File.join(app, 'Contents/MacOS'), scripts, File.join(native, 'Contents/MacOS')])
+      FileUtils.cp(File.join(source_app, 'Contents/MacOS/LaunchManager'), File.join(app, 'Contents/MacOS/LaunchManager'))
+      FileUtils.cp(File.join(source_app, 'Contents/Info.plist'), File.join(app, 'Contents/Info.plist'))
+      FileUtils.mkdir_p(File.dirname(source_icon(package)))
+      FileUtils.cp(ICON, source_icon(package))
+      File.write(File.join(scripts, 'SelectFinderExtensionFeatures.swift'), '// fixture source')
+      cache = File.join(package, 'work')
+      FileUtils.mkdir_p(cache)
+      token = File.basename(directory).gsub(/[^A-Za-z0-9]/, '')
+      launcher_id = "com.jobs.fixture.launcher.#{token}"
+      native_id = "com.jobs.fixture.native.#{token}"
+      output, result = Open3.capture2e('/usr/libexec/PlistBuddy', '-c', "Set :CFBundleIdentifier #{launcher_id}", File.join(app, 'Contents/Info.plist'))
+      assert result.success?, output
+      output, result = Open3.capture2e('/usr/libexec/PlistBuddy', '-c', 'Print :LSUIElement', File.join(app, 'Contents/Info.plist'))
+      assert result.success?, 'the real public launcher declares an agent application'
+      assert_equal 'true', output.strip
+      source = File.join(directory, 'DockIdentity.swift')
+      File.write(source, <<~'SWIFT')
+        import AppKit
+        import Darwin
+
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments[0] == "observe" {
+            let directory = arguments[1]
+            let record = arguments[2]
+            try! Data("ready".utf8).write(to: URL(fileURLWithPath: arguments[3]))
+            var samples: [[[String: Any]]] = []
+            let deadline = Date().addingTimeInterval(3.5)
+            while Date() < deadline {
+                let apps = NSWorkspace.shared.runningApplications.filter {
+                    $0.bundleURL?.path.hasPrefix(directory + "/") == true
+                }
+                samples.append(apps.map {
+                    ["identifier": $0.bundleIdentifier ?? "",
+                     "policy": $0.activationPolicy.rawValue,
+                     "pid": $0.processIdentifier, "bundle": $0.bundleURL?.path ?? ""]
+                })
+                RunLoop.main.run(until: Date().addingTimeInterval(0.04))
+            }
+            let data = try! JSONSerialization.data(withJSONObject: samples)
+            try! data.write(to: URL(fileURLWithPath: record))
+            exit(0)
+        }
+        let application = NSApplication.shared
+        application.setActivationPolicy(.regular)
+        application.finishLaunching()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let package = Bundle.main.bundleURL.deletingLastPathComponent()
+            let launcherText = try! String(contentsOf: package.appendingPathComponent("launcher.pid"), encoding: .utf8)
+            let launcherPID = pid_t(launcherText.trimmingCharacters(in: .whitespacesAndNewlines))!
+            let record: [String: Any] = [
+                "bundle": Bundle.main.bundleURL.path,
+                "policy": NSRunningApplication.current.activationPolicy.rawValue,
+                "pid": ProcessInfo.processInfo.processIdentifier,
+                "arguments": Array(CommandLine.arguments.dropFirst()),
+                "responsible": ProcessInfo.processInfo.environment["JOBS_FINDER_RESPONSIBLE_APP"] ?? "",
+                "bundleEnvironment": ProcessInfo.processInfo.environment["__CFBundleIdentifier"] ?? "",
+                "launcherAlive": kill(launcherPID, 0) == 0
+            ]
+            let data = try! JSONSerialization.data(withJSONObject: record)
+            try! data.write(to: URL(fileURLWithPath: Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("native.json").path))
+            exit(0)
+        }
+        RunLoop.main.run()
+      SWIFT
+      binary = File.join(directory, 'DockIdentity')
+      output, result = Open3.capture2e('/usr/bin/xcrun', 'swiftc', source, '-o', binary)
+      assert result.success?, output
+      FileUtils.cp(binary, File.join(native, 'Contents/MacOS/DockIdentity'))
+      File.write(File.join(native, 'Contents/Info.plist'), <<~PLIST)
+        <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>#{native_id}</string><key>CFBundleExecutable</key><string>DockIdentity</string><key>CFBundlePackageType</key><string>APPL</string><key>LSUIElement</key><true/></dict></plist>
+      PLIST
+      FileUtils.cp(binary, File.join(cache, 'SelectFinderExtensionFeatures'))
+      File.utime(Time.now + 60, Time.now + 60, File.join(cache, 'SelectFinderExtensionFeatures'))
+      worker_code = <<~'ZSH'
+        #!/bin/zsh
+        package="${ZSH_ARGZERO:A:h:h}"
+        print -r -- "$$" > "$package/launcher.pid"
+      ZSH
+      worker_code += File.read(HELPER)
+      worker_code += <<~'ZSH'
+        jobs_manager_prepare_gui_app() { print -r -- "$package/Native.app"; }
+        jobs_launch_finder_manager_gui "${ZSH_ARGZERO:A}" 'path_copier,中文 空格' uninstall 1
+      ZSH
+      File.write(File.join(scripts, 'ManageFinderExtensions.zsh'), worker_code)
+      [app, native].each do |bundle|
+        output, result = Open3.capture2e('/usr/bin/codesign', '--force', '--sign', '-', bundle)
+        assert result.success?, output
+      end
+      observation = File.join(directory, 'observed.json')
+      ready = File.join(directory, 'observer.ready')
+      observer = Process.spawn(binary, 'observe', package, observation, ready, out: File::NULL, err: File::NULL)
+      Timeout.timeout(5) { sleep 0.02 until File.file?(ready) }
+      # 只启动临时包；公开启动PID须退出，native由LaunchServices独立启动。
+      output, result = Open3.capture2e('/usr/bin/open', '-g', '-n', '-W', app)
+      assert result.success?, output
+      _, observed_status = Timeout.timeout(8) { Process.wait2(observer) }
+      observer = nil
+      assert observed_status.success?, 'native observer completed'
+      samples = JSON.parse(File.read(observation))
+      # Shell 启动壳尚未完成 AppKit 启动时不一定出现在 runningApplications，代理策略由其真实 plist 核对。
+      assert samples.any?(&:empty?), 'the observer started before the native handoff'
+      native_samples = samples.flatten(1).select { |entry| entry['identifier'] == native_id }
+      refute_empty native_samples, 'observed the independent native host after LaunchServices handoff'
+      assert native_samples.any? { |entry| entry['policy'] == 0 }, 'native host becomes the only regular application'
+      assert samples.all? { |sample| sample.count { |entry| entry['policy'] == 0 } <= 1 }, 'never exposed two regular applications'
+      state = JSON.parse(File.read(File.join(package, 'native.json')))
+      assert_equal native, state['bundle']
+      assert_equal 0, state['policy']
+      launcher_pid = Integer(File.read(File.join(package, 'launcher.pid')))
+      refute_equal launcher_pid, state['pid'], 'native must not inherit the public launcher process identity'
+      assert_raises(Errno::ESRCH) { Process.kill(0, launcher_pid) }
+      assert_equal native, state['responsible']
+      assert_equal native_id, state['bundleEnvironment'], 'LaunchServices establishes the native bundle identity'
+      assert_equal false, state['launcherAlive'], 'ordinary GUI hands off without keeping the public launcher alive'
+      assert_equal ['--manager', File.join(scripts, 'ManageFinderExtensions.zsh'), '--action', 'uninstall', '--install-location', 'build', '--no-cleanup-build-products', '--scope', 'path_copier,中文 空格'], state['arguments']
+      File.unlink(File.join(package, 'native.json'))
+      output, result = Open3.capture2e('/usr/bin/open', '-g', '-n', '-W', '--env', 'JOBS_FINDER_GUI_WAIT=1', app)
+      assert result.success?, output
+      state = JSON.parse(File.read(File.join(package, 'native.json')))
+      assert_equal true, state['launcherAlive'], 'snapshot supervisor remains alive until its independent native host exits'
+      refute_equal Integer(File.read(File.join(package, 'launcher.pid'))), state['pid']
+      assert_equal native_id, state['bundleEnvironment']
+    ensure
+      if observer
+        begin
+          Process.kill('TERM', observer)
+          Process.wait(observer)
+        rescue Errno::ESRCH, Errno::ECHILD
+        end
+      end
+      [app, native].compact.each do |bundle|
+        system('/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Support/lsregister',
+               '-u', bundle, out: File::NULL, err: File::NULL) if File.directory?(bundle)
+      end
+    end
+  end
+
+  def test_gui_dispatch_preserves_scope_wait_flag_and_returns_after_handoff
+    fixture do |_directory, _package, cache, entry, _binary|
+      code = File.read(HELPER) + <<~'ZSH'
+        jobs_manager_open_gui_app() {
+          print -r -- "RESPONSIBLE=$JOBS_FINDER_RESPONSIBLE_APP"
+          printf 'OPEN:%s\n' "$@"
+        }
+        jobs_launch_finder_manager_gui "$1" $'file-create,中文 空格\nquote\047$()' uninstall 1 || exit $?
+        print -r -- handoff-returned
+      ZSH
+      output, errors, result = Open3.capture3({ 'JOBS_FINDER_MANAGER_CACHE_DIR' => cache, 'JOBS_FINDER_GUI_WAIT' => '1' }, '/bin/zsh', '-f', '-c', code, 'fixture', entry)
+      assert result.success?, output + errors
+      app = File.join(cache, 'Jobs右键菜单管理面板.app')
+      assert_includes output, "RESPONSIBLE=#{app}"
+      assert_includes output, "OPEN:#{app}\nOPEN:1\nOPEN:--manager\nOPEN:#{entry}\nOPEN:--action\nOPEN:uninstall"
+      assert_includes output, "OPEN:--scope\nOPEN:file-create,中文 空格\nquote'$()"
+      assert_includes output, 'handoff-returned'
+    end
+  end
+
+  def test_gui_open_failure_keeps_launch_failure_status
+    fixture do |_directory, _package, cache, entry, _binary|
+      code = File.read(HELPER) + <<~'ZSH'
+        jobs_manager_open_gui_app() { return 23; }
+        jobs_manager_launch_error() { print -u2 -r -- "$1|${2:-}"; return 1; }
+        jobs_launch_finder_manager_gui "$1" '' install 1
+      ZSH
+      output, errors, result = Open3.capture3({ 'JOBS_FINDER_MANAGER_CACHE_DIR' => cache }, '/bin/zsh', '-f', '-c', code, 'fixture', entry)
+      assert_equal 23, result.exitstatus, output + errors
+      assert_includes errors, '无法启动管理面板 App。'
     end
   end
 

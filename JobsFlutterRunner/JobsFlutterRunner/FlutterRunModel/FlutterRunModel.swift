@@ -28,7 +28,7 @@ final class FlutterRunModel {
     }
 
     func run(_ projectURL: URL, completion: @escaping () -> Void) {
-        guard FlutterProjectValidator().isFlutterProject(at: projectURL) else {
+        guard FlutterProjectValidator().runProjectURL(for: projectURL) != nil else {
             record("当前文件夹不是可识别的 Flutter 项目：\(projectURL.path)")
             completion()
             return

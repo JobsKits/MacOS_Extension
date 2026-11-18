@@ -25,9 +25,13 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-**鸿蒙连接可见性：** “目前已有的设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+**独立 Dart Demo：** 在 Finder 中右键 Flutter 工程内单个真实 `.dart` 文件，直接选择当前右键层的“▶️ 从终端运行 Flutter Demo”，不再进入只有这一项的工具分组。该独立扩展直接提供运行叶子；统一工具包的单项菜单展开行为见其说明，原文件与工程上下文校验保持一致。文件菜单只开放已启用的运行功能；最近的 `pubspec.yaml` 必须声明 Flutter SDK，不越过嵌套的其它包。Terminal 确认后沿用现有 FVM、环境体检和设备选择，将选中文件作为 `flutter run -t` 的真实目标；运行前拒绝无可识别 `main()` 的辅助文件。不同项目、设备和入口各自保存后台会话，重新打开同一入口才重连该入口日志。主题由 Finder 跟随系统；新增 Demo 标题支持管理面板的十种语言选择。当前安装与真实运行状态见[Demo 资产盘点](../../项目相关报告/Flutter-Demo独立运行资产盘点.md#validation)，源码或隔离通过不能代替 Finder 菜单与设备验收。
 
-**运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。检查失败、超时、结果无法解析或体检资源缺失时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；选中鸿蒙连接项或环境未就绪的真实鸿蒙设备后，当前流程会备份配置并直接承接准备，不要求另找入口。准备只执行一次，之后有界重查原设备，不重复获取 SDK 或构建。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
+**鸿蒙连接可见性：** “目前已有的真实设备”同时读取当前 SDK 的可运行设备、HDC 连接及系统 USB 调试设备。HDC 未安装或当前 SDK／工程尚未适配时，明确列出“鸿蒙 USB 设备 — 已连接，环境未就绪”，选择后在同一运行流程准备缺失的鸿蒙 SDK、配套工具、平台和依赖，复检通过后只等待原设备并继续运行；诊断标识始终不直接作为 Flutter 设备 ID。准备失败、取消、插件不支持或原设备身份变化均停止本轮，不自动改选其它设备。已显示的同一可运行设备按精确身份去重；普通华为外设不冒充鸿蒙设备。
+
+**运行前环境体检：** 项目 SDK 与公共缓存准备完成后，先展示 iOS、Android、OpenHarmony 三端状态，再选择设备；仅本次运行平台必须全部通过，其它平台缺项不阻断。检查 SDK 构建能力、当前依赖索引和平台工具链；鸿蒙额外检查 DevEco／HDC／OHPM／Hvigor／Java、`ohos/` 工程结构及原生插件声明。可自动补齐的目标缺项在当前流程准备并复检；检查超时、结果无法解析、体检资源缺失或准备后仍未通过时停止，不进入目标预缓存或后台运行。体检本身不安装工具、不切换 SDK、不生成平台源码；选中鸿蒙连接项或环境未就绪的真实鸿蒙设备后，当前流程会备份配置并直接承接准备，不要求另找入口。准备只执行一次，之后有界重查原设备，不重复获取 SDK 或构建。原始检查输出保存在操作日志旁的 `.preflight.*` 文件。检查通过仍需以实际构建和设备启动结果验收。
+
+公共依赖索引在首次体检前先与本轮选定 SDK 核对；缺失或指向其它 SDK 时，在当前工程使用同一 Flutter 执行 `pub get` 后复检。公共只读探针超时或因信号退出时直接停止并保留退出码，不再执行 `pub get`。索引仍无效就停止，不进入无关 Android 工具或许可证准备；索引有效后才按仍缺失的目标平台组件继续。Android 许可必须是本轮命令退出成功且末尾明确报告全部接受，兼容成功句末有无句点及终端 CR／ANSI 差异，不自动代为接受许可。
 
 **下载版本与组件：** 运行器在 SDK 安装 / 首次补齐及选定平台预缓存之前，先展示项目声明 Flutter、实际解析的 SDK 根路径、本地 Git 精确 tag / 提交或本地版本记录、下载宿主架构、目标平台和 Engine 提交；不靠执行 Flutter / Dart 探测版本。Git 查询只读、禁止隐式联网且单次最多 5 秒，无法确认就明确未解析。Darwin 下载架构按物理 ARM 能力识别，兼容 Rosetta。Dart 目标版本只采信 SDK 明确声明，或与目标 Engine 一致的版本 JSON / 当前缓存 stamp；`.old` 和不匹配的缓存不当作本次目标。尚无可信记录时显示“版本尚未解析，待目标 SDK 下载完成后确认”，目标版本展示不代表已经安装验收。
 
@@ -41,7 +45,7 @@
 
 **菜单范围：桌面空白处不显示本功能；文件夹与项目菜单仍按下文条件显示。桌面上选中的项目文件夹不受此空白菜单规则影响。**
 
-面向 Jobs 与 macOS 开发人员的独立 Finder 扩展：仅在 Flutter 项目根目录显示“从终端运行 Flutter 项目”，设备选择、构建日志和控制操作都在 Terminal 中完成。状态：维护中；负责人：Jobs。关闭 Terminal 只离开日志，Flutter 由当前登录用户会话的 launchd 继续托管。
+面向 Jobs 与 macOS 开发人员的独立 Finder 扩展：在 Flutter 项目根目录显示“从终端运行 Flutter 项目”，在其中单个 `.dart` 文件显示“从终端运行 Flutter Demo”，设备选择、构建日志和控制操作都在 Terminal 中完成。状态：维护中；负责人：Jobs。关闭 Terminal 只离开日志，Flutter 由当前登录用户会话的 launchd 继续托管。
 
 | 项目 | 实际行为 |
 | --- | --- |
@@ -51,7 +55,7 @@
 | iOS 模拟器 | 已有组只启动现有设备；新建组调用随包桌面创建器，按匹配型号和已安装 Runtime 创建并启动。不安装 Xcode / Runtime、不删除其它设备，创建结果不明确时保留诊断，不盲目重试。 |
 | Android 模拟器 | 已有组按 AVD 名精确启动并等待被 Flutter 识别；新建组复用桌面创建器，准备所需工具链、型号与系统镜像，再按原许可和确认执行。 |
 | 终端与后台 | `launchd` 管理独立 `flutter run --machine`；终端实时追踪会话 `run.log`。关闭窗口、Ctrl+C 或 `d` 只断开查看；`s` 明确停止。 |
-| 继续查看 | 再次右键同一项目，选择同一设备，连接已有会话；不重复启动同一项目和设备。 |
+| 继续查看 | 再次右键同一项目根目录或同一个 Dart 入口，选择同一设备，连接该目标的已有会话；切换 Demo 入口会建立独立会话。 |
 | SDK | 优先使用项目 `.fvm/flutter_sdk/bin/flutter`；缺失或断链时读取 `.fvmrc` / `.fvm/fvm_config.json` 声明的版本并用本机 fvm 补齐——本机缓存已有该版本只重建链接、不下载，缓存没有时自动下载，失败持续重试；其次终端 PATH 中的 Flutter。不安装或升级全局 Flutter / Xcode。 |
 
 本目录是 [MacOS@Extension](../README.md) 单仓管理的普通源码工程，可整体复制并独立构建、安装和卸载；没有独立 `.git` 或 `.gitmodules`。父仓实际关联及两平台地址见[父仓速览](../README.md#前言)，不为本工程创建已撤销的独立远端。
@@ -72,9 +76,9 @@
 
 ## 一、<span id="install">安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter运行Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择和关闭入口，结束后保留结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
+菜单安装与卸载统一使用 [图形管理入口](./【MacOS】管理Flutter运行Finder扩展.app)。直接打开面板，选择“安装 / 更新”或“卸载”并勾选当前范围内的功能；默认空选，点击操作按钮即确认。功能整行可切换勾选，失败日志入口保留独立动作，拖动、滚动和执行中不误选。每项显示等待、正在安装 / 卸载、成功或失败；底部日志实时滚动，可选择复制或复制全部。运行中锁定选择，关闭直接退到 Dock（程序坞）及系统状态栏，不询问、不打断任务；空闲关闭时选择后台或完全退出，默认后台。状态项可恢复原面板，完成后继续驻留供查看结果与日志。首次打开或面板源码更新后会在后台编译，失败以桌面提示和启动日志说明。
 
-原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
+原同名 `.command` 入口保留，终端只负责唤起独立 GUI，随后结束启动脚本；本次启动任务结束后自动关闭对应终端页，安装 / 卸载、进度与实时日志均由 GUI 后台处理。已有交互 Shell 中手工调用时保留原工作会话。内部实现为 `Scripts/【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh`；完整仓内单功能入口使用总面板的受限范围。可独立复制的包须整体保留 `.command`、`.app`、Scripts、工程源码和资源。
 
 启动器按自身位置定位配套文件，不依赖本机固定目录或启动时的工作目录。`.command` 会把当前包目录传给同名 App；直接打开 App 无法定位 `Scripts` 时，按提示选择同时包含同名 App 与 `Scripts/` 的原始目录，取消选择不会执行安装或卸载。
 
@@ -92,9 +96,15 @@
 
 1、在 Finder 右键单个真实 Flutter 项目文件夹，或进入该项目后右键空白处，点击“从终端运行 Flutter 项目”。宿主为 `LSUIElement` 后台进程，不创建管理窗口或 Dock 图标；Terminal 转发完成后退出。
 
-- 在终端阅读自述后回车继续，非空输入取消。设备选择分为“目前已有的设备”“新建设备”和独立的“启动虚拟设备”。已有组只显示当前已连接 / 正在运行的设备及鸿蒙连接诊断，可重新加载；启动组二级固定提供 iOS、Android、鸿蒙模拟器，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再列出、启动已有实例。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件。空清单不会隐式新建；启动就绪后才进入工程运行门禁，失败不改选其它设备。新建组始终提供 iOS、Android、Harmony（鸿蒙）三项，直接在当前终端复用桌面右键的创建脚本和原有自述、许可及最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，创建器通过本轮私有回执交接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 目标核验后等待同一 Flutter ID；就绪后自动继续原工程的预缓存与 `flutter run`，不再要求二次选择。取消、缺少有效回执、等待失败均不运行其它设备；没有对应平台目录的工程仍可新建设备，完成后保留设备并返回分组，不自动运行。 根层 `Esc` 或“取消本轮运行”结束；已有／新建子层用 `←` 或“返回设备分组”回根层，启动平台层用 `←` 返回根层，实例层用 `←` 返回启动平台层；返回保留已准备工具，本轮复用已通过的准备。`↑/↓` 移动、回车选择，搜索可选；创建器内部沿用其原有按键和确认。
+- 在终端阅读自述后回车继续，非空输入取消。设备选择分为“目前已有的真实设备”“虚拟设备”和“其他运行目标（桌面 / Web）”，另有重新加载入口。设备选择器只显示一列可读名称，不把内部设备 ID、TSV 字段或选择器行标识显示成第二列，也不显示冗余的取消操作行；Esc／Ctrl+C 取消和子层左方向键返回保留，普通确认菜单的取消项不受影响；确认后仍按所选行精确绑定原设备，同名设备不会按名称误连。真实设备组只展示当前已连接的手机及鸿蒙连接诊断，不混入模拟器；桌面、浏览器和自定义平台保留在其他目标中。虚拟设备组按 iOS、Android、Harmony 分别进入子菜单，每组先列已有实例，最后一项为“新建 iOS / Android / Harmony 虚拟设备”（按所在系统显示实际名称）；无已有实例时仍可选择新建，不隐式执行创建。
 
-3、查看实时日志。输入 `r` 热重载、`R` 热重启、`s` 停止、`d` 离开；构建阶段尚无 Flutter appId 时，热重载会提示稍后重试。终端关闭不作为停止信号。
+选定虚拟设备系统后，先在当前流程完成宿主环境体检、兼容正式更新、缺失组件准备与复检，再展示已有实例及新建入口。启动环境不先改工程 SDK、生成 `ohos/` 或检查第三方插件；已有实例、数据及镜像保持原样，运行中的实例直接复用，失败不改选其它设备。新建在当前终端复用桌面创建器及原有自述、许可和最终确认，不要求其它创建扩展已安装，也不要求当前工程已有对应平台目录。创建并启动成功后，通过本轮私有回执承接精确标识：Android 按 AVD 名等待开机后匹配 serial，iOS 按 UDID、Harmony 按实例端口及 HDC 核验同一 Flutter ID；就绪后自动继续原工程预缓存与 `flutter run`，无需二次选择。取消、无有效回执或等待失败均不运行其它设备；工程缺对应平台目录时保留新设备并返回分组。
+
+菜单不再显示“取消本轮运行”；`Esc` / `Ctrl+C` 结束选择，`←` 逐层返回真正上一层，文本模式用 `b` 返回。平台实例列表最后始终为新建项，返回通过按键完成；返回保留本轮已准备并复检的工具。`↑/↓` 移动、回车确认、输入可筛选；创建器继续沿用各自原有确认。SDK 下载上下文、环境准备与 Flutter 构建运行等里程碑标题统一红色粗体；正文保留原信息配色，纯文本环境和落盘日志不含颜色控制码。
+
+**体检、准备与日志：** 每个平台的缺项逐行显示，合格为绿色勾、失败为红色叉。所选 iOS / Android 环境缺失时直接补齐并复检；所选 Harmony 沿原设备身份准备 SDK、工具、平台和依赖。其它未就绪平台按“回车后台补齐；任意字符加回车不补”选择，运行日志可输入 `e` 停止经身份复核的本工程后台任务；后台只写隔离缓存和工程草稿，不修改当前运行工程、FVM 或依赖索引；实际选用时再应用项目集成并复检，插件适配、许可和授权不冒充自动完成。SDK 下载上下文对照官网当前最新稳定 SDK、本机环境和工程 FVM 声明／解析结果，官网查询失败明确未知，不自动升级工程绑定。URL 统一绿色下划线，错误正文红色，结构日志保留原标签并加 emoji；纯文本及原始日志不含 ANSI。iOS Pod 下载遇到明确网络断流会保留锁及原设备，在本任务内切换 Git HTTP/1.1 并持续重试依赖获取，成功后继续原设备；认证、校验、版本冲突与编译错误不误重试。
+
+3、查看实时日志。输入 `r` 热重载、`R` 热重启、`s` 停止运行、`e` 停止本工程后台环境准备、`d` 离开；构建阶段尚无 Flutter appId 时，热重载会提示稍后重试。终端关闭不作为停止信号。
 
 也可在本目录直接运行源码脚本，必须与 `FlutterRunner.jxa` 保持同目录：
 
@@ -107,15 +117,15 @@
 
 ## 三、<span id="lifecycle">后台、日志与停止</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-每个项目路径与设备 ID 生成独立会话，数据位于当前用户资源库的 `Application Support/JobsFlutterRunner/sessions/`。会话保存两份脚本快照、`job.plist`、`run.log`、控制 FIFO 及进程退出状态。Terminal 中的路径会精确打印，可用于排查；新运行会归档旧 `run.log`，不会覆盖旧构建日志。
+单文件 Demo 以项目路径、设备 ID 与实际 Dart 入口路径共同生成独立会话；项目根目录运行默认入口时，继续使用原有项目路径与设备 ID 会话键，兼容已有会话。数据位于当前用户资源库的 `Application Support/JobsFlutterRunner/sessions/`。会话保存两份脚本快照、`job.plist`、`run.log`、控制 FIFO 及进程退出状态。Terminal 中的路径会精确打印，可用于排查；新运行会归档旧 `run.log`，不会覆盖旧构建日志。
 
 终端将 machine 协议转换为 `[依赖]`、`[进行]`、`[完成]`、`[警告]`、`[错误]`、`[成功]` 等中文日志。依赖版本列表与已知系统索引噪声折叠；快捷指令 / Spotlight 的 `WF*` 参数转换与缺失扩展诊断合并为一条 `[提示]`，不再仅因含 `Failed` 就标成 Flutter 错误。停维依赖名称、SPM 不兼容插件名、应用输出、错误堆栈、非零索引错误计数与未知事件保留；machine 协议中的应用错误不会被系统诊断规则折叠。仅收到 `app.started` 才显示“应用已启动”；提交后台任务或开始编译均不表示启动成功。原始 `run.log` 不做过滤，热重载 / 停止仍读取完整协议。重新连接会重放本次会话日志，便于查看完整构建过程；输入控制命令后回车，不再让提示符与异步日志挤在同一行。
 
 FIFO 控制通道使用读写模式的保活 fd，Flutter stdin 单独以只读模式打开。真实 Flutter 热重载回归返回成功（code 0）；此证据只覆盖控制通道，设备与工程仍按实际运行验收。
 
-日志回归：`ruby Tests/FlutterRunnerLogTests.rb`，覆盖成功与警告分级、失败堆栈、未知 / 损坏协议、SPM 插件名、分段 UTF-8、末尾半行及非零退出码。Shell 测试在临时工作目录运行，夹具不写入源码目录。
+日志回归：`ruby Tests/FlutterRunnerLogTests.rb/FlutterRunnerLogTests.rb`，覆盖成功与警告分级、失败堆栈、未知 / 损坏协议、SPM 插件名、分段 UTF-8、末尾半行及非零退出码。Shell 测试在临时工作目录运行，夹具不写入源码目录。
 
-`launchctl bootstrap gui/<当前 UID>` 将 Worker 交给当前桌面登录会话托管，不依赖 Finder 宿主或 Terminal 的进程生命周期。它支持关闭终端后继续运行；注销、关机、Flutter 自身退出或明确停止仍会结束进程，不是开机自启或崩溃自动重启服务。再次启动同一项目与设备时重新连接。
+`launchctl bootstrap gui/<当前 UID>` 将 Worker 交给当前桌面登录会话托管，不依赖 Finder 宿主或 Terminal 的进程生命周期。它支持关闭终端后继续运行；注销、关机、Flutter 自身退出或明确停止仍会结束进程，不是开机自启或崩溃自动重启服务。再次启动同一项目、设备与 Dart 入口时重新连接；项目根目录运行只重连其原默认入口会话。
 
 | 日志 | 位置 / 内容 |
 | --- | --- |
@@ -124,7 +134,7 @@ FIFO 控制通道使用读写模式的保活 fd，Flutter stdin 单独以只读�
 | `run.log` | 用户资源库会话目录；Flutter 构建与运行的完整 machine 日志。 |
 | `JobsFlutterRunnerInstall.log` / `JobsFlutterRunnerBuildPhase.log` | 系统临时目录；安装或 Xcode 构建时的扩展注册诊断。 |
 
-停止时再次右键并选择相同设备，输入 `s`，脚本先请求 Flutter 停止，再注销该会话 job，保留日志。卸载 Finder 扩展只移除菜单与宿主，不停止已经独立运行的 Flutter 会话；卸载前可先按上述方式停止，卸载入口见[第一章](#install)。
+停止时再次右键原项目根目录或同一个 Dart 入口，并选择相同设备，输入 `s`，脚本先请求 Flutter 停止，再注销该会话 job，保留日志。卸载 Finder 扩展只移除菜单与宿主，不停止已经独立运行的 Flutter 会话；卸载前可先按上述方式停止，卸载入口见[第一章](#install)。
 
 ## 四、<span id="structure">目录与实现边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -161,7 +171,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[RunFlutterProject.zsh 自述与根目录复核] --> B[准备项目 SDK 与公共缓存]
+    A[RunFlutterProject.zsh 自述与项目 / Dart 入口复核] --> B[准备项目 SDK 与公共缓存]
     B --> B1[展示 iOS / Android / 鸿蒙健康检查结果]
     B1 --> C{选择 iOS 且无模拟器?}
     C -->|是| D[选择已安装 runtime 和设备型号并创建]
@@ -170,7 +180,7 @@ flowchart TD
     E --> E1{所选运行平台检查全部通过?}
     E1 -->|否| E2[显示缺项并停止运行]
     E1 -->|是| E3[准备所选目标平台缓存]
-    E3 --> F{同项目与设备已有会话?}
+    E3 --> F{同项目、设备与入口已有会话?}
     F -->|是| H[连接 run.log 与控制 FIFO]
     F -->|否| G[保存脚本快照并 bootstrap launchd Worker]
     G --> H
@@ -206,17 +216,17 @@ xcrun swiftc \
   ./Tests/FlutterRunTransportTests.swift \
   -o ./work/FlutterRunTransportTests
 ./work/FlutterRunTransportTests
-ruby ./Tests/FlutterRunnerShellTests.rb
-ruby ./Tests/FlutterRunnerAndroidTests.rb
-ruby ./Tests/FlutterRunnerJSONTests.rb
-ruby ./Tests/FlutterRunnerLogTests.rb
-ruby ../Tests/FlutterInstallerIntegrationTests.rb
+ruby Tests/FlutterRunnerShellTests.rb/FlutterRunnerShellTests.rb
+ruby Tests/FlutterRunnerAndroidTests.rb/FlutterRunnerAndroidTests.rb
+ruby Tests/FlutterRunnerJSONTests.rb/FlutterRunnerJSONTests.rb
+ruby Tests/FlutterRunnerLogTests.rb/FlutterRunnerLogTests.rb
+ruby ../Tests/FlutterInstallerIntegrationTests.rb/FlutterInstallerIntegrationTests.rb
 ```
 
 用真实 launchd 和临时假 Flutter 验证终端退出、HUP 后存活、日志增长、重连、热重载与停止；仅创建并清理临时会话，不触碰用户项目或 Finder：
 
 ```shell
-ruby ./Tests/FlutterRunLaunchdSmoke.rb
+ruby Tests/FlutterRunLaunchdSmoke.rb/FlutterRunLaunchdSmoke.rb
 ```
 
 | 现象 | 处理 |

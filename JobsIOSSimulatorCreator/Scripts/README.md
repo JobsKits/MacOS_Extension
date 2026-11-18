@@ -20,9 +20,9 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-[ManageExtension.zsh](./ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
+[ManageExtension.zsh](./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh) 是本功能的内部管理器，由上级 `.command` 启动器唤起的独立 App 调用；启动器结束后，安装 / 卸载确认、逐项状态和实时日志都在 GUI 内处理。正常使用从上级管理入口进入，后台非交互参数仅由面板提交已确认的计划。
 
-此目录由 [**macOS**](https://www.apple.com/macos/) Finder 扩展宿主调用；核心业务全部位于 [`CreateIOSSimulator.zsh`](./CreateIOSSimulator.zsh)，复制单个脚本也能独立运行，不依赖原始 `JobsCommand@iOS` 目录或当前工作目录。
+此目录由 [**macOS**](https://www.apple.com/macos/) Finder 扩展宿主调用；核心业务全部位于 [`./【MacOS】CreateIOSSimulator.zsh/【MacOS】CreateIOSSimulator.zsh`](./【MacOS】CreateIOSSimulator.zsh/【MacOS】CreateIOSSimulator.zsh)，复制单个脚本也能独立运行，不依赖原始 `JobsCommand@iOS` 目录或当前工作目录。
 
 | 入口 / 行为 | 实际结果 |
 | --- | --- |
@@ -124,7 +124,7 @@ swiftc \
 
 ## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、构建后启用入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-[`EnableFinderExtension.zsh`](./EnableFinderExtension.zsh) 由本工程 Xcode Build Phase 调用，注册并启用当前产物中的固定扩展；只按当前 appex 精确路径判断成功，失败保留待刷新标记与诊断日志。设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 会跳过注册与刷新，供总安装器接管或隔离构建使用；手动无构建上下文时拒绝执行。日志名为系统临时位置中的 `JobsIOSSimulatorCreatorBuildPhase.log`。
+[`./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh`](./【MacOS@Xcode】EnableFinderExtension.zsh/【MacOS@Xcode】EnableFinderExtension.zsh) 由本工程 Xcode Build Phase 调用，注册并启用当前产物中的固定扩展；只按当前 appex 精确路径判断成功，失败保留待刷新标记与诊断日志。设置 `JOBS_SKIP_FINDER_EXTENSION_BUILD_PHASE=1` 会跳过注册与刷新，供总安装器接管或隔离构建使用；手动无构建上下文时拒绝执行。日志名为系统临时位置中的 `JobsIOSSimulatorCreatorBuildPhase.log`。
 
 独立安装与构建后启用的命令替身回归：
 

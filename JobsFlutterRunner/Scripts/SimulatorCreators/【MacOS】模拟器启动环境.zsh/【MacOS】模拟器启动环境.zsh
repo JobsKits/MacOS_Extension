@@ -2,6 +2,39 @@
 # Created by Jobs on 2026年11月12日，星期四.
 # 供运行器 source：只准备启动已有模拟器所需的宿主工具，不创建业务平台或修改项目依赖。
 # 下载沿现有持续重试与官方许可；不会新建、删除、重置或升级既有系统镜像。
+# JOBS_SOURCE_LAYOUT_V1：源码同名包装与发布旧平铺目录分别解析，不改变运行时资源名。
+# 保留实际文件路径；只有源码同名包装才向上还原原资源目录。
+jobs_layout_directory() {
+  local file="${1:A}" directory="${1:A:h}" levels="${2:-0}"
+  [[ "${directory:t}" != "${file:t}" ]] || directory="${directory:h}"
+  while (( levels > 0 )); do
+    directory="${directory:h}"
+    (( levels -= 1 ))
+  done
+  print -r -- "$directory"
+}
+# 优先兼容已发布的平铺文件，再尝试源码中的同名包装；不跟随链接文件。
+jobs_layout_file() {
+  local file="$1" directory="${1:h}" name="${1:t}" candidate="" prefixed=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    print -r -- "$file"
+    return 0
+  fi
+  case "$name" in
+    EnableFinderExtension.zsh) prefixed="【MacOS@Xcode】$name" ;;
+    *.zsh|*.command|*.sh) [[ "$name" == '【MacOS'* ]] && prefixed="$name" || prefixed="【MacOS】$name" ;;
+    *.jxa) prefixed="$name" ;;
+    *) print -r -- "$file"; return 0 ;;
+  esac
+  [[ "${directory:t}" != "$name" ]] || directory="${directory:h}"
+  candidate="$directory/$prefixed/$prefixed"
+  if [[ ! -L "$directory/$prefixed" && -f "$candidate" && ! -L "$candidate" ]]; then
+    print -r -- "$candidate"
+  else
+    print -r -- "$file"
+  fi
+}
+
 typeset -g JOBS_SIM_ENV_PACKAGE="${${(%):-%x}:A:h}"
 typeset -g JOBS_SIM_HARMONY_BIN=""
 typeset -g ANDROID_RUN_AVD_IDENTITY=""
@@ -19,7 +52,7 @@ jobs_sim_query() {
 }
 # 配置摘要与JSON解析也有总时限，畸形或超大实例清单不会无限阻塞列表。
 jobs_sim_instance_json() {
-  jobs_sim_query instance-json 30 /usr/bin/osascript -l JavaScript "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa" "$@" || return $?
+  jobs_sim_query instance-json 30 /usr/bin/osascript -l JavaScript "$(jobs_layout_file "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa")" "$@" || return $?
   /bin/cat "$LOG_FILE.simulator-instance-json"
 }
 # 官方组件安装保留本人许可与管理员交互，不使用 sudo 或自动接受参数。
@@ -76,7 +109,7 @@ jobs_sim_prepare_android() (
   local -a packages=()
   android_log '来源：Google Android SDK Repository（https://dl.google.com/android/repository/）；只检查正式启动工具组件。'
   jobs_sdk_retry 'Android 启动组件正式更新清单' "$LOG_FILE" jobs_sim_android_updates_once "$report" || return $?
-  updates="$(/usr/bin/osascript -l JavaScript "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa" android-updates "$report" 2>> "$LOG_FILE")" || {
+  updates="$(/usr/bin/osascript -l JavaScript "$(jobs_layout_file "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa")" android-updates "$report" 2>> "$LOG_FILE")" || {
     android_log "✖ Android 正式清单缺失、截断或格式无效，未报告就绪；详情：$report"
     return 67
   }
@@ -89,7 +122,7 @@ jobs_sim_prepare_android() (
   done
   if (( ${#packages} )); then
     jobs_sdk_retry 'Android 启动组件更新后复检' "$LOG_FILE" jobs_sim_android_updates_once "$report" || return $?
-    updates="$(/usr/bin/osascript -l JavaScript "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa" android-updates "$report" 2>> "$LOG_FILE")" || { android_log "✖ Android 更新后清单无法核验；详情：$report"; return 67; }
+    updates="$(/usr/bin/osascript -l JavaScript "$(jobs_layout_file "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa")" android-updates "$report" 2>> "$LOG_FILE")" || { android_log "✖ Android 更新后清单无法核验；详情：$report"; return 67; }
     [[ -z "$updates" ]] || { android_log "✖ 正式组件更新后仍未就绪：$updates"; return 1; }
   fi
   android_ensure_emulator || return $?
@@ -276,12 +309,12 @@ jobs_sim_prepare_ios() {
   log '▶ 官方检查并安装当前 Xcode 的兼容组件更新；不替换完整 Xcode 或已有 Runtime。'
   jobs_sim_xcode_acquire -runFirstLaunch -checkForNewerComponents || return $?
   jobs_sim_query ios-runtimes 30 /usr/bin/xcrun simctl list runtimes available -j || return $?
-  ready="$(/usr/bin/osascript -l JavaScript "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa" ios-ready "$LOG_FILE.simulator-ios-runtimes")" || return 1
+  ready="$(/usr/bin/osascript -l JavaScript "$(jobs_layout_file "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa")" ios-ready "$LOG_FILE.simulator-ios-runtimes")" || return 1
   if [[ "$ready" != true ]]; then
     log '▶ 当前 Xcode 无可用 iOS Runtime，自动下载此 Xcode 支持的正式 iOS 平台；保留已有镜像与设备。'
     jobs_sim_xcode_acquire -downloadPlatform iOS || return $?
     jobs_sim_query ios-runtimes 30 /usr/bin/xcrun simctl list runtimes available -j || return $?
-    ready="$(/usr/bin/osascript -l JavaScript "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa" ios-ready "$LOG_FILE.simulator-ios-runtimes")" || return 1
+    ready="$(/usr/bin/osascript -l JavaScript "$(jobs_layout_file "$JOBS_SIM_ENV_PACKAGE/模拟器实例.jxa")" ios-ready "$LOG_FILE.simulator-ios-runtimes")" || return 1
     [[ "$ready" == true ]] || { log '✖ 官方下载后仍无当前 Xcode 可用的 iOS Runtime，未启动。'; return 1; }
   fi
   jobs_sim_query ios-simctl 30 /usr/bin/xcrun simctl list devices available -j || return $?

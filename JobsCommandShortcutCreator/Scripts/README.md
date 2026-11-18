@@ -4,8 +4,8 @@
 
 | 文件 / 目录 | 职责 |
 | --- | --- |
-| `ManageExtension.zsh` | 校验本包范围，打开面板或执行已确认的后台操作；只管理 `JobsCommandShortcutCreator` |
-| `FinderManagerGUI.zsh` | 编译、缓存、签名并打开原生 GUI；不自行安装或卸载扩展 |
+| `./【MacOS】ManageExtension.zsh/【MacOS】ManageExtension.zsh` | 校验本包范围，打开面板或执行已确认的后台操作；只管理 `JobsCommandShortcutCreator` |
+| `./【MacOS】FinderManagerGUI.zsh/【MacOS】FinderManagerGUI.zsh` | 编译、缓存、签名并打开原生 GUI；不自行安装或卸载扩展 |
 | `ManagementPanel.swift` | 随包管理面板，提供十语言、三种主题、空选门禁、逐项状态与可复制日志 |
 | [【MacOS】AppDeployment.zsh](./【MacOS】AppDeployment.zsh/README.md) | 精确 App 身份核验、安装位置、事务备份恢复与清理 |
 | [【MacOS】联合App管理.zsh](./【MacOS】联合App管理.zsh/README.md) | 将面板与本功能卸载资源装入联合 App，源码移走后仍可管理已安装功能 |

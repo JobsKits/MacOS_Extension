@@ -212,6 +212,6 @@ enum FlutterToolsRequest {
               let path = items[0].value, path.hasPrefix("/"), !path.utf8.contains(0) else {
             return nil
         }
-        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        return URL(fileURLWithPath: path).standardizedFileURL
     }
 }

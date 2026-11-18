@@ -243,15 +243,17 @@ require 'tmpdir'
 require 'open3'
 require 'shellwords'
 
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class AndroidRepairCatalogRetryTests < Minitest::Test
   TOOLS = File.expand_path('../../Scripts/Tools', __dir__)
   def fixture(cancel: false)
     Dir.mktmpdir('jobs-android-repair-catalog-') do |tmp|
-      source = File.read(File.join(TOOLS, 'RepairAndroidSdk.zsh'))
+      source = File.read(JobsSourceLayout.file(File.join(TOOLS, '【MacOS】RepairAndroidSdk.zsh/【MacOS】RepairAndroidSdk.zsh')))
       line = source.lines.find { |v| v.start_with?('catalog=') }
       refute_nil line
       body = <<~SH
-        source #{File.join(TOOLS, 'AndroidSdkSupport.zsh').shellescape}
+        source #{JobsSourceLayout.file(File.join(TOOLS, '【MacOS】AndroidSdkSupport.zsh/【MacOS】AndroidSdkSupport.zsh')).shellescape}
         LOG_FILE=#{File.join(tmp, 'sdk.log').shellescape}
         fixture_count=#{File.join(tmp, 'count').shellescape}
         JOBS_SDK_RETRY_DELAY=0 JOBS_SDK_RETRY_MAX_DELAY=1

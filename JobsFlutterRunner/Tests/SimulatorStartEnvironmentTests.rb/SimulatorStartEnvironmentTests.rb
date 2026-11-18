@@ -243,10 +243,12 @@ require 'fileutils'
 require 'open3'
 require 'shellwords'
 require 'json'
+require_relative '../../../Tests/SourceLayoutHelper.rb/SourceLayoutHelper'
+
 class SimulatorStartEnvironmentTests < Minitest::Test
   ROOT = File.expand_path('../../..', __dir__)
-  PACKAGE = ENV.fetch('JOBS_TEST_SIM_ENV_PACKAGE') { File.join(ROOT, 'JobsFlutterRunner/Scripts/SimulatorCreators/【MacOS】模拟器启动环境.zsh') }
-  SCRIPT = File.join(PACKAGE, '【MacOS】模拟器启动环境.zsh')
+  PACKAGE = ENV.fetch('JOBS_TEST_SIM_ENV_PACKAGE') { JobsSourceLayout.file(File.join(ROOT, 'JobsFlutterRunner/Scripts/SimulatorCreators/【MacOS】模拟器启动环境.zsh')) }
+  SCRIPT = JobsSourceLayout.file(File.join(PACKAGE, '【MacOS】模拟器启动环境.zsh'))
   def setup
     @tmp = Dir.mktmpdir("jobs-start 中文 '")
     @package = File.join(@tmp, '包')
@@ -283,7 +285,7 @@ class SimulatorStartEnvironmentTests < Minitest::Test
   def parse(mode, value, key=nil)
     path=File.join(@tmp,'inventory.json')
     File.write(path,value.is_a?(String) ? value : JSON.generate(value))
-    Open3.capture3('/usr/bin/osascript','-l','JavaScript',File.join(PACKAGE,'模拟器实例.jxa'),mode,path,*[key].compact)
+    Open3.capture3('/usr/bin/osascript','-l','JavaScript',JobsSourceLayout.file(File.join(PACKAGE,'模拟器实例.jxa/模拟器实例.jxa')),mode,path,*[key].compact)
   end
   def instance(name='Original', path=nil)
     path ||= File.join(@tmp,name)
@@ -356,7 +358,7 @@ class SimulatorStartEnvironmentTests < Minitest::Test
     end
   end
   def android_stub(updates: true, install_code: 0, report: nil, real_retry: false, first_network_failure: false)
-    core=File.read(File.join(PACKAGE,'Resources/【MacOS】Android工具库.zsh/【MacOS】Android工具库.zsh'))
+    core=File.read(JobsSourceLayout.file(File.join(PACKAGE,'Resources/【MacOS】Android工具库.zsh/【MacOS】Android工具库.zsh')))
     retry_core=core[/# JOBS_SDK_RETRY_BEGIN.*?# JOBS_SDK_RETRY_END/m]
     before=report || android_report(platform_remote:'36.0').sub(" platform-tools | 36.0 | 36.0\n",'')
     current=android_report(installed:'36.0',platform_remote:'36.0',include_updates:false)
@@ -490,9 +492,9 @@ class SimulatorStartEnvironmentTests < Minitest::Test
   end
   def test_packaged_libraries_remain_the_same_jobs_tool_core_without_entry_calls
     {'Android'=>'CreateAndroidSimulator.zsh','Harmony'=>'CreateHarmonySimulator.zsh'}.each do |platform,file|
-      original=File.read(File.join(ROOT,"Jobs#{platform}SimulatorCreator/Scripts",file))
+      original=File.read(JobsSourceLayout.file(File.join(ROOT,"Jobs#{platform}SimulatorCreator/Scripts",file)))
       core=original[original.index('# JOBS_SDK_RETRY_BEGIN')...original.rindex("\nmain() {")]
-      library=File.read(File.join(PACKAGE,'Resources',"【MacOS】#{platform}工具库.zsh","【MacOS】#{platform}工具库.zsh"))
+      library=File.read(JobsSourceLayout.file(File.join(PACKAGE,'Resources',"【MacOS】#{platform}工具库.zsh","【MacOS】#{platform}工具库.zsh")))
       assert library.end_with?(core),platform
       refute_includes library,'jobs_terminal_style_bootstrap "$0"'
       refute_match(/^main "\$@"$/,library)
@@ -530,7 +532,7 @@ class SimulatorStartEnvironmentTests < Minitest::Test
     base=File.join(@tmp,'avds');directory=File.join(base,'Original.avd');FileUtils.mkdir_p(directory)
     File.write(File.join(base,'Original.ini'),"path=#{directory}\n")
     config=File.join(directory,'config.ini');File.write(config,"AvdId=Original\nimage.sysdir.1=system-images/android-37\nhw.hdc.port=10000\n")
-    identity=-> { Open3.capture3('/usr/bin/osascript','-l','JavaScript',File.join(PACKAGE,'模拟器实例.jxa'),'avd-identity',base,'Original') }
+    identity=-> { Open3.capture3('/usr/bin/osascript','-l','JavaScript',JobsSourceLayout.file(File.join(PACKAGE,'模拟器实例.jxa/模拟器实例.jxa')),'avd-identity',base,'Original') }
     first,err,status=identity.call;assert status.success?,err
     File.write(config,"AvdId=Original\nimage.sysdir.1=system-images/android-37\nhw.hdc.port=10001\n")
     second,err,status=identity.call;assert status.success?,err;assert_equal first,second
@@ -554,7 +556,7 @@ class SimulatorStartEnvironmentTests < Minitest::Test
   end
 
   def test_ios_component_network_failure_retries_only_acquisition_until_success
-    core=File.join(PACKAGE,'Resources/【MacOS】Android工具库.zsh/【MacOS】Android工具库.zsh')
+    core=JobsSourceLayout.file(File.join(PACKAGE,'Resources/【MacOS】Android工具库.zsh/【MacOS】Android工具库.zsh'))
     out,err,status=shell(ios_context+"source #{core.shellescape}\n"+<<~'ZSH')
       JOBS_SDK_RETRY_DELAY=0
       JOBS_SDK_RETRY_MAX_DELAY=1

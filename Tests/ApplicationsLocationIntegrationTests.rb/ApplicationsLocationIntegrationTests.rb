@@ -248,7 +248,7 @@ require_relative '../IsolatedInstallerDefinitions'
 class ApplicationsLocationIntegrationTests < Minitest::Test
   include IsolatedInstallerDefinitions
   ROOT = File.expand_path('../..', __dir__)
-  MANAGER = File.join(ROOT, 'Scripts/ManageFinderExtensions.zsh')
+  MANAGER = File.join(ROOT, 'Scripts/【MacOS】ManageFinderExtensions.zsh/【MacOS】ManageFinderExtensions.zsh')
 
   def run_fixture(checks, *arguments)
     source = isolated_installer_source(MANAGER)
