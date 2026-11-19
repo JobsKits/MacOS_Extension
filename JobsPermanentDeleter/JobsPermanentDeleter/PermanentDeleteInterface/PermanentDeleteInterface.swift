@@ -65,6 +65,15 @@ final class PermanentDeleteInterface: NSObject, NSWindowDelegate {
     private(set) var cancelButton: PermanentDeleteButton?
     private var confirmed = false
 
+    // Stop nested modal sessions and wake AppKit even when the worker produced no input events.
+    static func finishModal() {
+        NSApp.stopModal()
+        if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [],
+                                          timestamp: 0, windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+            NSApp.postEvent(event, atStart: false)
+        }
+    }
+
     // Supply the ordinary quit command; closing a confirmation never authorizes deletion.
     static func installEditingMenu() {
         NSApp.byMainMenu(NSMenu.make()
@@ -154,9 +163,11 @@ final class PermanentDeleteInterface: NSObject, NSWindowDelegate {
     // Present complete results while preserving raw filesystem diagnostics and exact remaining paths.
     static func show(warning: Bool, message: () -> String) {
         PermanentDeleteLocalization.applyAppearance()
+        let text = NSTextField.make(labelWithString: message()).byWrapping(true)
+        let scroll = NSScrollView.make(document: text, frame: NSRect(x: 0, y: 0, width: 570, height: 250))
         NSAlert.make()
             .byMessageText(PermanentDeleteLocalization.text("title"))
-            .byInformativeText(message())
+            .byAccessoryView(scroll)
             .byAlertStyle(warning ? .warning : .informational)
             .byAddButton(PermanentDeleteLocalization.text("ok"))
             .runModal()
@@ -164,12 +175,12 @@ final class PermanentDeleteInterface: NSObject, NSWindowDelegate {
 
     @objc private func confirmClicked(_ sender: Any?) {
         confirmed = true
-        NSApp.stopModal()
+        Self.finishModal()
     }
 
     @objc private func cancelClicked(_ sender: Any?) {
         confirmed = false
-        NSApp.stopModal()
+        Self.finishModal()
     }
 
     // Escape is routed by the panel responder chain to the same cancelled outcome.
@@ -189,7 +200,7 @@ final class PermanentDeleteInterface: NSObject, NSWindowDelegate {
         }
         PermanentDeleteLocalization.defaults.set(values[sender.indexOfSelectedItem], forKey: "language")
         preferencesChanged = true
-        NSApp.stopModal()
+        Self.finishModal()
     }
 
     @objc private func themeChanged(_ sender: NSPopUpButton) {
@@ -199,7 +210,7 @@ final class PermanentDeleteInterface: NSObject, NSWindowDelegate {
         }
         PermanentDeleteLocalization.defaults.set(values[sender.indexOfSelectedItem], forKey: "theme")
         preferencesChanged = true
-        NSApp.stopModal()
+        Self.finishModal()
     }
 }
 

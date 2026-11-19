@@ -23,11 +23,18 @@ enum PermanentDeleteContext {
         }
     }
 
+    // Keep lexical validation separate from Foundation standardization, which may rewrite /private aliases.
+    static func validPath(_ path: String) -> Bool {
+        return path.hasPrefix("/") && path != "/" && !path.contains("\0") &&
+            !path.contains("//") && !path.hasSuffix("/") &&
+            !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+    }
+
     // Reject broad system roots and mount roots; links are represented by their own inode.
     static func snapshot(_ url: URL) -> Item? {
         guard url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost",
               url.path.hasPrefix("/"), !url.path.contains("\0"),
-              url.standardizedFileURL.path == url.path, url.path != "/" else {
+              validPath(url.path), url.path != "/" else {
             return nil
         }
         guard let resolved = realpath(url.deletingLastPathComponent().path, nil) else {

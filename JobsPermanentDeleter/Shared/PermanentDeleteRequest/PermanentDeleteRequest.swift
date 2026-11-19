@@ -57,7 +57,7 @@ struct PermanentDeleteRequest {
               PermanentDeleteContext.validSelection(items),
               items.allSatisfy({
                   $0.path.hasPrefix("/") && $0.path != "/" && !$0.path.contains("\0") &&
-                      URL(fileURLWithPath: $0.path).standardizedFileURL.path == $0.path &&
+                      PermanentDeleteContext.validPath($0.path) &&
                       ($0.kind == UInt16(S_IFREG) || $0.kind == UInt16(S_IFDIR) || $0.kind == UInt16(S_IFLNK))
               }) else {
             return nil

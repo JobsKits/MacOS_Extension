@@ -63,6 +63,8 @@
 
 “🙈 隐藏所选项目”和“👁️ 显示所选项目”由独立 [JobsFileVisibility](./JobsFileVisibility/README.md) 提供，功能 ID 为 `file-visibility`。选中一个或多个普通文件／文件夹后，可明确统一设为隐藏或取消隐藏；仅修改所选对象的隐藏标记，不递归、不改名、不修改 Finder 的全局隐藏文件显示偏好。链接与特殊对象不处理，执行前复核；点号开头的名称仍受系统命名规则隐藏，取消标记不会自动改名。隐藏后可先用既有背景菜单显示隐藏文件，再选中项目恢复。总面板“文件与通用工具”及包内管理入口均可独立安装／卸载。
 
+“🗑️ 永久删除（不经过回收站）”由独立 [JobsPermanentDeleter](./JobsPermanentDeleter/README.md) 提供，功能 ID 为 `permanent-delete`。文件／文件夹可多选；二次确认框列出完整路径，左侧红底白字“确认”、右侧蓝底白字“取消”，默认取消，回车／Esc／关闭均取消。确认后直接删除，文件夹递归、符号链接只删自身，不能从回收站恢复。总面板“文件与通用工具”和包内管理入口均可独立安装／卸载；十语言及三种主题与当前管理偏好联动。源码、构建和真实菜单验证分别见[资产盘点](../项目相关报告/永久删除资产盘点.md)。
+
 “📨 发送到”由独立 [JobsSendTo](./JobsSendTo/README.md) 提供，功能 ID 为 `send-to`。选中文件或文件夹（支持多选）后，子菜单列出当前已挂载的外部磁盘、U 盘、移动硬盘及网络卷，包括已挂载的 Time Capsule 共享；点击目标卷后复制源项目，保留原件。同名默认自动增加序号，保留两份，不直接覆盖已有内容；未挂载的设备不会被自动连接。具体资格、失败与取消边界见包内说明。本功能仅覆盖 MacOS，可在总管理面板“文件与通用工具”或包内管理入口独立安装／卸载。
 
 IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.ini` 的目录，其余隐藏项（含 `.git`）算内容；普通文件、链接、多选不显示三个 IDE 入口。具体工程标记与工作区引用规则见 [IDE 说明](./JobsProjectTools/README.md)。
@@ -74,7 +76,7 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 右键菜单在名称前使用功能对应的 emoji，不同功能不重复，同一功能的兼容入口和 Windows 入口保持一致。任意单个普通文件均显示“🔎 查看文件指纹 Hash（SHA-256）”“➕ 授予执行权限（chmod +x）”和“➖ 移除执行权限（chmod -x）”；权限操作可幂等点击，不受扩展名或格式限制，目录、目录包、符号链接、多选与空白处隐藏。
 
-37 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
+38 个工程的源码由本仓统一管理，取得与更新方式见[源码取得与单仓管理](#single-repository-management)。
 
 本仓由父仓 [`JobsGenesis`](../../README.md) 的 [`.gitmodules`](../../.gitmodules) 直接登记；`OS@Extension/` 只是普通分类目录，没有独立 Git：
 
@@ -94,7 +96,7 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 两平台须拥有父仓 gitlink 引用的提交；`branch = main` 不能代替固定提交，父仓关联提交并推送后才会随远端克隆分发。
 
-> **90 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 16 个现行安装单元（依据当前清单，2026-11-18）；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
+> **91 个 Finder 管理选项，按用途分为 6 组。每组单独提供“全选 / 全不选”，窗口底部也保留针对全部功能的“全选 / 全不选”。** 依据选择器和根管理映射去重，共 17 个现行安装单元（依据当前清单，2026-11-18）；Flutter 的四十七项子功能与 iOS 的十一项辅助工具可逐项安装，同包只构建一次。
 
 | 功能分组 | 选项数 | 可逐项勾选的功能 |
 | --- | --- | --- |
@@ -107,7 +109,7 @@ IDE 菜单共同排除空目录与仅含 `.DS_Store`、`Thumbs.db`、`desktop.in
 
 “🧳 一键提取 Flutter 依赖”和“📥 一键导入 Flutter 依赖”位于提取 / 导入组首项，默认私库，支持 ZIP 及按内容识别改名的原始 Pub / Gradle 缓存。专用 Pub 私库叶子继续支持 Git、path、自建 hosted 包及间接依赖。完整预检后精确输入 `YES` 才导入，冲突不覆盖；不迁移机器凭据、不自动 `pub get`。底稿清单与范围见 [Flutter 私库迁移](./JobsFlutterTools/README.md#private-dependency-migration)。
 
-`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 37 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 16 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
+`MacOS@Extension` 用来收纳 Jobs 本机自用的 <u>[**Swift**](https://www.swift.org/)</u> macOS App + Finder Sync Extension 工程。按根层 `.xcodeproj/project.pbxproj` 核对，共 38 个源码工程；其中 21 个兼容 / 单项桌面、Flutter、IDE、Git 工程保留源码与兼容入口，不计入上面的 17 个现行安装单元。主要能力包括打开 Git 远程地址、复制 Git 远程地址、复制文件或文件夹绝对路径、在桌面或普通文件夹空白处新建空文件、分别用 [**Xcode**](https://developer.apple.com/xcode/)、[**Visual Studio Code**](https://code.visualstudio.com/) 和 [**Android Studio**](https://developer.android.com/studio) 打开项目、用终端打开文件或文件夹所在目录、在合法 iOS 工程直接执行 `pod install`、在合法 [**Flutter**](https://flutter.dev/) 工程体检工具链、按声明与配置生成代码、查看当前 SDK 版本、通过子菜单选择 iOS / Android / OpenHarmony打包、通过 [**FVM**](https://fvm.app/) 安装或切换 SDK、提取与导入已解析的 Pub 第三方依赖、执行 `flutter pub get`、清理项目产物与维护缓存、更新普通文件夹中的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图、拉取 Git 到最新、在终端选择 soft / hard 提交回退，在桌面右键新建并启动 iOS / Android / Harmony 模拟器，以及在 Git 管理的当前文件夹创建无文件变更的空白 Commit 并 Push。
 
 [JobsIOSTools](./JobsIOSTools/README.md) 在“iOS / CocoaPods 辅助工具”子菜单提供以下十一项功能，全部业务资源随 App 打包；安装菜单本身不执行清理、依赖安装或工程改写。`Pod Install` 和 iOS 构建产物清理也在此子菜单内。
 
@@ -137,6 +139,7 @@ JobsCodeSnippets 点击后在 Terminal 中确认，固定处理当前用户 Xcod
 | [🧩 合并分卷 / ✂️ 拆分文件](./JobsTerminalOpener/README.md#file-volumes) | 完整选中同组分卷才合并；单个普通文件才拆分，原件始终保留，已有结果拒绝覆盖。 |
 | [🔎 查看文件指纹 Hash（SHA-256）](./JobsFileHasher/README.md) | 任意单个普通文件；新 Terminal 显示路径与 SHA-256，成功后复制纯 64 位摘要。只读源文件，失败保留剪贴板；目录、符号链接、多选和空白隐藏。独立安装 / 卸载。 |
 | [🙈 隐藏／👁️ 显示所选项目](./JobsFileVisibility/README.md) | 一个或多个普通文件／文件夹；明确设置或取消隐藏标记，保留其它标记，不递归、不改名、不改 Finder 全局显示偏好。独立安装／卸载。 |
+| [🗑️ 永久删除所选项目](./JobsPermanentDeleter/README.md) | 文件／文件夹多选，左红白确认／右蓝白取消，默认取消，确认后直接递归删除；链接只删除自身。独立安装／卸载。 |
 | [📨 发送到](./JobsSendTo/README.md) | 文件／文件夹多选复制至当前已挂载的外部磁盘或网络卷；保留源件，同名自动序号保留两份。仅 MacOS，独立安装／卸载。 |
 | [📄 用终端查看文件内容](./JobsTerminalOpener/README.md) | 仅单个普通文件；Terminal 只读显示，默认超过 1 MiB 先输入 `YES` 确认，回车取消；二进制 / 未知编码另行确认，`Ctrl+C` 中止。 |
 | [显示 / 隐藏文件](./JobsHiddenFilesToggler/README.md) | 系统桌面或任意文件夹空白处按状态显示“👁️ 显示文件”或“🙈 隐藏文件”，点击应用标题对应的目标并刷新 Finder，不弹终端。文件、文件夹及多选的选中项菜单均不显示。刷新时 Finder 窗口可能短暂消失，避免在 Finder 复制、移动文件时切换。 |
@@ -191,7 +194,7 @@ ruby Tests/DesktopFinderMenuTests.rb/DesktopFinderMenuTests.rb
 
 <strong id="single-repository-quick-look">源码与工程边界速览</strong>
 
-37 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。各功能工程使用普通目录，不使用工程内 `.gitmodules`、gitlink 或 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
+38 个 Finder 扩展工程均为本仓中的普通源码目录，源码、文档和版本由 `MacOS@Extension` 统一管理。各功能工程使用普通目录，不使用工程内 `.gitmodules`、gitlink 或 `.git` 关联；克隆或更新本仓即可一并取得全部工程源码，无需递归下载子模块。
 
 安装面板按叶功能独立选择，并按十四个现行安装单元去重构建。桌面、IDE／Git、Flutter、iOS 分别由聚合包维持菜单顺序；旧工程保留兼容源码，每个功能目录只保留一个管理入口，六个桌面功能入口只启停各自叶子。Terminal 当前三项、iOS 辅助十一项均可逐项选择。文档目录转换统一使用工程外的工具，见 [单仓管理与外置目录工具](#single-repository-management)。
 
@@ -268,6 +271,7 @@ ruby Tests/FileCreatorInstallerIntegrationTests.rb/FileCreatorInstallerIntegrati
 | `./JobsPathCopier` | `复制绝对路径` | 右键任意一个本地文件或文件夹，把绝对路径写入剪贴板。 | `./JobsPathCopier/JobsPathCopier.xcodeproj` |
 | [JobsFileHasher](./JobsFileHasher/README.md) | `🔎 查看文件指纹 Hash（SHA-256）` | 新终端计算 SHA-256 并复制纯摘要；任意单个普通文件，独立安装 / 卸载。 | `./JobsFileHasher/JobsFileHasher.xcodeproj` |
 | [JobsFileVisibility](./JobsFileVisibility/README.md) | `🙈 隐藏所选项目`／`👁️ 显示所选项目` | 文件／文件夹单选、多选隐藏属性，独立安装／卸载。 | `./JobsFileVisibility/JobsFileVisibility.xcodeproj` |
+| [JobsPermanentDeleter](./JobsPermanentDeleter/README.md) | `🗑️ 永久删除（不经过回收站）` | 文件／文件夹多选，二次确认后直接删除；独立安装／卸载。 | `./JobsPermanentDeleter/JobsPermanentDeleter.xcodeproj` |
 | [JobsSendTo](./JobsSendTo/README.md) | `📨 发送到` | 多选复制至已挂载外部磁盘或网络卷，同名保留两份。 | `./JobsSendTo/JobsSendTo.xcodeproj` |
 | [JobsCommandShortcutCreator](./JobsCommandShortcutCreator/README.md) | `创建脚本快捷入口` | 为同名 `.command` 脚本包生成同级转发脚本，独立安装 / 卸载。 | `./JobsCommandShortcutCreator/JobsCommandShortcutCreator.xcodeproj` |
 | [JobsFileCreator](./JobsFileCreator/README.md) | `📃 新建文件…` | 桌面和普通文件夹背景输入文件名，排他创建空文件并由 Finder 定位；可独立安装 / 卸载。 | `./JobsFileCreator/JobsFileCreator.xcodeproj` |
@@ -414,6 +418,7 @@ node "$(git config --local --get jobs.markdown-toc-tool)" verify
 ├── JobsPathCopier/  # 本仓普通源码目录
 ├── JobsFileHasher/  # 单文件 SHA-256 显示与复制
 ├── JobsFileVisibility/  # 所选文件／文件夹隐藏属性
+├── JobsPermanentDeleter/  # 二次确认后永久删除
 ├── JobsSendTo/  # 多选复制至外部磁盘或网络卷
 ├── JobsCommandShortcutCreator/  # 同级相对路径脚本快捷入口
 ├── JobsFileCreator/  # 桌面 / 普通文件夹背景新建空文件

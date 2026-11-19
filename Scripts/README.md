@@ -98,6 +98,7 @@
 | 独立扩展 | 磁盘空间总览 | `disk-space-info` | [JobsDiskSpaceInfo](../JobsDiskSpaceInfo/README.md) |
 | 独立扩展 | 查看文件指纹 Hash（SHA-256） | `file-hash` | [JobsFileHasher](../JobsFileHasher/README.md) |
 | 独立扩展 | 隐藏 / 显示所选项目 | `file-visibility` | [JobsFileVisibility](../JobsFileVisibility/README.md) |
+| 独立扩展 | 永久删除所选项目 | `permanent-delete` | [JobsPermanentDeleter](../JobsPermanentDeleter/README.md) |
 | 独立扩展 | 发送到外部磁盘或网络卷 | `send-to` | [JobsSendTo](../JobsSendTo/README.md) |
 | 独立扩展 | 创建脚本快捷入口 | `command-shortcut-create` | [JobsCommandShortcutCreator](../JobsCommandShortcutCreator/README.md) |
 | 独立扩展 | 新建文件 | `file-create` | [JobsFileCreator](../JobsFileCreator/README.md) |

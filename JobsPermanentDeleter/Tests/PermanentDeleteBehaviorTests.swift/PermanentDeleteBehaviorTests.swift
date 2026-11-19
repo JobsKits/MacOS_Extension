@@ -32,6 +32,8 @@ struct PermanentDeleteBehaviorTests {
         let file = try write("文件 空格 ' $() ; ☀️")
         let first = PermanentDeleteContext.snapshot(file)!
         let request = PermanentDeleteRequest(urls: [file])!
+        check(!PermanentDeleteContext.validPath("/tmp/nul\0suffix"), "NUL rejected")
+        check(PermanentDeleteContext.validPath("/tmp/    Reject broad system roots"), "ordinary comment-like name allowed")
         check(PermanentDeleteRequest(url: request.url!)?.items.first?.path == first.path, "URL round trip")
         check(PermanentDeleteRequest(urls: []) == nil, "empty blocked")
         check(PermanentDeleteRequest(urls: [file, file]) == nil, "duplicates blocked")

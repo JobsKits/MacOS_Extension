@@ -40,7 +40,7 @@ final class PermanentDeleteController {
             }
             DispatchQueue.main.async {
                 Self.busy = false
-                NSApp.stopModal()
+                PermanentDeleteInterface.finishModal()
             }
         }
         _ = NSApp.runModal(for: progress)

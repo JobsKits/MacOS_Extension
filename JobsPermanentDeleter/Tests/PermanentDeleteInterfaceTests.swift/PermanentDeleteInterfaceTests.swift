@@ -52,11 +52,6 @@ struct PermanentDeleteInterfaceTests {
         check(!run { ui.window!.performClose(nil) }, "close cancels")
         let preview = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/JobsPermanentDeleteConfirmation.png"
         check(!run {
-            let capture = Process()
-            capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            capture.arguments = ["-x", "-l", String(ui.window!.windowNumber), preview]
-            try! capture.run()
-            capture.waitUntilExit()
             ui.window!.makeFirstResponder(ui.confirmButton!)
             let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
                                          windowNumber: ui.window!.windowNumber, context: nil,
@@ -70,6 +65,14 @@ struct PermanentDeleteInterfaceTests {
             app.sendEvent(event)
         }, "Escape cancels")
         check(run { ui.confirmButton!.performClick(nil) }, "only explicit red confirms")
+        check(!run {
+            let capture = Process()
+            capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            capture.arguments = ["-x", "-l", String(ui.window!.windowNumber), preview]
+            try! capture.run()
+            capture.waitUntilExit()
+            ui.cancelButton!.performClick(nil)
+        }, "preview capture cancels safely")
         check(FileManager.default.fileExists(atPath: file.path), "UI never deletes")
         print("PermanentDeleteInterfaceTests: \(checks) checks passed; preview: \(preview)")
     }

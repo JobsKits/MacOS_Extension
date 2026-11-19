@@ -18,7 +18,7 @@
 | [【MacOS】AppDeployment.zsh](./【MacOS】AppDeployment.zsh/README.md) | 精确 App 身份核验、安装位置、事务备份恢复与清理 |
 | [【MacOS】联合App管理.zsh](./【MacOS】联合App管理.zsh/README.md) | 将面板与本功能卸载资源装入联合 App，源码移走后仍可管理已安装功能 |
 
-依赖 MacOS 自带 zsh、Swift 编译器、Xcode、codesign、LaunchServices 和 PlugInKit。管理入口只在用户于面板点击操作按钮后构建并注册或卸载本项扩展，安装完成刷新 Finder；不修改任何文件或文件夹的隐藏属性。取消或空选不执行安装／卸载；任务中关窗会继续后台执行。
+依赖 MacOS 自带 zsh、Swift 编译器、Xcode、codesign、LaunchServices 和 PlugInKit。管理入口只在用户于面板点击操作按钮后构建并注册或卸载本项扩展，安装完成刷新 Finder；不删除任何业务文件；右键删除业务仍须独立二次确认。取消或空选不执行安装／卸载；任务中关窗会继续后台执行。
 
 构建缓存位于本包 `work/`，管理日志为系统临时目录中的 `JobsPermanentDeleterManage.log`，面板另外保留完整会话日志；互斥锁为本包 `work/.manager-lock`。同包已有任务时停止重复执行，故障先查看日志，不并行运行第二次管理。需要单独复制时应完整保留本功能包，不只复制此目录。
 

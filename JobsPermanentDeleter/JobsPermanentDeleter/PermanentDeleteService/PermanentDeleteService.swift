@@ -100,7 +100,9 @@ enum PermanentDeleteService {
                 }
                 throw Failure(cause: error.localizedDescription + "\n" + PermanentDeleteDiagnostics.partial, remainingPath: stagePath)
             }
-            _ = unlinkat(parent, stageName, AT_REMOVEDIR)
+            if unlinkat(parent, stageName, AT_REMOVEDIR) != 0 {
+                throw Failure(cause: error.localizedDescription, remainingPath: parentURL.appendingPathComponent(stageName).path)
+            }
             throw error
         }
     }
